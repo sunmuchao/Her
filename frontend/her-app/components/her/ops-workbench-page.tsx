@@ -10,7 +10,9 @@ import {
   RefreshCw,
   ShieldAlert,
   Workflow,
+  FileCheck,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
 import {
   fetchOpsWorkbenchSummary,
@@ -27,10 +29,13 @@ import {
 } from '@/lib/api/endpoints/rule-config'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
+import VerificationReviewTab from '@/components/her/verification-review'
 
 type OpsWorkbenchPageProps = {
   onBack?: () => void // 保留兼容性，但优先使用 router.back()
 }
+
+type WorkbenchTab = 'ops' | 'review'
 
 const RECOMMENDATION_ACTIONS = ['skip', 'save', 'direct_greet'] as const
 
@@ -45,6 +50,7 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
 
 export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<WorkbenchTab>('ops')
   const [summary, setSummary] = useState<OpsWorkbenchSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -154,14 +160,50 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
     <div className="min-h-screen pb-10">
       <div className="sticky top-0 z-20 border-b border-border/50 bg-background/90 backdrop-blur-md px-4 py-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="flex-1">
             <button type="button" onClick={() => router.back()} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
               <ArrowLeft className="h-3.5 w-3.5" />
               返回
             </button>
-            <h1 className="font-serif text-xl text-foreground">红娘协作台</h1>
-            <p className="text-xs text-muted-foreground mt-1">§14.3 — 异步任务、关系漏斗与推荐人工介入</p>
+            <h1 className="font-serif text-xl text-foreground">
+              {activeTab === 'ops' ? '红娘协作台' : '资料审核工作台'}
+            </h1>
+            {activeTab === 'ops' && (
+              <p className="text-xs text-muted-foreground mt-1">§14.3 — 异步任务、关系漏斗与推荐人工介入</p>
+            )}
           </div>
+
+          {/* Tab切换按钮 */}
+          <div className="flex gap-1.5 bg-muted/30 rounded-xl p-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('ops')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                activeTab === 'ops'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <ClipboardCheck className="h-3.5 w-3.5 inline mr-1" />
+              运营协作
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('review')}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                activeTab === 'review'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <FileCheck className="h-3.5 w-3.5 inline mr-1" />
+              资料审核
+            </button>
+          </div>
+
+          {/* 刷新按钮 */}
           <button
             type="button"
             onClick={() => void loadSummary()}
@@ -173,7 +215,11 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
         </div>
       </div>
 
-      <div className="px-4 pt-4 space-y-6">
+      {/* 根据Tab渲染不同内容 */}
+      {activeTab === 'review' ? (
+        <VerificationReviewTab />
+      ) : (
+        <div className="px-4 pt-4 space-y-6">
         <FadeIn>
           <div className="grid grid-cols-2 gap-3">
             <StatCard label="异步任务总数" value={totals.all ?? totals.total ?? '—'} />
@@ -403,6 +449,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
           </div>
         </FadeIn>
       </div>
+      )}
     </div>
   )
 }

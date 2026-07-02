@@ -105,6 +105,11 @@ def _status_label(status: str) -> str:
         "upheld": "申诉成立",
         "rejected": "已驳回",
         "resolved": "已结案",
+        # 新增标准认证状态标签
+        "unverified": "未认证",
+        "verified": "已认证",
+        "pending": "审核中",
+        "action_required": "需重提",
     }
     return labels.get(status, status)
 
@@ -417,6 +422,54 @@ def _build_field_trigger_map(profile_cases: list[dict[str, Any]]) -> dict[str, l
     return {key: _unique_ordered(values) for key, values in mapping.items()}
 
 
+# 标准认证项配置 - 用于认证状态面板展示
+STANDARD_VERIFICATION_ITEMS = [
+    {
+        "field_key": "live_video",
+        "name": "身份认证",
+        "description_unverified": "录制一段简短视频完成认证",
+        "description_verified": "已完成真人核验",
+        "description_pending": "审核中",
+    },
+    {
+        "field_key": "education",
+        "name": "学历认证",
+        "description_unverified": "上传学位证书或学信网截图",
+        "description_verified": "学历已核验",
+        "description_pending": "审核中",
+    },
+    {
+        "field_key": "job",
+        "name": "职业认证",
+        "description_unverified": "上传工牌或在职证明",
+        "description_verified": "职业已核验",
+        "description_pending": "审核中",
+    },
+    {
+        "field_key": "income",
+        "name": "收入认证",
+        "description_unverified": "上传近三个月收入材料",
+        "description_verified": "收入已核验",
+        "description_pending": "审核中",
+    },
+]
+
+
+def normalize_field_submission_status(status: str) -> str:
+    """将字段提交状态转换为标准认证状态
+
+    标准认证状态（前端约定）：
+    - verified: 已认证
+    - pending: 审核中/需重提（前端只有三种状态，action_required 映射为 pending）
+    - unverified: 未认证
+    """
+    if status in {FIELD_SUBMISSION_STATUS_APPROVED}:
+        return "verified"
+    if status in {FIELD_SUBMISSION_STATUS_SUBMITTED, FIELD_SUBMISSION_STATUS_UNDER_REVIEW, FIELD_SUBMISSION_STATUS_REJECTED, FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED, FIELD_SUBMISSION_STATUS_EXPIRED}:
+        return "pending"  # 审核中或需重提，前端统一显示为待处理状态
+    return "unverified"
+
+
 def _build_verification_items(
     *,
     user_id: str,
@@ -425,51 +478,106 @@ def _build_verification_items(
     field_submissions: list[dict[str, Any]],
     profile_cases: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    """构建认证状态面板 - 始终返回所有标准认证项及其正确状态
+
+    设计理念（根治方案）：
+    1. 始终返回所有标准认证项（身份、学历、职业、收入），而非只返回有任务的
+    2. 统一命名规范（使用"认证"而非"核验"、"补录"等）
+    3. 每个认证项根据实际提交情况返回正确的 status 和 description
+    4. 前端可直接渲染，无需复杂的兜底或合并逻辑
+
+    返回结构：
+    - item_id: 认证项唯一标识
+    - item_type: "verification_item"（标准认证项）
+    - title: 统一的认证项名称（"身份认证"、"学历认证"等）
+    - status: 标准状态（verified/pending/action_required/unverified）
+    - status_label: 中文状态标签
+    - description: 状态描述
+    - field_key: 认证项标识符
+    """
     items: list[dict[str, Any]] = []
-    for request in photo_requests:
-        items.append(_photo_review_item(request))
-    trigger_map = _build_field_trigger_map(profile_cases)
-    seen_field_keys: set[str] = set()
+
+    # 构建 field_submissions 的查询 map（field_key -> 最新提交）
+    submission_by_field_key: dict[str, dict[str, Any]] = {}
     for submission in field_submissions:
         field_key = _as_text(submission.get("field_key"))
-        seen_field_keys.add(field_key)
-        items.append(
-            _field_review_item(
-                submission,
-                trigger_reasons=trigger_map.get(field_key) or list((submission.get("reviews") or [{}])[-1].get("requested_documents", []) if submission.get("reviews") else []),
-            )
-        )
-    for field_key in _unique_ordered([key for case in profile_cases for key in (case.get("evidence_summary") or {}).get("required_verifications", [])]):
-        if field_key in seen_field_keys or field_key not in FIELD_POLICIES:
-            continue
-        policy = _policy(field_key)
-        source_case = next(
-            (
-                case
-                for case in profile_cases
-                if field_key in _unique_ordered((case.get("evidence_summary") or {}).get("required_verifications") or [])
-            ),
-            None,
-        )
-        items.append(
-            _field_review_item(
-                {
-                    "submission_id": f"derived-{user_id}-{profile_id or 'na'}-{field_key}",
+        if field_key:
+            # 如果已有记录，保留最新的（按时间排序）
+            existing = submission_by_field_key.get(field_key)
+            if not existing or _item_time(submission) > _item_time(existing):
+                submission_by_field_key[field_key] = submission
+
+    # 构建 photo_requests 的状态（身份认证）
+    photo_request_status = "unverified"
+    photo_request_description = "录制一段简短视频完成认证"
+    if photo_requests:
+        # 取最新的 photo_request
+        latest_request = photo_requests[0] if photo_requests else {}
+        photo_status = _as_text(latest_request.get("derived_status") or latest_request.get("status"))
+        if photo_status in {SUBMISSION_STATUS_APPROVED}:
+            photo_request_status = "verified"
+            photo_request_description = "已完成真人核验"
+        elif photo_status in {SUBMISSION_STATUS_SUBMITTED, SUBMISSION_STATUS_UNDER_REVIEW, SUBMISSION_STATUS_RESUBMISSION_REQUIRED, SUBMISSION_STATUS_REJECTED}:
+            photo_request_status = "pending"  # 审核中或需重提，前端统一显示为待处理状态
+            if photo_status in {SUBMISSION_STATUS_RESUBMISSION_REQUIRED, SUBMISSION_STATUS_REJECTED}:
+                photo_request_description = "需重新提交"
+            else:
+                photo_request_description = "审核中"
+
+    # 遍历标准认证项配置，构建完整的认证项列表
+    for standard_item in STANDARD_VERIFICATION_ITEMS:
+        field_key = standard_item["field_key"]
+        name = standard_item["name"]
+
+        if field_key == "live_video":
+            # 身份认证（照片核验）
+            items.append({
+                "item_id": f"verification-{user_id}-{field_key}",
+                "item_type": "verification_item",
+                "title": name,
+                "status": photo_request_status,
+                "status_label": _status_label(photo_request_status),
+                "description": photo_request_description,
+                "field_key": field_key,
+            })
+        else:
+            # 字段认证（学历、职业、收入）
+            submission = submission_by_field_key.get(field_key)
+
+            if submission:
+                # 有提交记录，基于实际状态
+                submission_status = _as_text(submission.get("status"))
+                status = normalize_field_submission_status(submission_status)
+
+                # 根据状态选择描述
+                if status == "verified":
+                    description = standard_item["description_verified"]
+                elif status == "pending":
+                    description = standard_item["description_pending"]
+                else:
+                    description = standard_item["description_unverified"]
+
+                items.append({
+                    "item_id": submission.get("submission_id"),
+                    "item_type": "field_verification_submission",
+                    "title": name,
+                    "status": status,
+                    "status_label": _status_label(submission_status),
+                    "description": description,
                     "field_key": field_key,
-                    "profile_id": profile_id,
-                    "subject_user_id": user_id,
-                    "source_dsn": (source_case or {}).get("source_dsn"),
-                    "source_table_name": (source_case or {}).get("source_table_name"),
-                    "status": FIELD_SUBMISSION_STATUS_SUBMITTED,
-                    "declared_value": None,
-                    "required_documents": list(policy.get("accepted_documents") or []),
-                    "created_at": (source_case or {}).get("created_at"),
-                    "updated_at": (source_case or {}).get("updated_at"),
-                },
-                trigger_reasons=trigger_map.get(field_key) or list(policy.get("review_focus") or []),
-                pending_submission=True,
-            )
-        )
+                })
+            else:
+                # 无提交记录，显示未认证状态
+                items.append({
+                    "item_id": f"verification-{user_id}-{field_key}",
+                    "item_type": "verification_item",
+                    "title": name,
+                    "status": "unverified",
+                    "status_label": "未认证",
+                    "description": standard_item["description_unverified"],
+                    "field_key": field_key,
+                })
+
     return items
 
 

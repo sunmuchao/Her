@@ -2,12 +2,17 @@ FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
+ENV PIP_DEFAULT_TIMEOUT=180
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     default-libmysqlclient-dev \
     ffmpeg \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 COPY pyproject.toml README.md ./
 COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py partner_moderation.py profile_*.py mysql_source_config.py ./
@@ -25,7 +30,7 @@ COPY external-systems ./external-systems
 COPY scripts ./scripts
 COPY config ./config
 
-RUN PIP_DEFAULT_TIMEOUT=180 pip install --no-cache-dir -e ".[dev]" faster-whisper
+RUN pip install --no-cache-dir --no-build-isolation -e ".[dev]" faster-whisper
 
 ENV PYTHONUNBUFFERED=1
 ENV PARTNER_GATEWAY_DB_POOL_MAX=16

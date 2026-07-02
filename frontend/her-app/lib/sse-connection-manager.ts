@@ -47,6 +47,12 @@ class SSEConnectionManager {
   private queryClient: any = null
   private isConnecting = false
 
+  // 指数退避重连参数
+  private reconnectAttempts = 0
+  private reconnectDelay = 3000 // 初始重连延迟3秒
+  private maxReconnectDelay = 30000 // 最大重连延迟30秒
+  private maxReconnectAttempts = 10 // 最大重连次数10次
+
   /**
    * 初始化连接（只能调用一次）
    */
@@ -85,15 +91,32 @@ class SSEConnectionManager {
       this.connection.addEventListener('connected', (e) => {
         console.log('[SSE Manager] 连接成功')
         this.isConnecting = false
+        // 连接成功后重置重连参数
+        this.reconnectAttempts = 0
+        this.reconnectDelay = 3000
       })
 
       this.connection.onerror = (err) => {
         console.error('[SSE Manager] 连接错误', err)
         this.disconnect()
-        // 3秒后重连
-        this.reconnectTimeout = setTimeout(() => {
-          this.connect()
-        }, 3000)
+
+        // 检查是否达到最大重连次数
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          this.reconnectAttempts++
+          // 指数退避：延迟时间按1.5倍增长
+          const delay = Math.min(this.reconnectDelay * 1.5, this.maxReconnectDelay)
+          this.reconnectDelay = delay
+
+          console.log(`[SSE Manager] 尝试重连 (${this.reconnectAttempts}/${this.maxReconnectAttempts})，延迟 ${Math.round(delay/1000)}秒`)
+
+          this.reconnectTimeout = setTimeout(() => {
+            this.connect()
+          }, delay)
+        } else {
+          console.error('[SSE Manager] 达到最大重连次数，停止重连')
+          // 降级到轮询fallback（可选）
+          this.startPollingFallback()
+        }
       }
     } catch (err) {
       console.error('[SSE Manager] 创建连接失败', err)
@@ -193,6 +216,44 @@ class SSEConnectionManager {
     }
     this.isConnecting = false
     console.log('[SSE Manager] 连接已断开')
+  }
+
+  /**
+   * 降级到轮询机制（SSE失败时的fallback）
+   */
+  private pollingInterval: NodeJS.Timeout | null = null
+
+  private startPollingFallback() {
+    console.log('[SSE Manager] 启动轮询降级机制')
+
+    // 每30秒轮询一次关键数据
+    this.pollingInterval = setInterval(() => {
+      if (this.queryClient && this.profileId) {
+        console.log('[SSE Manager] 执行轮询刷新')
+        this.queryClient.invalidateQueries({ queryKey: ['profile', this.profileId] })
+        this.queryClient.invalidateQueries({ queryKey: ['relationships'] })
+        this.queryClient.invalidateQueries({ queryKey: ['badge-counts'] })
+      }
+    }, 30000) // 30秒轮询一次
+  }
+
+  private stopPollingFallback() {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval)
+      this.pollingInterval = null
+      console.log('[SSE Manager] 停止轮询降级机制')
+    }
+  }
+
+  /**
+   * 重置连接（手动触发重连）
+   */
+  resetConnection() {
+    this.disconnect()
+    this.stopPollingFallback()
+    this.reconnectAttempts = 0
+    this.reconnectDelay = 3000
+    this.connect()
   }
 
   /**

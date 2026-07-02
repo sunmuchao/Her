@@ -101,6 +101,7 @@ export async function submitLiveVideoVerification(params: {
   challengeToken: string
   challengePhrase?: string
   videoBase64?: string
+  videoBlob?: Blob // 新增：支持Blob直接上传
   fileName?: string
   contentType?: string
 }) {
@@ -123,27 +124,55 @@ export async function submitLiveVideoVerification(params: {
     )
   }
 
-  const videoBase64 =
-    params.videoBase64 ?? (process.env.NODE_ENV === 'test' ? STUB_VIDEO_BASE64 : undefined)
-  if (!videoBase64) {
-    throw new Error('请先录制视频后再提交')
-  }
+  // 支持两种上传方式：FormData（推荐）和 Base64（兼容）
+  const useFormData = params.videoBlob && typeof FormData !== 'undefined'
 
   try {
+    let requestBody: any
+    let headers: any = {}
+
+    if (useFormData) {
+      // ✅ 新增：FormData上传（效率提升33%，无需Base64编码）
+      const formData = new FormData()
+      formData.append('video', params.videoBlob!, params.fileName || 'verification-recording.webm')
+      formData.append('challenge_token', params.challengeToken)
+      formData.append('user_id', userId)
+      formData.append('profile_id', profileId?.toString() || '')
+      if (params.challengePhrase) {
+        formData.append('challenge_phrase', params.challengePhrase)
+      }
+      formData.append('metadata', JSON.stringify({ action_result: [], source: 'her-app' }))
+
+      requestBody = formData
+      // 注意：FormData不需要设置Content-Type，浏览器会自动设置multipart/form-data
+    } else {
+      // 兼容模式：Base64上传
+      const videoBase64 =
+        params.videoBase64 ?? (process.env.NODE_ENV === 'test' ? STUB_VIDEO_BASE64 : undefined)
+      if (!videoBase64) {
+        throw new Error('请先录制视频后再提交')
+      }
+
+      requestBody = JSON.stringify({
+        user_id: userId,
+        profile_id: profileId,
+        video_base64: videoBase64,
+        file_name: params.fileName || 'verification-recording.webm',
+        content_type: params.contentType || 'video/webm',
+        challenge_token: params.challengeToken,
+        challenge_phrase: params.challengePhrase,
+        metadata: { action_result: [], source: 'her-app' },
+      })
+
+      headers['Content-Type'] = 'application/json'
+    }
+
     const result = await gatewayJson<{ submission?: VerificationSubmission }>(
       '/v1/verifications/live-video-submissions',
       {
         method: 'POST',
-        body: JSON.stringify({
-          user_id: userId,
-          profile_id: profileId,
-          video_base64: videoBase64,
-          file_name: params.fileName || 'verification-recording.webm',
-          content_type: params.contentType || 'video/webm',
-          challenge_token: params.challengeToken,
-          challenge_phrase: params.challengePhrase,
-          metadata: { action_result: [], source: 'her-app' },
-        }),
+        headers,
+        body: requestBody,
       }
     )
 

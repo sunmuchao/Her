@@ -14,6 +14,7 @@ SLICE_RECOMMENDATION_CRITERIA = "recommendation.criteria_compiler"
 SLICE_PARTNER_SEARCH_RECIPROCAL = "partner_search.reciprocal"
 SLICE_CHAT_ASSISTANT_COOLDOWN = "chat.assistant_cooldown"
 SLICE_VERIFICATION_AUTO_TRIAGE = "verification.auto_triage"
+SLICE_VERIFICATION_THRESHOLDS = "verification.thresholds"
 
 ALL_RULE_SLICES = (
     SLICE_RECOMMENDATION_DIRECT_GREET_GATE,
@@ -25,6 +26,7 @@ ALL_RULE_SLICES = (
     SLICE_PARTNER_SEARCH_RECIPROCAL,
     SLICE_CHAT_ASSISTANT_COOLDOWN,
     SLICE_VERIFICATION_AUTO_TRIAGE,
+    SLICE_VERIFICATION_THRESHOLDS,
 )
 
 DEFAULT_CHAT_COOLDOWN_SECONDS: dict[str, int] = {
@@ -127,6 +129,40 @@ def code_defaults_for_slice(slice_id: str) -> dict[str, Any]:
         return {
             "enabled": _env_bool("HER_VERIFICATION_AUTO_TRIAGE", True),
         }
+    if slice_id == SLICE_VERIFICATION_THRESHOLDS:
+        return {
+            # 活体检测阈值
+            "liveness_score_min": _env_int("HER_VERIFICATION_LIVENESS_MIN", 85),
+            "liveness_score_fail": _env_int("HER_VERIFICATION_LIVENESS_FAIL", 60),
+
+            # 人脸匹配阈值
+            "face_match_score_min": _env_int("HER_VERIFICATION_FACE_MATCH_MIN", 85),
+            "face_match_score_fail": _env_int("HER_VERIFICATION_FACE_MATCH_FAIL", 40),
+
+            # 动作挑战阈值
+            "challenge_score_min": _env_int("HER_VERIFICATION_CHALLENGE_MIN", 80),
+            "challenge_score_fail": _env_int("HER_VERIFICATION_CHALLENGE_FAIL", 60),
+
+            # 语音口令匹配
+            "speech_code_match_required": _env_bool("HER_VERIFICATION_SPEECH_CODE_REQUIRED", True),
+
+            # 风险检测阈值
+            "deepfake_risk_threshold": _env_int("HER_VERIFICATION_DEEPFAKE_THRESHOLD", 85),
+            "deepfake_risk_medium": _env_int("HER_VERIFICATION_DEEPFAKE_MEDIUM", 60),
+
+            "replay_attack_threshold": _env_int("HER_VERIFICATION_REPLAY_THRESHOLD", 85),
+            "replay_attack_medium": _env_int("HER_VERIFICATION_REPLAY_MEDIUM", 60),
+
+            "spoofing_risk_threshold": _env_int("HER_VERIFICATION_SPOOFING_THRESHOLD", 85),
+            "spoofing_risk_medium": _env_int("HER_VERIFICATION_SPOOFING_MEDIUM", 60),
+
+            "photo_edit_risk_threshold": _env_int("HER_VERIFICATION_PHOTO_EDIT_THRESHOLD", 85),
+            "photo_edit_risk_medium": _env_int("HER_VERIFICATION_PHOTO_EDIT_MEDIUM", 60),
+
+            # 自动审核策略
+            "auto_approve_enabled": _env_bool("HER_VERIFICATION_AUTO_APPROVE_ENABLED", True),
+            "auto_approve_strict_mode": _env_bool("HER_VERIFICATION_AUTO_APPROVE_STRICT", True),
+        }
     return {}
 
 
@@ -149,6 +185,7 @@ __all__ = [
     "SLICE_RECOMMENDATION_DIRECT_GREET_GATE",
     "SLICE_RECOMMENDATION_REVIEW_POLICY",
     "SLICE_VERIFICATION_AUTO_TRIAGE",
+    "SLICE_VERIFICATION_THRESHOLDS",
     SLICE_PARTNER_SEARCH_RECIPROCAL,
     SLICE_RECOMMENDATION_CRITERIA,
     "code_defaults_for_slice",

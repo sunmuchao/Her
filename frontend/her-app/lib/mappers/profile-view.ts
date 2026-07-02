@@ -118,13 +118,15 @@ export function buildProfileView(
     extractPreferredTraits(collectedStatements).slice(0, 6),
   ].find((items) => items.length > 0) ?? []
 
-  // 提取认证项目
+  // 提取认证项目 - 直接使用后端返回的数据
   let verificationItems: VerificationItemView[] = []
   if (trust?.trust_hub?.verification_center?.items) {
     verificationItems = mapTrustHubVerificationItems(
       trust.trust_hub.verification_center.items,
     )
   }
+
+  // 兜底逻辑：后端返回为空时使用默认认证项
   if (verificationItems.length === 0) {
     verificationItems = buildFallbackVerificationItems(rawProfile)
   }

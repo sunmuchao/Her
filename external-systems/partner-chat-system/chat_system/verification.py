@@ -11,6 +11,9 @@ from typing import Any
 
 from her_time_utils import as_text as _as_text, current_time as _current_time
 
+from match_domain.rule_config import resolve_effective_rules
+from match_domain.rule_config_schema import SLICE_VERIFICATION_THRESHOLDS
+
 from partner_moderation import (
     ACTION_FREEZE,
     build_subject_key,
@@ -1161,6 +1164,55 @@ def _insert_asset_row(conn, submission_id: str, asset_payload: dict[str, Any], *
     return int(conn.lastrowid)
 
 
+def _resolve_verification_thresholds() -> dict[str, Any]:
+    """
+    动态获取认证审核阈值配置
+
+    从 rule_config 系统读取阈值配置，如果配置不存在则使用默认值
+
+    返回:
+        dict: 包含所有阈值配置的字典
+    """
+    bundle = resolve_effective_rules(SLICE_VERIFICATION_THRESHOLDS)
+    if bundle and bundle.params:
+        return bundle.params
+
+    # 默认阈值（与 rule_config_schema.py 中的默认值一致）
+    return {
+        # 活体检测阈值
+        "liveness_score_min": 85,
+        "liveness_score_fail": 60,
+
+        # 人脸匹配阈值
+        "face_match_score_min": 85,
+        "face_match_score_fail": 40,
+
+        # 动作挑战阈值
+        "challenge_score_min": 80,
+        "challenge_score_fail": 60,
+
+        # 语音口令匹配
+        "speech_code_match_required": True,
+
+        # 风险检测阈值
+        "deepfake_risk_threshold": 85,
+        "deepfake_risk_medium": 60,
+
+        "replay_attack_threshold": 85,
+        "replay_attack_medium": 60,
+
+        "spoofing_risk_threshold": 85,
+        "spoofing_risk_medium": 60,
+
+        "photo_edit_risk_threshold": 85,
+        "photo_edit_risk_medium": 60,
+
+        # 自动审核策略
+        "auto_approve_enabled": True,
+        "auto_approve_strict_mode": True,
+    }
+
+
 def _resolve_machine_review_outcome(
     *,
     liveness_score: int,
@@ -1172,32 +1224,69 @@ def _resolve_machine_review_outcome(
     success_summary: str,
     retry_summary: str,
 ) -> tuple[str | None, str, str, str]:
+    """
+    机器审核决策逻辑（使用动态阈值）
+
+    根据各项评分和风险标记，决定审核结果
+
+    参数:
+        liveness_score: 活体检测分数
+        face_match_score: 人脸匹配分数
+        challenge_score: 动作挑战分数
+        risk_flags: 风险标记列表
+        spoken_code_required: 是否要求语音口令
+        speech_review: 语音审核结果
+        success_summary: 成功摘要
+        retry_summary: 重试摘要
+
+    返回:
+        tuple: (推荐决策, 下一步, 置信度, 摘要)
+    """
+    # 获取动态阈值
+    thresholds = _resolve_verification_thresholds()
+
     recommended_decision: str | None = REVIEW_DECISION_MANUAL_REVIEW
     recommended_next_step = MACHINE_NEXT_STEP_MANUAL_REVIEW
     confidence_band = "medium"
     summary = "机器结果没有明显高风险，但还不够稳，转人工复核"
     severe_flags = [flag for flag in risk_flags if flag in SEVERE_MACHINE_RISK_FLAGS]
     speech_result = _as_text(speech_review.get("speech_result"))
-    if severe_flags or face_match_score < 40:
+
+    # 使用动态阈值判断
+    if severe_flags or face_match_score < thresholds["face_match_score_fail"]:
         recommended_next_step = MACHINE_NEXT_STEP_STRONG_IDENTITY
         confidence_band = "high"
         summary = "同人比对过低或命中高风险标记，先转人工复核，并建议升级强实名"
-    elif speech_result == "fail" or liveness_score < 60 or challenge_score < 60:
+    elif (
+        speech_result == "fail"
+        or liveness_score < thresholds["liveness_score_fail"]
+        or challenge_score < thresholds["challenge_score_fail"]
+    ):
         recommended_decision = REVIEW_DECISION_REQUEST_RESUBMISSION
         recommended_next_step = MACHINE_NEXT_STEP_RETRY_LIVE_VIDEO
         confidence_band = "high"
         summary = retry_summary
     elif (
-        liveness_score >= 85
-        and face_match_score >= 85
-        and challenge_score >= 80
+        thresholds["auto_approve_enabled"]
+        and liveness_score >= thresholds["liveness_score_min"]
+        and face_match_score >= thresholds["face_match_score_min"]
+        and challenge_score >= thresholds["challenge_score_min"]
         and not risk_flags
-        and (not spoken_code_required or speech_result == "pass")
+        and (not thresholds["speech_code_match_required"] or not spoken_code_required or speech_result == "pass")
     ):
-        recommended_decision = REVIEW_DECISION_APPROVE
-        recommended_next_step = MACHINE_NEXT_STEP_COMPLETE
-        confidence_band = "high"
-        summary = success_summary
+        # 严格模式下，所有条件都必须满足
+        if thresholds["auto_approve_strict_mode"]:
+            recommended_decision = REVIEW_DECISION_APPROVE
+            recommended_next_step = MACHINE_NEXT_STEP_COMPLETE
+            confidence_band = "high"
+            summary = success_summary
+        else:
+            # 非严格模式，降低阈值但仍需人工复核
+            recommended_decision = REVIEW_DECISION_MANUAL_REVIEW
+            recommended_next_step = MACHINE_NEXT_STEP_MANUAL_REVIEW
+            confidence_band = "medium"
+            summary = "分数较高但非严格模式，转人工复核"
+
     return recommended_decision, recommended_next_step, confidence_band, summary
 
 
@@ -1389,28 +1478,40 @@ def _local_oss_machine_review(
         risk_flags.append("challenge_incomplete")
     if face_count_max > 1 and "multiple_faces" not in risk_flags:
         risk_flags.append("multiple_faces")
-    if provider_result.get("replay_attack_score", 0) >= 85 and "replay_attack" not in risk_flags:
+
+    # 获取动态阈值
+    thresholds = _resolve_verification_thresholds()
+
+    # 使用动态阈值判断风险标记
+    if provider_result.get("replay_attack_score", 0) >= thresholds["replay_attack_threshold"] and "replay_attack" not in risk_flags:
         risk_flags.append("replay_attack")
-    elif provider_result.get("replay_attack_score", 0) >= 60 and "suspected_replay_attack" not in risk_flags:
+    elif provider_result.get("replay_attack_score", 0) >= thresholds["replay_attack_medium"] and "suspected_replay_attack" not in risk_flags:
         risk_flags.append("suspected_replay_attack")
+
     if provider_result.get("screen_risk_score", 0) >= 75 and "screen_replay_risk" not in risk_flags:
         risk_flags.append("screen_replay_risk")
-    if provider_result.get("spoofing_risk_score", 0) >= 85 and "spoofing_risk" not in risk_flags:
+
+    if provider_result.get("spoofing_risk_score", 0) >= thresholds["spoofing_risk_threshold"] and "spoofing_risk" not in risk_flags:
         risk_flags.append("spoofing_risk")
-    elif provider_result.get("spoofing_risk_score", 0) >= 60 and "anti_spoof_uncertain" not in risk_flags:
+    elif provider_result.get("spoofing_risk_score", 0) >= thresholds["spoofing_risk_medium"] and "anti_spoof_uncertain" not in risk_flags:
         risk_flags.append("anti_spoof_uncertain")
-    if provider_result.get("deepfake_risk_score", 0) >= 85 and "deepfake_risk" not in risk_flags:
+
+    if provider_result.get("deepfake_risk_score", 0) >= thresholds["deepfake_risk_threshold"] and "deepfake_risk" not in risk_flags:
         risk_flags.append("deepfake_risk")
-    elif provider_result.get("deepfake_risk_score", 0) >= 60 and "deepfake_uncertain" not in risk_flags:
+    elif provider_result.get("deepfake_risk_score", 0) >= thresholds["deepfake_risk_medium"] and "deepfake_uncertain" not in risk_flags:
         risk_flags.append("deepfake_uncertain")
-    if provider_result.get("photo_edit_risk_score", 0) >= 85 and "photo_heavily_edited" not in risk_flags:
+
+    if provider_result.get("photo_edit_risk_score", 0) >= thresholds["photo_edit_risk_threshold"] and "photo_heavily_edited" not in risk_flags:
         risk_flags.append("photo_heavily_edited")
-    elif provider_result.get("photo_edit_risk_score", 0) >= 60 and "photo_edit_uncertain" not in risk_flags:
+    elif provider_result.get("photo_edit_risk_score", 0) >= thresholds["photo_edit_risk_medium"] and "photo_edit_uncertain" not in risk_flags:
         risk_flags.append("photo_edit_uncertain")
-    if face_match_score < 40 and "face_mismatch" not in risk_flags:
+
+    if face_match_score < thresholds["face_match_score_fail"] and "face_mismatch" not in risk_flags:
         risk_flags.append("face_mismatch")
-    if liveness_score < 60 and "low_liveness" not in risk_flags:
+
+    if liveness_score < thresholds["liveness_score_fail"] and "low_liveness" not in risk_flags:
         risk_flags.append("low_liveness")
+
     if spoken_code_required and not bool(provider_result.get("has_audio_track")) and "missing_audio_track" not in risk_flags:
         risk_flags.append("missing_audio_track")
 

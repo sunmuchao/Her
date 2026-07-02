@@ -10,10 +10,14 @@ Key Changes:
 1. Submission access requires ownership verification
 2. Photo review request access requires ownership or staff role
 3. All access decisions are audited
+4. Rate limiting for challenge creation and video submission
+5. Multipart/form-data support for video uploads (no Base64 encoding)
+6. Strict submission_id format validation
 """
 
 from __future__ import annotations
 
+import base64
 import re
 from datetime import datetime
 from typing import Any, Protocol
@@ -40,6 +44,18 @@ from .http_helpers import (
 )
 from .input_validator import validate_int_id, ValidationError
 from .role_sets import CHAT_RISK_REVIEW_ROLES, STAFF_OVERRIDE_ROLES, VERIFICATION_REVIEW_ROLES
+from .verification_rate_limiter import (
+    check_verification_rate_limit,
+    extract_user_id_from_environ,
+    RateLimitExceeded,
+)
+from .verification_input_validator import (
+    validate_submission_id,
+    validate_file_size,
+    validate_content_type,
+    parse_multipart_file,
+    InputValidationError,
+)
 
 
 class VerificationGateway(Protocol):
@@ -128,17 +144,107 @@ def rest_verification_submit_live_video(
 ) -> tuple[int, dict[str, Any]]:
     """Submit live video verification.
 
-    SECURITY: User_id is bound to current actor, preventing impersonation.
+    SECURITY:
+    - User_id is bound to current actor, preventing impersonation
+    - Rate limit: 5 submissions per minute per user
+    - File size limit: 50MB
+    - Supports both Base64 and multipart/form-data upload
+
+    ENHANCED: Supports multipart/form-data for better efficiency (no Base64 encoding)
     """
+
+    # Rate limiting check
+    user_id_for_limit = extract_user_id_from_environ(environ)
+    try:
+        check_verification_rate_limit("submit_video", user_id_for_limit)
+    except RateLimitExceeded as e:
+        return 429, {
+            "error": {
+                "code": "rate_limit_exceeded",
+                "message": str(e),
+                "retry_after": e.retry_after,
+            }
+        }
+
     now = _parse_optional_now(body)
     user_id = gateway._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
+
+    # Check content type to determine upload method
+    content_type_header = environ.get("CONTENT_TYPE", "")
+
+    if content_type_header.startswith("multipart/form-data"):
+        # Multipart/form-data upload (more efficient)
+        try:
+            file_data = parse_multipart_file(environ)
+            video_bytes = file_data["file_data"]
+            file_name = file_data["filename"]
+            content_type = file_data["content_type"]
+
+            # Validate file size
+            validate_file_size(file_data["file_size_bytes"])
+
+            # Validate content type
+            validate_content_type(content_type)
+
+        except InputValidationError as e:
+            return 400, {
+                "error": {
+                    "code": "validation_error",
+                    "field": e.field,
+                    "message": e.reason,
+                }
+            }
+    else:
+        # Base64 upload (legacy support)
+        video_base64 = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
+        if not video_base64:
+            return 400, {
+                "error": {
+                    "code": "validation_error",
+                    "field": "video",
+                    "message": "video_base64 or multipart upload required",
+                }
+            }
+
+        try:
+            video_bytes = base64.b64decode(video_base64)
+            file_name = str(body.get("file_name") or body.get("filename") or "")
+            content_type = body.get("content_type")
+
+            # Validate file size
+            validate_file_size(len(video_bytes))
+
+        except Exception as e:
+            return 400, {
+                "error": {
+                    "code": "validation_error",
+                    "field": "video_base64",
+                    "message": f"Failed to decode Base64: {e}",
+                }
+            }
+
+    # Validate submission_id if provided
+    submission_id = body.get("submission_id")
+    if submission_id is not None:
+        try:
+            validate_submission_id(submission_id)
+        except InputValidationError as e:
+            return 400, {
+                "error": {
+                    "code": "validation_error",
+                    "field": "submission_id",
+                    "message": e.reason,
+                }
+            }
+
+    # Submit verification (use video_bytes directly, no Base64 encoding needed)
     submission = gateway._with_chat(
         submit_live_video_verification,
         user_id=user_id,
-        video_base64=str(body.get("video_base64") or body.get("video_bytes_base64") or ""),
-        file_name=str(body.get("file_name") or body.get("filename") or ""),
-        submission_id=body.get("submission_id"),
-        content_type=body.get("content_type"),
+        video_bytes=video_bytes,
+        file_name=file_name,
+        submission_id=submission_id,
+        content_type=content_type,
         profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
         source_dsn=body.get("source_dsn") or body.get("source"),
         source_table_name=body.get("source_table_name") or body.get("table_name"),
@@ -147,6 +253,7 @@ def rest_verification_submit_live_video(
         metadata=body.get("metadata"),
         now=now,
     )
+
     return 201, {"submission": _json_safe(submission)}
 
 
@@ -202,8 +309,24 @@ def rest_verification_create_live_challenge(
 ) -> tuple[int, dict[str, Any]]:
     """Create live video challenge.
 
-    SECURITY: User_id bound to current actor.
+    SECURITY:
+    - User_id bound to current actor
+    - Rate limit: 10 challenges per minute per user
     """
+
+    # Rate limiting check
+    user_id_for_limit = extract_user_id_from_environ(environ)
+    try:
+        check_verification_rate_limit("create_challenge", user_id_for_limit)
+    except RateLimitExceeded as e:
+        return 429, {
+            "error": {
+                "code": "rate_limit_exceeded",
+                "message": str(e),
+                "retry_after": e.retry_after,
+            }
+        }
+
     now = _parse_optional_now(body)
     user_id = gateway._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
     challenge = create_live_video_verification_challenge(

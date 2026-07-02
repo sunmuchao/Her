@@ -1119,6 +1119,11 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ColumnDef("reviewed_at", "DATETIME", nullable=True),
                 ColumnDef("approved_at", "DATETIME", nullable=True),
                 ColumnDef("rejected_at", "DATETIME", nullable=True),
+                ColumnDef("machine_review_outcome", "VARCHAR(32)", nullable=True),
+                ColumnDef("machine_review_score", "INT", nullable=True),
+                ColumnDef("expires_at", "DATETIME", nullable=True),
+                ColumnDef("revoked_at", "DATETIME", nullable=True),
+                ColumnDef("revocation_reason", "VARCHAR(191)", nullable=True),
                 ColumnDef("metadata_json", "LONGTEXT", nullable=False),
                 ColumnDef("created_at", "DATETIME", nullable=False),
                 ColumnDef("updated_at", "DATETIME", nullable=False),
@@ -1128,6 +1133,8 @@ def chat_tables() -> tuple[TableDef, ...]:
                 IndexDef(("user_id", "status", "updated_at"), "idx_verification_submissions_user_status"),
                 IndexDef(("status", "updated_at"), "idx_verification_submissions_status_time"),
                 IndexDef(("profile_id", "updated_at"), "idx_verification_submissions_profile_time"),
+                IndexDef(("machine_review_outcome", "updated_at"), "idx_verification_submissions_machine_outcome"),
+                IndexDef(("expires_at",), "idx_verification_submissions_expires_at"),
             ),
         ),
         TableDef(
@@ -1200,6 +1207,114 @@ def chat_tables() -> tuple[TableDef, ...]:
             foreign_keys=(
                 ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
             ),
+        ),
+        # ===== 认证等级权重配置表 =====
+        TableDef(
+            name="verification_level_weights",
+            columns=(
+                ColumnDef("level_name", "VARCHAR(32)", nullable=False),
+                ColumnDef("weight", "INT", nullable=False),
+                ColumnDef("label", "VARCHAR(64)", nullable=False),
+                ColumnDef("expires_after_days", "INT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("level_name",),
+        ),
+        # ===== 认证提交元数据表（拆分metadata_json） =====
+        TableDef(
+            name="verification_submission_metadata",
+            columns=(
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("machine_review_json", "LONGTEXT", nullable=True),
+                ColumnDef("workflow_history_json", "LONGTEXT", nullable=True),
+                ColumnDef("photo_review_task_json", "LONGTEXT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("submission_id",),
+            foreign_keys=(
+                ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
+            ),
+        ),
+        # ===== 认证撤销记录表 =====
+        TableDef(
+            name="verification_revocations",
+            columns=(
+                ColumnDef("revocation_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("user_id", "VARCHAR(191)", nullable=False),
+                ColumnDef("profile_id", "BIGINT", nullable=True),
+                ColumnDef("revocation_reason", "VARCHAR(191)", nullable=False),
+                ColumnDef("revoked_by", "VARCHAR(191)", nullable=False),
+                ColumnDef("revoked_at", "DATETIME", nullable=False),
+                ColumnDef("metadata_json", "LONGTEXT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("revocation_id",),
+            indexes=(
+                IndexDef(("user_id", "revoked_at"), "idx_revocations_user_time"),
+                IndexDef(("submission_id",), "idx_revocations_submission"),
+            ),
+            foreign_keys=(
+                ForeignKeyDef(("submission_id",), "verification_submissions", ("submission_id",)),
+            ),
+        ),
+        # ===== 自动审核质量统计表 =====
+        TableDef(
+            name="verification_auto_review_stats",
+            columns=(
+                ColumnDef("stat_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("stat_date", "DATE", nullable=False),
+                ColumnDef("verification_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("total_auto_reviews", "INT", nullable=False),
+                ColumnDef("auto_approved", "INT", nullable=False),
+                ColumnDef("auto_resubmission", "INT", nullable=False),
+                ColumnDef("manual_review", "INT", nullable=False),
+                ColumnDef("manual_approved_after_auto", "INT", nullable=False),
+                ColumnDef("manual_rejected_after_auto", "INT", nullable=False),
+                ColumnDef("false_positive_rate", "DECIMAL(5,2)", nullable=True),
+                ColumnDef("false_negative_recall_count", "INT", nullable=False),
+                ColumnDef("post_approval_revocation_rate", "DECIMAL(5,2)", nullable=True),
+                ColumnDef("avg_auto_review_latency_ms", "INT", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("stat_id",),
+            uniques=(
+                UniqueKeyDef(("stat_date", "verification_type"), "uk_date_type"),
+            ),
+            indexes=(
+                IndexDef(("stat_date",), "idx_stats_date"),
+            ),
+        ),
+        # ===== 审核延迟明细表 =====
+        TableDef(
+            name="verification_review_latency",
+            columns=(
+                ColumnDef("latency_id", "BIGINT", nullable=False, auto_increment=True),
+                ColumnDef("submission_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("review_type", "VARCHAR(32)", nullable=False),
+                ColumnDef("decision", "VARCHAR(32)", nullable=False),
+                ColumnDef("latency_ms", "INT", nullable=False),
+                ColumnDef("recorded_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("latency_id",),
+            indexes=(
+                IndexDef(("recorded_at",), "idx_review_latency_time"),
+                IndexDef(("submission_id",), "idx_review_latency_submission"),
+            ),
+        ),
+        # ===== 认证敏感数据治理策略表 =====
+        TableDef(
+            name="verification_data_governance_policies",
+            columns=(
+                ColumnDef("policy_key", "VARCHAR(64)", nullable=False),
+                ColumnDef("retention_days", "INT", nullable=False),
+                ColumnDef("encryption_required", "TINYINT", nullable=False),
+                ColumnDef("access_scope", "VARCHAR(64)", nullable=False),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("policy_key",),
         ),
         TableDef(
             name="user_accounts",
@@ -1707,6 +1822,12 @@ def chat_tables() -> tuple[TableDef, ...]:
                 ColumnDef("reviewed_at", "DATETIME", nullable=True),
                 ColumnDef("approved_at", "DATETIME", nullable=True),
                 ColumnDef("rejected_at", "DATETIME", nullable=True),
+                ColumnDef("ocr_extracted_text", "LONGTEXT", nullable=True),
+                ColumnDef("ocr_confidence_score", "INT", nullable=True),
+                ColumnDef("ocr_processed_at", "DATETIME", nullable=True),
+                ColumnDef("authority_verification_status", "VARCHAR(32)", nullable=True),
+                ColumnDef("authority_verification_result", "LONGTEXT", nullable=True),
+                ColumnDef("revoked_at", "DATETIME", nullable=True),
                 ColumnDef("created_at", "DATETIME", nullable=False),
                 ColumnDef("updated_at", "DATETIME", nullable=False),
             ),

@@ -1,0 +1,351 @@
+'use client'
+
+import { useState, type ReactNode, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowLeft, CheckCircle, FileText, Image, Send, XCircle, AlertTriangle, RefreshCw, User } from 'lucide-react'
+import { ImageCarousel } from '@/components/her/ui/image-carousel'
+import { PDFPreview } from './pdf-preview'
+import ReviewHistoryList from './review-history-list'
+import { fetchUserInfo, type UserInfo } from '@/lib/api/endpoints/user-info'
+import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
+
+type ReviewDetailPanelProps = {
+  submission: VerificationSubmissionDetail
+  isOpen: boolean
+  isSubmitting: boolean
+  submitMessage: string | null
+  onClose: () => void
+  onReview: (params: ReviewActionParams) => void
+  onClearMessage: () => void
+}
+
+const EDUCATION_OPTIONS = [
+  { value: '高中', label: '高中' },
+  { value: '大专', label: '大专' },
+  { value: '本科', label: '本科' },
+  { value: '硕士', label: '硕士' },
+  { value: '博士', label: '博士' },
+]
+
+const REQUESTED_DOCUMENTS_OPTIONS = [
+  { value: '毕业证', label: '毕业证' },
+  { value: '学位证', label: '学位证' },
+  { value: '学信网截图', label: '学信网截图' },
+  { value: '在读证明', label: '在读证明' },
+]
+
+export default function ReviewDetailPanel({
+  submission,
+  isOpen,
+  isSubmitting,
+  submitMessage,
+  onClose,
+  onReview,
+  onClearMessage,
+}: ReviewDetailPanelProps) {
+  const [decision, setDecision] = useState<'approve' | 'reject' | 'request_resubmission' | ''>('')
+  const [reviewNote, setReviewNote] = useState('')
+  const [approvedValue, setApprovedValue] = useState('')
+  const [requestedDocuments, setRequestedDocuments] = useState<string[]>([])
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [loadingUserInfo, setLoadingUserInfo] = useState(false)
+
+  // 加载用户信息
+  useEffect(() => {
+    if (isOpen && submission.profile_id) {
+      setLoadingUserInfo(true)
+      fetchUserInfo(submission.profile_id)
+        .then((info) => setUserInfo(info))
+        .catch(() => setUserInfo(null))
+        .finally(() => setLoadingUserInfo(false))
+    }
+  }, [isOpen, submission.profile_id])
+
+  // 提取材料图片URL
+  const evidenceImages = submission.evidence
+    .filter((e) => e.file_url && e.file_type?.startsWith('image/'))
+    .map((e) => e.file_url || '')
+
+  // 提取PDF文件URL
+  const evidencePDFs = submission.evidence
+    .filter((e) => e.file_url && e.file_type === 'application/pdf')
+    .map((e) => e.file_url || '')
+
+  const hasImages = evidenceImages.length > 0
+  const hasPDFs = evidencePDFs.length > 0
+  const hasEvidence = hasImages || hasPDFs
+
+  // 重置表单
+  const resetForm = () => {
+    setDecision('')
+    setReviewNote('')
+    setApprovedValue('')
+    setRequestedDocuments([])
+    onClearMessage()
+  }
+
+  // 关闭面板时重置表单
+  const handleClose = () => {
+    resetForm()
+    onClose()
+  }
+
+  // 提交审核
+  const handleSubmit = () => {
+    if (!decision) return
+
+    const params: ReviewActionParams = {
+      submissionId: submission.submission_id,
+      decision,
+      reviewNote: reviewNote.trim() || undefined,
+      approvedValue: decision === 'approve' ? approvedValue : undefined,
+      requestedDocuments: decision === 'request_resubmission' ? requestedDocuments : undefined,
+      validityDays: decision === 'approve' ? 3650 : undefined,
+      nextReviewDays: decision === 'approve' ? 3650 : undefined,
+    }
+
+    onReview(params)
+  }
+
+  // 格式化时间
+  const formatTime = (timestamp: string) => {
+    try {
+      return new Date(timestamp).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return timestamp
+    }
+  }
+
+  // 获取提交时间
+  const submissionTime = submission.submitted_at || submission.created_at || ''
+
+  if (!isOpen) return null
+
+  const panelContent: ReactNode = (
+    <div className="fixed inset-x-0 bottom-0 z-50 bg-background border-t border-border/60 shadow-lg max-h-[85vh] overflow-y-auto">
+      {/* 拖动手柄 */}
+      <div className="sticky top-0 bg-background border-b border-border/50 px-4 py-3 flex items-center justify-between">
+        <button type="button" onClick={handleClose} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <ArrowLeft className="h-3.5 w-3.5" />
+          关闭
+        </button>
+        <h3 className="font-serif text-lg text-foreground">审核详情</h3>
+        <div className="w-8" /> {/* 占位保持标题居中 */}
+      </div>
+
+      {/* 用户信息 */}
+      <div className="px-4 py-3 border-b border-border/50">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-muted/30 flex items-center justify-center overflow-hidden">
+            {userInfo?.avatar_url ? (
+              <img src={userInfo.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover" />
+            ) : (
+              <User className="w-6 h-6 text-muted-foreground" />
+            )}
+          </div>
+          <div>
+            <p className="font-medium text-foreground">
+              {loadingUserInfo ? '加载中...' : userInfo?.user_name || userInfo?.nickname || `用户 #${submission.profile_id}`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{formatTime(submissionTime)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* 材料预览 */}
+      {hasEvidence && (
+        <div className="px-4 py-4 border-b border-border/50">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
+            <FileText className="h-4 w-4" />
+            提交材料
+          </div>
+
+          {/* 图片材料 */}
+          {hasImages && (
+            <div className="mb-4">
+              <p className="text-xs text-muted-foreground mb-2">图片材料</p>
+              <ImageCarousel images={evidenceImages} alt="学历证书" aspectRatio="portrait" showIndicators indicatorStyle="dots" />
+            </div>
+          )}
+
+          {/* PDF材料 */}
+          {hasPDFs && (
+            <div className="space-y-4">
+              {evidencePDFs.map((pdfUrl, index) => (
+                <div key={pdfUrl}>
+                  <p className="text-xs text-muted-foreground mb-2">PDF材料 {index + 1}</p>
+                  <PDFPreview fileUrl={pdfUrl} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 用户申报信息 */}
+      <div className="px-4 py-3 border-b border-border/50">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-2">
+          <FileText className="h-4 w-4" />
+          申报信息
+        </div>
+        <div className="rounded-xl bg-muted/30 p-3 space-y-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">申报学历:</span>
+            <span className="text-foreground font-medium">{submission.declared_value}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">审核次数:</span>
+            <span className="text-foreground">{submission.review_count}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 审核历史记录 */}
+      {submission.reviews && submission.reviews.length > 0 && (
+        <div className="px-4 py-3 border-b border-border/50">
+          <ReviewHistoryList reviews={submission.reviews} />
+        </div>
+      )}
+
+      {/* 审核操作表单 */}
+      <div className="px-4 py-4">
+        <div className="space-y-4">
+          {/* 审核决定选择 */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">审核决定</label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setDecision('approve')}
+                className={`rounded-xl border px-3 py-2.5 text-sm flex items-center justify-center gap-1 transition-all ${
+                  decision === 'approve'
+                    ? 'bg-green-500/10 border-green-500 text-green-600'
+                    : 'border-border hover:border-border/80'
+                }`}
+              >
+                <CheckCircle className="h-4 w-4" />
+                通过
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision('reject')}
+                className={`rounded-xl border px-3 py-2.5 text-sm flex items-center justify-center gap-1 transition-all ${
+                  decision === 'reject'
+                    ? 'bg-rose/10 border-rose text-rose'
+                    : 'border-border hover:border-border/80'
+                }`}
+              >
+                <XCircle className="h-4 w-4" />
+                驳回
+              </button>
+              <button
+                type="button"
+                onClick={() => setDecision('request_resubmission')}
+                className={`rounded-xl border px-3 py-2.5 text-sm flex items-center justify-center gap-1 transition-all ${
+                  decision === 'request_resubmission'
+                    ? 'bg-orange-500/10 border-orange-500 text-orange-600'
+                    : 'border-border hover:border-border/80'
+                }`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+                补件
+              </button>
+            </div>
+          </div>
+
+          {/* 动态字段 - 通过 */}
+          {decision === 'approve' && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">批准学历值</label>
+              <select
+                value={approvedValue}
+                onChange={(e) => setApprovedValue(e.target.value)}
+                className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"
+              >
+                <option value="">请选择学历</option>
+                {EDUCATION_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* 动态字段 - 补件 */}
+          {decision === 'request_resubmission' && (
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-2">需补充文件</label>
+              <div className="space-y-2">
+                {REQUESTED_DOCUMENTS_OPTIONS.map((doc) => (
+                  <label key={doc.value} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={requestedDocuments.includes(doc.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setRequestedDocuments([...requestedDocuments, doc.value])
+                        } else {
+                          setRequestedDocuments(requestedDocuments.filter((d) => d !== doc.value))
+                        }
+                      }}
+                      className="rounded"
+                    />
+                    {doc.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 审核备注 */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">审核备注</label>
+            <textarea
+              value={reviewNote}
+              onChange={(e) => setReviewNote(e.target.value)}
+              placeholder="请填写审核意见..."
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm min-h-[80px] resize-none"
+            />
+          </div>
+
+          {/* 提交消息 */}
+          {submitMessage && (
+            <div className={`rounded-xl p-3 text-sm ${submitMessage.includes('完成') ? 'bg-green-500/10 text-green-600' : 'bg-rose/10 text-rose'}`}>
+              {submitMessage}
+            </div>
+          )}
+
+          {/* 提交按钮 */}
+          <button
+            type="button"
+            disabled={isSubmitting || !decision}
+            onClick={handleSubmit}
+            className="w-full rounded-xl bg-primary py-3 text-sm font-medium text-primary-foreground disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                提交中...
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" />
+                提交审核
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // Portal渲染避开父容器样式影响
+  return createPortal(panelContent, document.body)
+}
