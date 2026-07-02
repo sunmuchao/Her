@@ -179,6 +179,11 @@ LIST_FIELDS = {
     "disliked_traits",
 }
 
+JSON_LIST_FIELDS = {
+    "preferred_traits",
+    "disliked_traits",
+}
+
 INT_FIELDS = {
     "profile_id",
     "self_age",
@@ -1101,7 +1106,11 @@ def normalize_patch(patch: Dict[str, Any]) -> Dict[str, Any]:
         if key not in USER_PERSONA_FIELDS:
             raise ValueError(f"Unsupported persona field: {key}")
         if key in LIST_FIELDS:
-            normalized[key] = csv_from_items(split_multi_value(value))
+            items = split_multi_value(value)
+            if key in JSON_LIST_FIELDS:
+                normalized[key] = json.dumps(items, ensure_ascii=False) if items else None
+            else:
+                normalized[key] = csv_from_items(items)
         elif key in BOOL_FIELDS:
             normalized[key] = normalize_boolish(value)
         elif key in INT_FIELDS:
@@ -1161,8 +1170,14 @@ def merge_persona(existing: Optional[Dict[str, Any]], patch: Dict[str, Any], sou
 
         if field_name in LIST_FIELDS:
             new_items = items_from_csv(new_value)
-            candidate_value = csv_from_items(new_items)
-            if candidate_value != old_value:
+            if field_name in JSON_LIST_FIELDS:
+                candidate_value = json.dumps(new_items, ensure_ascii=False) if new_items else None
+                old_items = items_from_csv(old_value)
+                old_value_canonical = json.dumps(old_items, ensure_ascii=False) if old_items else None
+            else:
+                candidate_value = csv_from_items(new_items)
+                old_value_canonical = old_value
+            if candidate_value != old_value_canonical:
                 merged[field_name] = candidate_value
                 action_type = "insert" if old_value in {None, ""} else "update"
                 applied = True

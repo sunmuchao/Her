@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Clock, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Clock, RefreshCw, AlertTriangle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
 import { useVerificationReview } from '@/hooks/use-verification-review'
@@ -19,8 +19,11 @@ import {
   type PhotoRiskItem,
   type AppealCase,
 } from '@/lib/api/endpoints/all-review-types'
+import { fetchVerificationDetail } from '@/lib/api/endpoints/field-verification'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
+import ReviewDetailPanel from './review-detail-panel'
+import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
 
 type ReviewType = 'field' | 'video' | 'report' | 'photo' | 'appeal'
 type FieldKeyType = 'education' | 'job' | 'income'
@@ -54,6 +57,106 @@ export default function UnifiedReviewWorkbench() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // 审核详情面板状态
+  const [selectedSubmission, setSelectedSubmission] = useState<VerificationSubmissionDetail | null>(null)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null)
+
+  // 打开审核详情面板
+  const openReviewPanel = async (submissionId: string) => {
+    // 先设置状态，但不立即打开面板
+    setIsSubmitting(false)
+    setSubmitMessage(null)
+
+    try {
+      // 调用 API 加载审核详情
+      const detail = await fetchVerificationDetail(submissionId)
+
+      // 验证数据是否有效且包含必需字段
+      if (detail && typeof detail === 'object' && detail.submission_id) {
+        // 检查关键字段是否存在
+        const hasRequiredFields = detail.profile_id && detail.field_key && detail.declared_value
+
+        if (hasRequiredFields) {
+          // 数据完整，设置并打开面板
+          setSelectedSubmission(detail)
+          setIsPanelOpen(true)
+        } else {
+          // 数据不完整，显示警告但仍打开面板
+          console.warn('审核详情数据不完整:', {
+            submission_id: detail.submission_id,
+            profile_id: detail.profile_id,
+            field_key: detail.field_key,
+            declared_value: detail.declared_value,
+            evidence: detail.evidence,
+          })
+
+          // 创建一个补充了默认值的 submission 对象
+          const supplementedSubmission: VerificationSubmissionDetail = {
+            submission_id: detail.submission_id,
+            profile_id: detail.profile_id || 0,
+            field_key: detail.field_key || 'education',
+            declared_value: detail.declared_value || '未知',
+            status: detail.status || 'submitted',
+            evidence: Array.isArray(detail.evidence) ? detail.evidence : [],
+            review_count: detail.review_count || 0,
+            reviews: Array.isArray(detail.reviews) ? detail.reviews : [],
+            created_at: detail.created_at,
+            updated_at: detail.updated_at,
+            submitted_at: detail.submitted_at,
+          }
+
+          setSelectedSubmission(supplementedSubmission)
+          setIsPanelOpen(true)
+          setSubmitMessage('⚠️ 数据加载不完整，部分信息可能缺失')
+        }
+      } else {
+        // 数据完全无效，不打开面板，显示错误提示
+        setSubmitMessage('❌ 加载审核详情失败：返回数据无效')
+        // 使用 alert 作为临时提示（后续可以改为 toast）
+        alert('加载审核详情失败：返回数据无效')
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '加载审核详情失败'
+      setSubmitMessage(errorMsg)
+      // 使用 alert 作为临时提示
+      alert(`加载审核详情失败：${errorMsg}`)
+    }
+  }
+
+  // 关闭审核详情面板
+  const closeReviewPanel = () => {
+    setIsPanelOpen(false)
+    setSelectedSubmission(null)
+    setSubmitMessage(null)
+  }
+
+  // 提交审核
+  const handleReview = async (params: ReviewActionParams) => {
+    setIsSubmitting(true)
+    setSubmitMessage(null)
+    try {
+      await fieldReview.handleReview(params)
+      setSubmitMessage('审核提交成功')
+      // 刷新队列
+      void fieldReview.loadQueue(undefined, activeField)
+      // 3秒后关闭面板
+      setTimeout(() => {
+        closeReviewPanel()
+      }, 3000)
+    } catch (err) {
+      setSubmitMessage(getErrorMessage(err, '审核提交失败'))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  // 清除提交消息
+  const clearSubmitMessage = () => {
+    setSubmitMessage(null)
+  }
 
   // 加载其他审核类型队列
   const loadOtherQueues = useCallback(async (type: ReviewType) => {
@@ -206,27 +309,27 @@ export default function UnifiedReviewWorkbench() {
       ) : (
         <div className="px-4 space-y-2">
           {/* 字段认证队列 */}
-          {activeReviewType === 'field' && fieldReview.queue?.submissions.map((item) => (
-            <SimpleQueueCard key={item.submission_id} item={item} onClick={() => alert('使用学历认证审核界面')} />
+          {activeReviewType === 'field' && fieldReview.queue?.submissions.map((item: any) => (
+            <SimpleQueueCard key={item.submission_id} item={item} onClick={() => openReviewPanel(item.submission_id)} />
           ))}
 
           {/* 活体视频队列 */}
-          {activeReviewType === 'video' && videoQueue.map((item) => (
+          {activeReviewType === 'video' && videoQueue.map((item: VideoSubmission) => (
             <SimpleQueueCard key={item.submission_id} item={item} onClick={() => alert('视频审核：' + item.video_url)} />
           ))}
 
           {/* 举报队列 */}
-          {activeReviewType === 'report' && reportQueue.map((item) => (
+          {activeReviewType === 'report' && reportQueue.map((item: ReportCase) => (
             <SimpleQueueCard key={item.case_id} item={item} onClick={() => alert('举报审核：' + item.report_reason_text)} />
           ))}
 
           {/* 照片风险队列 */}
-          {activeReviewType === 'photo' && photoQueue.map((item) => (
+          {activeReviewType === 'photo' && photoQueue.map((item: PhotoRiskItem) => (
             <SimpleQueueCard key={item.photo_id} item={item} onClick={() => alert('照片审核：风险评分 ' + item.risk_score)} />
           ))}
 
           {/* 申诉队列 */}
-          {activeReviewType === 'appeal' && appealQueue.map((item) => (
+          {activeReviewType === 'appeal' && appealQueue.map((item: AppealCase) => (
             <SimpleQueueCard key={item.appeal_id} item={item} onClick={() => alert('申诉审核：' + item.appeal_reason)} />
           ))}
 
@@ -256,6 +359,19 @@ export default function UnifiedReviewWorkbench() {
           需要 profile_reviewer / risk_reviewer / platform_admin 角色
         </div>
       </div>
+
+      {/* 审核详情面板 */}
+      {selectedSubmission && isPanelOpen && (
+        <ReviewDetailPanel
+          submission={selectedSubmission}
+          isOpen={isPanelOpen}
+          isSubmitting={isSubmitting}
+          submitMessage={submitMessage}
+          onClose={closeReviewPanel}
+          onReview={handleReview}
+          onClearMessage={clearSubmitMessage}
+        />
+      )}
     </div>
   )
 }

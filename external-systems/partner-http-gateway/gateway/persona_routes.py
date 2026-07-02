@@ -57,7 +57,7 @@ def rest_persona_patch(gateway: CollectedGateway, environ: dict[str, Any]) -> tu
     if not source:
         return 503, {"error": {"code": "source_not_configured", "message": "数据源未配置"}}
 
-    # 6. 规范化数据（将列表转为 CSV 字符串）
+    # 6. 规范化数据（标签 JSON 列保持 JSON，旧多值字段仍按 CSV 处理）
     normalized = normalize_patch(filtered_patch)
 
     # 7. 调用 apply_persona_patch 写入数据库

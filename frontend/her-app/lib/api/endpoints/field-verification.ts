@@ -193,10 +193,12 @@ export async function fetchReviewQueue(params?: {
  * 获取单个认证提交详情（管理员使用）
  */
 export async function fetchVerificationDetail(submissionId: string): Promise<VerificationSubmissionDetail> {
-  return gatewayJson<VerificationSubmissionDetail>(
+  const response = await gatewayJson<{ submission: VerificationSubmissionDetail }>(
     `/v1/profile-verifications/submissions/${submissionId}`,
     { includeAuth: true },
   )
+  // 从后端返回的 {submission: {...}} 结构中提取 submission 对象
+  return response.submission
 }
 
 /**

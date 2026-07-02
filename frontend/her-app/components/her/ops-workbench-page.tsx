@@ -5,31 +5,26 @@ import { useRouter } from 'next/navigation'
 import {
   Activity,
   ArrowLeft,
-  ClipboardCheck,
+  AlertTriangle,
   Layers,
   RefreshCw,
   ShieldAlert,
   Workflow,
   FileCheck,
+  ChevronDown,
+  ChevronUp,
+  Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
 import {
   fetchOpsWorkbenchSummary,
-  submitOpsOverride,
   type OpsWorkbenchSummary,
 } from '@/lib/api/endpoints/ops'
-import {
-  fetchActiveRuleConfig,
-  fetchExperimentBucketMembers,
-  fetchRecommendationDecisionTrace,
-  upsertExperimentBucketMember,
-  type DecisionTrace,
-  type RuleConfigActiveItem,
-} from '@/lib/api/endpoints/rule-config'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
 import UnifiedReviewWorkbench from '@/components/her/verification-review/unified-review-workbench'
+import TaskDetailDrawer from '@/components/her/ops-workbench/task-detail-drawer'
 
 type OpsWorkbenchPageProps = {
   onBack?: () => void // 保留兼容性，但优先使用 router.back()
@@ -37,13 +32,38 @@ type OpsWorkbenchPageProps = {
 
 type WorkbenchTab = 'ops' | 'review'
 
-const RECOMMENDATION_ACTIONS = ['skip', 'save', 'direct_greet'] as const
+type StatCardProps = {
+  label: string
+  value: string | number
+  alert?: boolean // 红色告警
+  warning?: boolean // 黄色警告
+  icon?: React.ReactNode
+}
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function StatCard({ label, value, alert, warning, icon }: StatCardProps) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/80 p-4 shadow-sm">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+    <div
+      className={cn(
+        'rounded-2xl border p-4 shadow-sm transition-all',
+        alert
+          ? 'border-red-200/60 bg-red-50/50'
+          : warning
+          ? 'border-yellow-200/60 bg-yellow-50/50'
+          : 'border-border/60 bg-card/80'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-muted-foreground">{icon}</span>}
+        <p className="text-xs text-muted-foreground">{label}</p>
+      </div>
+      <p
+        className={cn(
+          'mt-1 text-2xl font-semibold',
+          alert ? 'text-red-600' : warning ? 'text-yellow-600' : 'text-foreground'
+        )}
+      >
+        {value}
+      </p>
     </div>
   )
 }
@@ -54,33 +74,29 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const [summary, setSummary] = useState<OpsWorkbenchSummary | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitMessage, setSubmitMessage] = useState<string | null>(null)
-  const [recommendationId, setRecommendationId] = useState('')
-  const [action, setAction] = useState<(typeof RECOMMENDATION_ACTIONS)[number]>('save')
-  const [reason, setReason] = useState('')
-  const [activeRules, setActiveRules] = useState<RuleConfigActiveItem[]>([])
-  const [experimentMembers, setExperimentMembers] = useState<
-    Array<{ profile_id: number; bucket_key: string }>
-  >([])
-  const [ruleConfigMessage, setRuleConfigMessage] = useState<string | null>(null)
-  const [traceRecommendationId, setTraceRecommendationId] = useState('')
-  const [decisionTrace, setDecisionTrace] = useState<DecisionTrace | null>(null)
-  const [bucketProfileId, setBucketProfileId] = useState('')
-  const [bucketKey, setBucketKey] = useState('exp_gate_score_55')
+  const [expandedSystems, setExpandedSystems] = useState<Record<string, boolean>>({})
+  const [nextRefreshTime, setNextRefreshTime] = useState<number>(30)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
-  const loadRuleConfig = useCallback(async () => {
-    try {
-      const [active, members] = await Promise.all([
-        fetchActiveRuleConfig(),
-        fetchExperimentBucketMembers(20),
-      ])
-      setActiveRules(active.active || [])
-      setExperimentMembers(members.members || [])
-    } catch (error) {
-      setRuleConfigMessage(getErrorMessage(error, '规则配置加载失败'))
-    }
-  }, [])
+  const openTaskDrawer = (taskId: string) => {
+    setSelectedTaskId(taskId)
+    setDrawerOpen(true)
+  }
+
+  const closeTaskDrawer = () => {
+    setDrawerOpen(false)
+    setSelectedTaskId(null)
+  }
+
+  const retryTask = async (taskId: string) => {
+    // TODO: 调用实际API重试任务
+    console.log('重试任务:', taskId)
+    // 重试成功后关闭抽屉并刷新数据
+    closeTaskDrawer()
+    void loadSummary()
+  }
 
   const loadSummary = useCallback(async () => {
     setLoading(true)
@@ -93,41 +109,60 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
       setSummary(null)
     } finally {
       setLoading(false)
+      setNextRefreshTime(30) // 重置倒计时
     }
   }, [])
 
   useEffect(() => {
     void loadSummary()
-    void loadRuleConfig()
-  }, [loadSummary, loadRuleConfig])
+  }, [loadSummary])
 
-  const handleSubmitOverride = async () => {
-    if (!recommendationId.trim()) {
-      setSubmitMessage('请填写 recommendation_id')
-      return
-    }
-    setSubmitting(true)
-    setSubmitMessage(null)
-    try {
-      const result = await submitOpsOverride({
-        target_owner: 'recommendation',
-        target_id: recommendationId.trim(),
-        action,
-        reason: reason.trim() || undefined,
-      })
-      setSubmitMessage(result.ok ? '运营 override 已提交' : '提交完成，请查看返回结果')
+  // 自动刷新机制（30秒刷新一次）
+  useEffect(() => {
+    if (!autoRefreshEnabled || activeTab !== 'ops') return
+
+    const refreshTimer = setInterval(() => {
       void loadSummary()
-    } catch (error) {
-      setSubmitMessage(getErrorMessage(error))
-    } finally {
-      setSubmitting(false)
-    }
+    }, 30000)
+
+    return () => clearInterval(refreshTimer)
+  }, [autoRefreshEnabled, activeTab, loadSummary])
+
+  // 倒计时显示
+  useEffect(() => {
+    if (!autoRefreshEnabled || activeTab !== 'ops') return
+
+    const countdownTimer = setInterval(() => {
+      setNextRefreshTime((prev) => (prev > 0 ? prev - 1 : 30))
+    }, 1000)
+
+    return () => clearInterval(countdownTimer)
+  }, [autoRefreshEnabled, activeTab])
+
+  const toggleSystemExpanded = (system: string) => {
+    setExpandedSystems((prev) => ({
+      ...prev,
+      [system]: !prev[system],
+    }))
   }
 
   const dashboard = summary?.dashboard
   const totals = dashboard?.totals || {}
   const ledgerAvailable = dashboard?.ledger?.available === true
   const relations = summary?.relations_preview || []
+
+  // 计算失败和积压数量
+  const failedCount = totals.failed ?? 0
+  const pendingCount = totals.pending ?? 0
+  const processingCount = totals.processing ?? 0
+  const succeededCount = totals.succeeded ?? 0
+  const retryPendingCount = totals.retry_pending ?? 0
+
+  // 计算总数
+  const totalAll = totals.all ?? totals.total ?? (pendingCount + processingCount + succeededCount + failedCount + retryPendingCount)
+
+  const hasFailedAlert = failedCount > 5
+  const hasPendingWarning = pendingCount > 20
 
   if (loading) {
     return (
@@ -169,7 +204,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
               {activeTab === 'ops' ? '红娘协作台' : '资料审核工作台'}
             </h1>
             {activeTab === 'ops' && (
-              <p className="text-xs text-muted-foreground mt-1">§14.3 — 异步任务、关系漏斗与推荐人工介入</p>
+              <p className="text-xs text-muted-foreground mt-1">§18 — 异步任务监控与关系漏斗追踪</p>
             )}
           </div>
 
@@ -185,7 +220,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <ClipboardCheck className="h-3.5 w-3.5 inline mr-1" />
+              <Activity className="h-3.5 w-3.5 inline mr-1" />
               运营协作
             </button>
             <button
@@ -203,15 +238,38 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
             </button>
           </div>
 
-          {/* 刷新按钮 */}
-          <button
-            type="button"
-            onClick={() => void loadSummary()}
-            className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground"
-            aria-label="刷新"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
+          {/* 刷新按钮和自动刷新控制 */}
+          <div className="flex items-center gap-2">
+            {activeTab === 'ops' && autoRefreshEnabled && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="h-3.5 w-3.5" />
+                <span>{nextRefreshTime}s</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
+              className={cn(
+                'rounded-full border border-border p-2 transition-all',
+                autoRefreshEnabled
+                  ? 'text-primary hover:text-primary/80'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              aria-label={autoRefreshEnabled ? '暂停自动刷新' : '开启自动刷新'}
+              title={autoRefreshEnabled ? '自动刷新已开启（30秒）' : '自动刷新已暂停'}
+            >
+              <RefreshCw className={cn('h-4 w-4', autoRefreshEnabled && 'animate-spin')} />
+            </button>
+            <button
+              type="button"
+              onClick={() => void loadSummary()}
+              className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground"
+              aria-label="手动刷新"
+              title="立即刷新"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -220,35 +278,124 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
         <UnifiedReviewWorkbench />
       ) : (
         <div className="px-4 pt-4 space-y-6">
+        {/* 第一层：核心指标卡片 */}
         <FadeIn>
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard label="异步任务总数" value={totals.all ?? totals.total ?? '—'} />
-            <StatCard label="Ledger 可用" value={ledgerAvailable ? '是' : '否'} />
+          <div className="grid grid-cols-4 gap-3">
+            <StatCard
+              label="任务总数"
+              value={totalAll}
+              icon={<Activity className="h-4 w-4" />}
+            />
+            <StatCard
+              label="失败任务"
+              value={failedCount}
+              alert={hasFailedAlert}
+              icon={<AlertTriangle className="h-4 w-4" />}
+            />
+            <StatCard
+              label="积压任务"
+              value={pendingCount}
+              warning={hasPendingWarning}
+              icon={<Clock className="h-4 w-4" />}
+            />
+            <StatCard
+              label="Ledger可用"
+              value={ledgerAvailable ? '✓' : '✗'}
+              icon={<Layers className="h-4 w-4" />}
+            />
           </div>
+          {hasFailedAlert && (
+            <p className="text-xs text-red-600 mt-2">
+              ⚠️ 失败任务超过5个，建议立即查看详情
+            </p>
+          )}
+          {hasPendingWarning && (
+            <p className="text-xs text-yellow-600 mt-1">
+              ⏱️ 任务积压超过20个，系统可能繁忙
+            </p>
+          )}
         </FadeIn>
 
+        {/* 第二层：子系统详情（可折叠） */}
         <FadeIn delay={0.05}>
           <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <Activity className="h-4 w-4 text-primary" />
-              子系统任务概览
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Activity className="h-4 w-4 text-primary" />
+                子系统任务概览
+              </div>
+              <p className="text-xs text-muted-foreground">
+                共 {Object.keys(dashboard?.systems || {}).length} 个子系统
+              </p>
             </div>
             <div className="space-y-3">
               {Object.entries(dashboard?.systems || {}).map(([system, block]) => (
-                <div key={system} className="rounded-xl bg-muted/30 px-3 py-2 text-sm">
-                  <div className="flex items-center justify-between">
+                <div key={system} className="rounded-xl bg-muted/30 px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSystemExpanded(system)}
+                    className="w-full flex items-center justify-between text-sm"
+                  >
                     <span className="font-medium capitalize">{system}</span>
-                    <span className="text-xs text-muted-foreground">
-                      recent {block.recent_jobs?.length ?? 0}
-                    </span>
-                  </div>
-                  {block.summary && (
-                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      {Object.entries(block.summary).slice(0, 4).map(([key, value]) => (
-                        <span key={key}>
-                          {key}: {value}
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {block.summary?.pending ?? 0} 待处理
+                      </span>
+                      {expandedSystems[system] ? (
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </button>
+                  {expandedSystems[system] && block.summary && (
+                    <div className="mt-2 pt-2 border-t border-border/40">
+                      <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground">
+                        {Object.entries(block.summary).map(([key, value]) => (
+                          <div key={key} className="flex flex-col">
+                            <span className="text-muted-foreground">{key}</span>
+                            <span className="font-medium text-foreground">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {block.recent_jobs && block.recent_jobs.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border/40">
+                          <p className="text-xs font-medium text-foreground mb-1">
+                            最近任务（{block.recent_jobs.length}个）
+                          </p>
+                          <div className="max-h-32 overflow-y-auto space-y-1">
+                            {block.recent_jobs.slice(0, 5).map((job, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => openTaskDrawer(String(job.task_id || `task_${idx}`))}
+                                className={cn(
+                                  'w-full rounded-lg px-2 py-1 text-xs transition-all hover:shadow-sm',
+                                  job.status === 'failed'
+                                    ? 'bg-red-100 text-red-700 border border-red-200 hover:bg-red-200'
+                                    : 'bg-muted/40 hover:bg-muted/60'
+                                )}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium">{job.task_id || `task_${idx}`}</span>
+                                  <span className={cn(
+                                    'ml-2',
+                                    job.status === 'failed' ? 'text-red-700' : 'text-muted-foreground'
+                                  )}>
+                                    {job.status === 'failed' && '⚠️ '}
+                                    {job.status || 'unknown'}
+                                  </span>
+                                </div>
+                                {job.status === 'failed' && (
+                                  <p className="mt-1 text-xs text-red-600 truncate">
+                                    点击查看失败详情
+                                  </p>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -284,164 +431,12 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
         </FadeIn>
 
         <FadeIn delay={0.15}>
-          <div className="rounded-2xl border border-rose-200/60 bg-rose-soft/20 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <ClipboardCheck className="h-4 w-4 text-primary" />
-              推荐人工 Override
-            </div>
-            <div className="space-y-3">
-              <label className="block text-xs text-muted-foreground">
-                recommendation_id
-                <input
-                  value={recommendationId}
-                  onChange={(event) => setRecommendationId(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                  placeholder="例如 12345"
-                />
-              </label>
-              <label className="block text-xs text-muted-foreground">
-                action
-                <select
-                  value={action}
-                  onChange={(event) => setAction(event.target.value as (typeof RECOMMENDATION_ACTIONS)[number])}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
-                >
-                  {RECOMMENDATION_ACTIONS.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-xs text-muted-foreground">
-                reason（可选）
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm min-h-[72px]"
-                />
-              </label>
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => void handleSubmitOverride()}
-                className="w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-60"
-              >
-                {submitting ? '提交中…' : '提交 OpsOverride'}
-              </button>
-              {submitMessage && <p className="text-xs text-muted-foreground">{submitMessage}</p>}
-            </div>
-          </div>
-        </FadeIn>
-
-        <FadeIn delay={0.2}>
-          <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <Layers className="h-4 w-4 text-primary" />
-              规则配置（§13.5）
-            </div>
-            <div className="space-y-3 text-xs">
-              {activeRules.length === 0 ? (
-                <p className="text-muted-foreground">暂无 global active 规则切片</p>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {activeRules.map((item) => (
-                    <div key={`${item.slice_id}-${item.version_id}`} className="rounded-lg bg-muted/30 px-3 py-2">
-                      <p className="font-medium text-foreground">{item.slice_id}</p>
-                      <p className="text-muted-foreground">version: {item.version_id}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="border-t border-border/50 pt-3">
-                <p className="font-medium text-foreground mb-2">实验桶成员</p>
-                {experimentMembers.length === 0 ? (
-                  <p className="text-muted-foreground">暂无 profile → bucket 映射</p>
-                ) : (
-                  <ul className="space-y-1 text-muted-foreground">
-                    {experimentMembers.slice(0, 8).map((member) => (
-                      <li key={member.profile_id}>
-                        profile {member.profile_id} → {member.bucket_key}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <input
-                    value={bucketProfileId}
-                    onChange={(event) => setBucketProfileId(event.target.value)}
-                    placeholder="profile_id"
-                    className="rounded-lg border border-border bg-background px-2 py-1.5"
-                  />
-                  <input
-                    value={bucketKey}
-                    onChange={(event) => setBucketKey(event.target.value)}
-                    placeholder="bucket_key"
-                    className="rounded-lg border border-border bg-background px-2 py-1.5"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="mt-2 w-full rounded-lg border border-border py-2 text-sm"
-                  onClick={() => {
-                    const profileId = Number(bucketProfileId)
-                    if (!profileId || !bucketKey.trim()) {
-                      setRuleConfigMessage('请填写 profile_id 与 bucket_key')
-                      return
-                    }
-                    void upsertExperimentBucketMember({ profile_id: profileId, bucket_key: bucketKey.trim() })
-                      .then(() => {
-                        setRuleConfigMessage('实验桶成员已更新')
-                        return loadRuleConfig()
-                      })
-                      .catch((error) => setRuleConfigMessage(getErrorMessage(error)))
-                  }}
-                >
-                  保存实验桶映射
-                </button>
-              </div>
-              <div className="border-t border-border/50 pt-3">
-                <p className="font-medium text-foreground mb-2">推荐决策链</p>
-                <div className="flex gap-2">
-                  <input
-                    value={traceRecommendationId}
-                    onChange={(event) => setTraceRecommendationId(event.target.value)}
-                    placeholder="recommendation_id"
-                    className="flex-1 rounded-lg border border-border bg-background px-2 py-1.5"
-                  />
-                  <button
-                    type="button"
-                    className="rounded-lg border border-border px-3 py-1.5"
-                    onClick={() => {
-                      const id = traceRecommendationId.trim()
-                      if (!id) return
-                      void fetchRecommendationDecisionTrace(id)
-                        .then((payload) => setDecisionTrace(payload.decision_trace || null))
-                        .catch((error) => setRuleConfigMessage(getErrorMessage(error)))
-                    }}
-                  >
-                    查询
-                  </button>
-                </div>
-                {decisionTrace && (
-                  <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted/40 p-2 text-[10px]">
-                    {JSON.stringify(decisionTrace, null, 2)}
-                  </pre>
-                )}
-              </div>
-              {ruleConfigMessage && <p className="text-muted-foreground">{ruleConfigMessage}</p>}
-            </div>
-          </div>
-        </FadeIn>
-
-        <FadeIn delay={0.25}>
           <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-xs text-muted-foreground">
             <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
               <ShieldAlert className="h-4 w-4" />
               接入说明
             </div>
             <p>读侧：GET /v1/ops/workbench/summary（聚合 async-jobs dashboard + ledger 预览）</p>
-            <p className="mt-1">写侧：POST /v1/ops/overrides → recommendation owner API</p>
             <p className="mt-1 flex items-center gap-1">
               <Layers className="h-3.5 w-3.5" />
               Principal 由 Gateway 一次解析，避免各域重复 bind profile_id
@@ -449,6 +444,15 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
           </div>
         </FadeIn>
       </div>
+      )}
+
+      {/* 任务详情抽屉 */}
+      {drawerOpen && (
+        <TaskDetailDrawer
+          taskId={selectedTaskId}
+          onClose={closeTaskDrawer}
+          onRetry={retryTask}
+        />
       )}
     </div>
   )

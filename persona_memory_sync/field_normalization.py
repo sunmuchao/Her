@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Iterable, List, Optional
 
@@ -26,8 +27,23 @@ def normalize_boolish(value: Any) -> Optional[int]:
 def split_multi_value(value: Any) -> List[str]:
     if value is None:
         return []
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple, set)):
         items = value
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        if stripped.startswith("[") and stripped.endswith("]"):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                items = parsed
+            else:
+                items = re.split(r"[，,、;/\n|]+", value)
+        else:
+            items = re.split(r"[，,、;/\n|]+", value)
     else:
         items = re.split(r"[，,、;/\n|]+", str(value))
     result: List[str] = []

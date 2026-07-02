@@ -24,6 +24,7 @@ import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getSSEServerUrl } from '@/lib/sse'
+import { useVerificationCacheInvalidation } from '@/lib/hooks/use-verification-cache-invalidation'
 
 // SSE服务器URL
 const SSE_SERVER_URL = getSSEServerUrl()
@@ -72,6 +73,9 @@ function resolveInitialStep(target: string | null): VerificationStep {
 
 export function useVerificationFlow(onBack: () => void) {
   console.log('[useVerificationFlow] 开始初始化')
+
+  // 缓存失效工具
+  const { invalidateAllVerificationCache } = useVerificationCacheInvalidation()
 
   const searchParams = useSearchParams()
   const initialTarget = searchParams.get('target')
@@ -358,6 +362,10 @@ export function useVerificationFlow(onBack: () => void) {
         contentType: recordedVideo?.mimeType,
       })
       notifySuccess('身份认证视频已提交，等待审核')
+
+      // ✅ 失效认证相关缓存，触发 profile 页面自动刷新
+      await invalidateAllVerificationCache()
+
       setStep('video-pending')
     } catch (error) {
       notifyError(error, '视频提交失败')
@@ -377,6 +385,10 @@ export function useVerificationFlow(onBack: () => void) {
     try {
       await submitFieldVerification({ fieldId: selectedField, file: selectedFile })
       notifySuccess('材料已提交，等待审核')
+
+      // ✅ 失效认证相关缓存，触发 profile 页面自动刷新
+      await invalidateAllVerificationCache()
+
       setStep('field-pending')
     } catch (error) {
       notifyError(error, '材料提交失败')

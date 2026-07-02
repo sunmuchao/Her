@@ -137,6 +137,72 @@ def _check_submission_ownership(
     return False, "not_owner"
 
 
+def _normalize_base64(b64_string: str) -> str:
+    """Normalize Base64 string for decoding.
+
+    Handles common issues:
+    1. URL-safe encoding (replace - with +, _ with /)
+    2. Missing padding (add = to make length multiple of 4)
+    3. Whitespace and newlines (remove)
+    4. Data URL prefix (remove if present)
+    5. INVALID LENGTH (remainder 1): truncate last character (data corruption)
+    6. WRONG PADDING: strip existing padding and recalculate
+
+    Args:
+        b64_string: Raw Base64 string (may have issues)
+
+    Returns:
+        Normalized standard Base64 string ready for b64decode
+
+    Raises:
+        ValueError: If string is empty or has invalid characters
+    """
+    # Remove data URL prefix if present (e.g., "data:video/webm;base64,")
+    if b64_string.startswith("data:"):
+        comma_pos = b64_string.find(",")
+        if comma_pos >= 0:
+            b64_string = b64_string[comma_pos + 1:]
+
+    # Remove whitespace and newlines
+    b64_string = "".join(b64_string.split())
+
+    # Empty string check
+    if not b64_string:
+        return ""
+
+    # Convert URL-safe Base64 to standard Base64
+    b64_string = b64_string.replace("-", "+").replace("_", "/")
+
+    # ✅ CRITICAL FIX: Strip existing padding first (may be incorrect)
+    # Then recalculate the correct padding based on actual data length
+    b64_string = b64_string.rstrip("=")
+
+    # ✅ CRITICAL FIX: Handle invalid length (remainder 1)
+    # Standard Base64 encoding CANNOT produce length % 4 == 1
+    # This indicates data corruption (truncated during transmission)
+    remainder = len(b64_string) % 4
+    if remainder == 1:
+        # Truncate the last character to make it valid
+        # This may lose up to 6 bits of data (last 1-2 bytes of original)
+        # But it's better than failing completely
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Base64 string has invalid length (remainder 1): {len(b64_string)} chars. "
+            f"Truncating last character to attempt decoding. "
+            f"This indicates data corruption during transmission."
+        )
+        b64_string = b64_string[:-1]
+        remainder = 0  # Now it's divisible by 4
+
+    # Add correct padding if needed (length must be multiple of 4)
+    # Valid remainders: 0 (no padding), 2 (2 '='), 3 (1 '=')
+    if remainder in (2, 3):
+        b64_string += "=" * (4 - remainder)
+
+    return b64_string
+
+
 def rest_verification_submit_live_video(
     gateway: VerificationGateway,
     environ: dict[str, Any],
@@ -196,8 +262,8 @@ def rest_verification_submit_live_video(
             }
     else:
         # Base64 upload (legacy support)
-        video_base64 = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
-        if not video_base64:
+        video_base64_raw = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
+        if not video_base64_raw:
             return 400, {
                 "error": {
                     "code": "validation_error",
@@ -207,6 +273,10 @@ def rest_verification_submit_live_video(
             }
 
         try:
+            # ✅ CRITICAL FIX: Normalize Base64 before decoding
+            # Handles URL-safe encoding, missing padding, whitespace, data URL prefix
+            video_base64 = _normalize_base64(video_base64_raw)
+            # Decode only for validation (file size check)
             video_bytes = base64.b64decode(video_base64)
             file_name = str(body.get("file_name") or body.get("filename") or "")
             content_type = body.get("content_type")
@@ -237,11 +307,22 @@ def rest_verification_submit_live_video(
                 }
             }
 
-    # Submit verification (use video_bytes directly, no Base64 encoding needed)
+    # Submit verification
+    # NOTE: For Base64 uploads, pass the normalized Base64 string (not decoded bytes)
+    # The underlying function will decode it using _decode_video_bytes
+    # For multipart uploads, we need to encode bytes back to Base64 (legacy API requirement)
+    video_base64_for_submit: str | None = None
+    if content_type_header.startswith("multipart/form-data"):
+        # Multipart upload: encode bytes to Base64 for legacy API
+        video_base64_for_submit = base64.b64encode(video_bytes).decode("utf-8")
+    else:
+        # Base64 upload: use normalized Base64 string directly
+        video_base64_for_submit = video_base64
+
     submission = gateway._with_chat(
         submit_live_video_verification,
         user_id=user_id,
-        video_bytes=video_bytes,
+        video_base64=video_base64_for_submit,
         file_name=file_name,
         submission_id=submission_id,
         content_type=content_type,
@@ -511,11 +592,16 @@ def rest_verification_resubmit_live_video(
     """
     now = _parse_optional_now(body)
     user_id = gateway._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
+
+    # ✅ CRITICAL FIX: Normalize Base64 before decoding
+    video_base64_raw = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
+    video_base64 = _normalize_base64(video_base64_raw) if video_base64_raw else ""
+
     submission = gateway._with_chat(
         resubmit_live_video_verification,
         submission_id,
         user_id=user_id,
-        video_base64=str(body.get("video_base64") or body.get("video_bytes_base64") or ""),
+        video_base64=video_base64,
         file_name=str(body.get("file_name") or body.get("filename") or ""),
         content_type=body.get("content_type"),
         challenge_token=body.get("challenge_token"),

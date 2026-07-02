@@ -4,10 +4,24 @@ import { useState, type ReactNode, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ArrowLeft, CheckCircle, FileText, Image, Send, XCircle, AlertTriangle, RefreshCw, User } from 'lucide-react'
 import { ImageCarousel } from '@/components/her/ui/image-carousel'
-import { PDFPreview } from './pdf-preview'
 import ReviewHistoryList from './review-history-list'
 import { fetchUserInfo, type UserInfo } from '@/lib/api/endpoints/user-info'
 import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
+
+// 动态导入 PDFPreview，避免 SSR 时加载 pdfjs-dist
+const PDFPreview = ({ fileUrl }: { fileUrl: string }) => {
+  const [PDFComponent, setPDFComponent] = useState<ReactNode>(null)
+
+  useEffect(() => {
+    import('./pdf-preview').then((module) => {
+      setPDFComponent(<module.PDFPreview fileUrl={fileUrl} />)
+    }).catch(() => {
+      setPDFComponent(<div className="text-xs text-muted-foreground">PDF 加载失败</div>)
+    })
+  }, [fileUrl])
+
+  return PDFComponent || <div className="text-xs text-muted-foreground">PDF 加载中...</div>
+}
 
 type ReviewDetailPanelProps = {
   submission: VerificationSubmissionDetail
@@ -74,24 +88,38 @@ export default function ReviewDetailPanel({
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const [loadingUserInfo, setLoadingUserInfo] = useState(false)
 
-  // 加载用户信息
+  // 加载用户信息（添加错误日志，优雅降级）
   useEffect(() => {
     if (isOpen && submission.profile_id) {
       setLoadingUserInfo(true)
       fetchUserInfo(submission.profile_id)
-        .then((info) => setUserInfo(info))
-        .catch(() => setUserInfo(null))
+        .then((info) => {
+          console.log('用户信息加载成功:', info)
+          setUserInfo(info)
+        })
+        .catch((err) => {
+          console.error('用户信息加载失败:', err, 'profile_id:', submission.profile_id)
+          // 优雅降级：不设置 userInfo，面板会显示 profile_id
+          setUserInfo(null)
+        })
         .finally(() => setLoadingUserInfo(false))
+    } else if (isOpen && !submission.profile_id) {
+      console.warn('submission.profile_id 缺失，无法加载用户信息')
+      setLoadingUserInfo(false)
     }
   }, [isOpen, submission.profile_id])
 
+  // 确保所有可能为 null/undefined 的数组字段都有默认值
+  const evidenceArray = Array.isArray(submission.evidence) ? submission.evidence : []
+  const reviewsArray = Array.isArray(submission.reviews) ? submission.reviews : []
+
   // 提取材料图片URL
-  const evidenceImages = submission.evidence
+  const evidenceImages = evidenceArray
     .filter((e) => e.file_url && e.file_type?.startsWith('image/'))
     .map((e) => e.file_url || '')
 
   // 提取PDF文件URL
-  const evidencePDFs = submission.evidence
+  const evidencePDFs = evidenceArray
     .filter((e) => e.file_url && e.file_type === 'application/pdf')
     .map((e) => e.file_url || '')
 
@@ -175,15 +203,22 @@ export default function ReviewDetailPanel({
           </div>
           <div>
             <p className="font-medium text-foreground">
-              {loadingUserInfo ? '加载中...' : userInfo?.user_name || userInfo?.nickname || `用户 #${submission.profile_id}`}
+              {loadingUserInfo ? '加载中...' : userInfo?.user_name || userInfo?.nickname || `Profile #${submission.profile_id}`}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">{formatTime(submissionTime)}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {submission.user_id ? `User ID: ${submission.user_id}` : `提交时间: ${formatTime(submissionTime)}`}
+            </p>
+            {!loadingUserInfo && !userInfo && (
+              <p className="text-xs text-yellow-600 mt-1">
+                ⚠️ 无法加载用户详细信息
+              </p>
+            )}
           </div>
         </div>
       </div>
 
       {/* 材料预览 */}
-      {hasEvidence && (
+      {hasEvidence ? (
         <div className="px-4 py-4 border-b border-border/50">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
             <FileText className="h-4 w-4" />
@@ -210,6 +245,18 @@ export default function ReviewDetailPanel({
             </div>
           )}
         </div>
+      ) : (
+        <div className="px-4 py-4 border-b border-border/50">
+          <div className="rounded-xl bg-yellow-500/10 border border-yellow-500/30 p-3">
+            <div className="flex items-center gap-2 text-sm text-yellow-600">
+              <AlertTriangle className="h-4 w-4" />
+              <span>该用户未上传审核材料</span>
+            </div>
+            <p className="text-xs text-yellow-600/80 mt-2">
+              可能是用户选择了"自申报"方式，或材料上传失败。请根据申报信息判断是否需要补件。
+            </p>
+          </div>
+        </div>
       )}
 
       {/* 用户申报信息 */}
@@ -231,9 +278,9 @@ export default function ReviewDetailPanel({
       </div>
 
       {/* 审核历史记录 */}
-      {submission.reviews && submission.reviews.length > 0 && (
+      {reviewsArray.length > 0 && (
         <div className="px-4 py-3 border-b border-border/50">
-          <ReviewHistoryList reviews={submission.reviews} />
+          <ReviewHistoryList reviews={reviewsArray} />
         </div>
       )}
 
@@ -369,6 +416,20 @@ export default function ReviewDetailPanel({
           </button>
         </div>
       </div>
+
+      {/* 调试信息（开发环境） */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="px-4 py-3 border-t border-border/50">
+          <details className="rounded-xl bg-muted/20 border border-border/30 p-3">
+            <summary className="text-xs font-medium text-muted-foreground cursor-pointer">
+              🔍 调试信息（API返回的原始数据）
+            </summary>
+            <pre className="mt-3 text-xs text-muted-foreground overflow-auto max-h-48">
+              {JSON.stringify(submission, null, 2)}
+            </pre>
+          </details>
+        </div>
+      )}
     </div>
   )
 

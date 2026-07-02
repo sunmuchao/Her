@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import types
 import unittest
@@ -90,6 +91,40 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertNotIn("preferred_age_min", payload)
         self.assertNotIn("preferred_age_max", payload)
         self.assertNotIn("accept_long_distance", payload)
+
+    def test_split_multi_value_supports_json_array_strings(self):
+        self.assertEqual(
+            persona_memory_lib.items_from_csv('["情绪稳定", "会沟通"]'),
+            ["情绪稳定", "会沟通"],
+        )
+
+    def test_normalize_patch_serializes_json_trait_fields(self):
+        normalized = persona_memory_lib.normalize_patch(
+            {
+                "preferred_traits": ["情绪稳定", "会沟通"],
+                "target_cities": ["无锡", "苏州"],
+            }
+        )
+
+        self.assertEqual(
+            normalized["preferred_traits"],
+            json.dumps(["情绪稳定", "会沟通"], ensure_ascii=False),
+        )
+        self.assertEqual(normalized["target_cities"], "无锡,苏州")
+
+    def test_merge_persona_treats_json_trait_lists_as_stable(self):
+        merged, field_results = persona_memory_lib.merge_persona(
+            {"preferred_traits": json.dumps(["情绪稳定", "会沟通"], ensure_ascii=False)},
+            {"preferred_traits": ["情绪稳定", "会沟通"]},
+            "profile_form",
+        )
+
+        self.assertEqual(
+            merged["preferred_traits"],
+            json.dumps(["情绪稳定", "会沟通"], ensure_ascii=False),
+        )
+        self.assertFalse(field_results[0]["applied_to_persona"])
+        self.assertEqual(field_results[0]["note"], "no_change")
 
     def test_persona_profile_sync_legacy_mode_still_maps_preferences(self):
         payload = persona_memory_lib.build_profile_payload(

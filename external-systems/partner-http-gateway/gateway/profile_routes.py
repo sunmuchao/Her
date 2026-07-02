@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Protocol
 
@@ -26,6 +27,7 @@ from chat_system import (  # type: ignore[import-untyped]
     submit_profile_field_verification,
     submit_profile_review_case_appeal,
 )
+from profile_service import get_profile  # type: ignore[import-untyped]
 
 from .http_helpers import (
     _json_safe,
@@ -89,6 +91,72 @@ def _dispute_statuses_from_query(q: dict[str, str]) -> list[str] | None:
             "statuses": q.get("dispute_statuses"),
         }
     )
+
+
+def _default_profile_source() -> str:
+    """Get default profile source DSN."""
+    for name in (
+        "PARTNER_SEARCH_MYSQL_SOURCE",
+        "PERSONA_MEMORY_MYSQL_SOURCE",
+        "HER_DISCOVERY_PROFILE_SOURCE",
+    ):
+        value = (os.environ.get(name) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def rest_profile_get_basic_info(
+    gateway: ProfileGateway,
+    environ: dict[str, Any],
+    profile_id: str,
+) -> tuple[int, dict[str, Any]]:
+    """Get profile basic info for review purposes.
+
+    SECURITY: Requires PROFILE_REVIEW_ROLES or STAFF_OVERRIDE_ROLES.
+    """
+    # 验证权限
+    gateway._require_roles(
+        environ,
+        PROFILE_REVIEW_ROLES | STAFF_OVERRIDE_ROLES,
+        message="current actor cannot access profile basic info",
+    )
+
+    # 验证 profile_id 格式
+    try:
+        profile_id_int = int(profile_id)
+    except ValueError:
+        return 400, {"error": {"code": "invalid_request", "message": "Invalid profile_id format"}}
+
+    # 获取默认 source
+    source_dsn = _default_profile_source()
+    if not source_dsn:
+        return 500, {"error": {"code": "config_error", "message": "Profile source not configured"}}
+
+    # 获取 profile 信息
+    try:
+        profile = gateway._with_chat(
+            get_profile,
+            source_dsn=source_dsn,
+            source_table_name="profiles",
+            profile_id=profile_id_int,
+        )
+
+        if not profile:
+            return 404, {"error": {"code": "not_found", "message": "Profile not found"}}
+
+        # 提取基本信息
+        basic_info = {
+            "profile_id": profile_id_int,
+            "user_id": profile.get("user_id"),
+            "user_name": profile.get("user_name") or profile.get("name"),
+            "nickname": profile.get("nickname"),
+            "avatar_url": profile.get("avatar_url") or profile.get("photo_url"),
+        }
+
+        return 200, {"profile": _json_safe(basic_info)}
+    except Exception as e:
+        return 500, {"error": {"code": "internal_error", "message": f"Failed to get profile: {e}"}}
 
 
 def rest_profile_verification_policies(
@@ -575,4 +643,8 @@ def dispatch_profile_rest(
     match = re.fullmatch(r"/v1/profile-review/photo-risk/runs/([^/]+)", path)
     if match and method == "GET":
         return rest_profile_get_photo_risk_run(gateway, environ, int(match.group(1)))
+    # 新增：获取 profile 基本信息（用于审核详情面板）
+    match = re.fullmatch(r"/v1/profiles/([^/]+)/basic-info", path)
+    if match and method == "GET":
+        return rest_profile_get_basic_info(gateway, environ, match.group(1))
     return None
