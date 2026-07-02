@@ -21,4 +21,18 @@ export const queryKeys = {
 
   // 聊天
   caseConversationTimeline: (caseId: string, userId: string) => ['chat', 'timeline', caseId, userId] as const,
+
+  // 运营工作台
+  opsWorkbenchSummary: ['ops', 'workbench', 'summary'] as const,
+
+  // 审核队列
+  reviewQueue: (params: { status?: string; field_key?: string; limit?: number }) =>
+    ['review', 'queue', params] as const,
+  videoReviewQueue: ['review', 'video', 'queue'] as const,
+  reportReviewQueue: ['review', 'report', 'queue'] as const,
+  photoReviewQueue: ['review', 'photo', 'queue'] as const,
+  appealReviewQueue: ['review', 'appeal', 'queue'] as const,
+
+  // 用户信息
+  userInfo: (profileId: number) => ['user', 'info', profileId] as const,
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Activity,
@@ -17,14 +17,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
-import {
-  fetchOpsWorkbenchSummary,
-  type OpsWorkbenchSummary,
-} from '@/lib/api/endpoints/ops'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
 import UnifiedReviewWorkbench from '@/components/her/verification-review/unified-review-workbench'
 import TaskDetailDrawer from '@/components/her/ops-workbench/task-detail-drawer'
+import { useOpsWorkbenchSummary } from '@/hooks/use-ops-workbench'
+import { usePageVisibility } from '@/hooks/use-page-visibility'
 
 type OpsWorkbenchPageProps = {
   onBack?: () => void // 保留兼容性，但优先使用 router.back()
@@ -71,14 +69,24 @@ function StatCard({ label, value, alert, warning, icon }: StatCardProps) {
 export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('ops')
-  const [summary, setSummary] = useState<OpsWorkbenchSummary | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
   const [expandedSystems, setExpandedSystems] = useState<Record<string, boolean>>({})
-  const [nextRefreshTime, setNextRefreshTime] = useState<number>(30)
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // 页面可见性检测
+  const isVisible = usePageVisibility()
+
+  // Ops Workbench 数据获取（React Query）
+  const {
+    data: summary,
+    error: loadError,
+    isLoading: loading,
+    refetch: loadSummary,
+  } = useOpsWorkbenchSummary({
+    enabled: autoRefreshEnabled && activeTab === 'ops' && isVisible,
+    refetchInterval: autoRefreshEnabled && activeTab === 'ops' && isVisible ? 30000 : false,
+  })
 
   const openTaskDrawer = (taskId: string) => {
     setSelectedTaskId(taskId)
@@ -97,47 +105,6 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
     closeTaskDrawer()
     void loadSummary()
   }
-
-  const loadSummary = useCallback(async () => {
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const data = await fetchOpsWorkbenchSummary(5)
-      setSummary(data)
-    } catch (error) {
-      setLoadError(getErrorMessage(error))
-      setSummary(null)
-    } finally {
-      setLoading(false)
-      setNextRefreshTime(30) // 重置倒计时
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadSummary()
-  }, [loadSummary])
-
-  // 自动刷新机制（30秒刷新一次）
-  useEffect(() => {
-    if (!autoRefreshEnabled || activeTab !== 'ops') return
-
-    const refreshTimer = setInterval(() => {
-      void loadSummary()
-    }, 30000)
-
-    return () => clearInterval(refreshTimer)
-  }, [autoRefreshEnabled, activeTab, loadSummary])
-
-  // 倒计时显示
-  useEffect(() => {
-    if (!autoRefreshEnabled || activeTab !== 'ops') return
-
-    const countdownTimer = setInterval(() => {
-      setNextRefreshTime((prev) => (prev > 0 ? prev - 1 : 30))
-    }, 1000)
-
-    return () => clearInterval(countdownTimer)
-  }, [autoRefreshEnabled, activeTab])
 
   const toggleSystemExpanded = (system: string) => {
     setExpandedSystems((prev) => ({
@@ -181,7 +148,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
         </button>
         <ErrorState
           title="无法打开运营工作台"
-          message={loadError}
+          message={getErrorMessage(loadError)}
           onRetry={() => void loadSummary()}
         />
         <p className="mt-4 text-xs text-muted-foreground">
@@ -243,7 +210,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
             {activeTab === 'ops' && autoRefreshEnabled && (
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock className="h-3.5 w-3.5" />
-                <span>{nextRefreshTime}s</span>
+                <span>自动刷新中</span>
               </div>
             )}
             <button

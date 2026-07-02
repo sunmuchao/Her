@@ -19,9 +19,10 @@ export type OpsWorkbenchSummary = {
   principal?: Record<string, unknown>
 }
 
-export async function fetchOpsWorkbenchSummary(limit = 5) {
+export async function fetchOpsWorkbenchSummary(limit = 5, init?: GatewayRequestInit) {
   const query = limit ? `?limit=${encodeURIComponent(String(limit))}` : ''
   return gatewayJson<OpsWorkbenchSummary>(`/v1/ops/workbench/summary${query}`, {
     includeAuth: true,
+    signal: init?.signal, // 支持请求取消
   })
 }

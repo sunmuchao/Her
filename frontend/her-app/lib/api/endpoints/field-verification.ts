@@ -17,6 +17,10 @@ export type VerificationEvidence = {
   evidence_channel?: string
   file_url?: string
   file_type?: 'image/jpeg' | 'image/png' | 'application/pdf'
+  content_type?: string
+  data_base64?: string
+  file_name?: string
+  doc_type?: string
   extracted_data?: Record<string, string>
   confidence_score?: number
 }
@@ -40,7 +44,7 @@ export type VerificationSubmissionDetail = {
   field_key: 'education' | 'job' | 'income'
   declared_value: string
   status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'resubmission_required'
-  evidence: VerificationEvidence[]
+  evidence?: VerificationEvidence | VerificationEvidence[] | Record<string, unknown> | null
   created_at?: string  // 创建时间
   updated_at?: string  // 更新时间
   submitted_at?: string // 兼容字段
@@ -169,6 +173,7 @@ export async function fetchReviewQueue(params?: {
   field_key?: string
   page?: number
   limit?: number
+  signal?: AbortSignal
 }): Promise<ReviewQueueList> {
   const query = new URLSearchParams()
   if (params?.status) query.set('status', params.status)
@@ -178,7 +183,10 @@ export async function fetchReviewQueue(params?: {
 
   const response = await gatewayJson<{ submissions?: ReviewQueueItem[]; total?: number; page?: number; limit?: number }>(
     `/v1/profile-verifications/submissions${query.toString() ? `?${query.toString()}` : ''}`,
-    { includeAuth: true },
+    {
+      includeAuth: true,
+      signal: params?.signal, // 支持请求取消
+    },
   )
 
   return {
@@ -192,10 +200,13 @@ export async function fetchReviewQueue(params?: {
 /**
  * 获取单个认证提交详情（管理员使用）
  */
-export async function fetchVerificationDetail(submissionId: string): Promise<VerificationSubmissionDetail> {
+export async function fetchVerificationDetail(submissionId: string, signal?: AbortSignal): Promise<VerificationSubmissionDetail> {
   const response = await gatewayJson<{ submission: VerificationSubmissionDetail }>(
     `/v1/profile-verifications/submissions/${submissionId}`,
-    { includeAuth: true },
+    {
+      includeAuth: true,
+      signal, // 支持请求取消
+    },
   )
   // 从后端返回的 {submission: {...}} 结构中提取 submission 对象
   return response.submission

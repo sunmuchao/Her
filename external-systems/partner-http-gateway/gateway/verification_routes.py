@@ -232,9 +232,6 @@ def rest_verification_submit_live_video(
             }
         }
 
-    now = _parse_optional_now(body)
-    user_id = gateway._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
-
     # Check content type to determine upload method
     content_type_header = environ.get("CONTENT_TYPE", "")
 
@@ -245,6 +242,9 @@ def rest_verification_submit_live_video(
             video_bytes = file_data["file_data"]
             file_name = file_data["filename"]
             content_type = file_data["content_type"]
+            multipart_fields = file_data.get("fields") or {}
+            if isinstance(multipart_fields, dict):
+                body = {**multipart_fields, **body}
 
             # Validate file size
             validate_file_size(file_data["file_size_bytes"])
@@ -292,6 +292,9 @@ def rest_verification_submit_live_video(
                     "message": f"Failed to decode Base64: {e}",
                 }
             }
+
+    now = _parse_optional_now(body)
+    user_id = gateway._resolve_actor_bound_id(environ, body.get("user_id"), field_name="user_id")
 
     # Validate submission_id if provided
     submission_id = body.get("submission_id")
@@ -700,20 +703,28 @@ def dispatch_verification_rest(
     if path == "/v1/verifications/live-video-requests" and method == "GET":
         return rest_verification_list_photo_review_requests(gateway, environ)
     if path == "/v1/verifications/live-video-submissions" and method == "POST":
+        content_type = str(environ.get("CONTENT_TYPE") or "")
+        body = {}
+        if not content_type.startswith("multipart/form-data"):
+            body = _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024))
         return rest_verification_submit_live_video(
             gateway,
             environ,
-            _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024)),
+            body,
         )
     if path == "/v1/verifications/live-video-submissions" and method == "GET":
         return rest_verification_list_submissions(gateway, environ)
     match = re.fullmatch(r"/v1/verifications/live-video-submissions/([^/]+)/resubmit", path)
     if match and method == "POST":
+        content_type = str(environ.get("CONTENT_TYPE") or "")
+        body = {}
+        if not content_type.startswith("multipart/form-data"):
+            body = _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024))
         return rest_verification_resubmit_live_video(
             gateway,
             environ,
             match.group(1),
-            _parse_json_body(_read_body(environ, max_bytes=64 * 1024 * 1024)),
+            body,
         )
     match = re.fullmatch(r"/v1/verifications/live-video-submissions/([^/]+)/review", path)
     if match and method == "POST":

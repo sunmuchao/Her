@@ -1531,6 +1531,65 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("200", status)
         self.assertEqual(payload["active"], [])
 
+    def test_live_video_submission_accepts_multipart_form_data(self) -> None:
+        tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
+        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        multipart_body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="video"; filename="verification-recording.webm"\r\n'
+            "Content-Type: video/webm\r\n\r\n"
+            "fake-video-bytes\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="user_id"\r\n\r\n'
+            "user-a\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="profile_id"\r\n\r\n'
+            "123\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="challenge_token"\r\n\r\n'
+            "challenge-123\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="challenge_phrase"\r\n\r\n'
+            "请眨眼并点头\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="metadata"\r\n\r\n'
+            '{"source":"her-app"}\r\n'
+            f"--{boundary}--\r\n"
+        ).encode("utf-8")
+
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with mock.patch.object(
+                gw,
+                "_with_chat",
+                return_value={"submission_id": "vfy-a1b2c3d4e5f67890", "status": "submitted"},
+            ) as with_chat:
+                env = _wsgi_env(
+                    "POST",
+                    "/v1/verifications/live-video-submissions",
+                    multipart_body,
+                    extra={
+                        **_auth_headers("token-user-a"),
+                        "CONTENT_TYPE": f"multipart/form-data; boundary={boundary}",
+                    },
+                )
+                status, payload = self._run_with_gateway(gw, env)
+
+        self.assertIn("201", status)
+        self.assertEqual(payload["submission"]["submission_id"], "vfy-a1b2c3d4e5f67890")
+        self.assertEqual(payload["submission"]["status"], "submitted")
+        self.assertTrue(with_chat.called)
+        self.assertEqual(with_chat.call_args.kwargs["user_id"], "user-a")
+        self.assertEqual(with_chat.call_args.kwargs["profile_id"], 123)
+        self.assertEqual(with_chat.call_args.kwargs["challenge_token"], "challenge-123")
+        self.assertEqual(with_chat.call_args.kwargs["challenge_phrase"], "请眨眼并点头")
+        self.assertEqual(with_chat.call_args.kwargs["metadata"], '{"source":"her-app"}')
+
     def test_matchmaking_reply_defaults_member_to_current_actor(self) -> None:
         tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
         fake_case = {

@@ -133,10 +133,9 @@ def rest_profile_get_basic_info(
     if not source_dsn:
         return 500, {"error": {"code": "config_error", "message": "Profile source not configured"}}
 
-    # 获取 profile 信息
+    # 获取 profile 信息（get_profile 只接受 keyword-only arguments）
     try:
-        profile = gateway._with_chat(
-            get_profile,
+        profile = get_profile(
             source_dsn=source_dsn,
             source_table_name="profiles",
             profile_id=profile_id_int,

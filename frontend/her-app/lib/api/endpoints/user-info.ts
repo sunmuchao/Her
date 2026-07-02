@@ -11,10 +11,13 @@ export type UserInfo = {
 /**
  * 获取用户基本信息（管理员使用）
  */
-export async function fetchUserInfo(profileId: number): Promise<UserInfo> {
+export async function fetchUserInfo(profileId: number, signal?: AbortSignal): Promise<UserInfo> {
   const response = await gatewayJson<{ profile?: UserInfo }>(
     `/v1/profiles/${profileId}/basic-info`,
-    { includeAuth: true },
+    {
+      includeAuth: true,
+      signal, // 支持请求取消
+    },
   )
 
   return response.profile || {

@@ -1,27 +1,19 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Clock, RefreshCw, AlertTriangle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
-import { useVerificationReview } from '@/hooks/use-verification-review'
 import {
-  fetchVideoReviewQueue,
-  fetchReportReviewQueue,
-  fetchPhotoRiskQueue,
-  fetchAppealReviewQueue,
-  reviewVideoVerification,
-  reviewReportCase,
-  reviewPhotoRisk,
-  reviewAppealCase,
-  type VideoSubmission,
-  type ReportCase,
-  type PhotoRiskItem,
-  type AppealCase,
-} from '@/lib/api/endpoints/all-review-types'
+  useFieldReviewQueue,
+  useFieldReviewMutation,
+  useVideoReviewQueue,
+  useReportReviewQueue,
+  usePhotoReviewQueue,
+  useAppealReviewQueue,
+} from '@/hooks/use-review-queues'
 import { fetchVerificationDetail } from '@/lib/api/endpoints/field-verification'
 import { ErrorState } from '@/components/her/ui/error-state'
-import { FadeIn } from '@/components/her/ui/animations'
 import ReviewDetailPanel from './review-detail-panel'
 import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
 
@@ -46,28 +38,72 @@ export default function UnifiedReviewWorkbench() {
   const [activeReviewType, setActiveReviewType] = useState<ReviewType>('field')
   const [activeField, setActiveField] = useState<FieldKeyType>('education')
 
-  // 字段认证审核
-  const fieldReview = useVerificationReview()
+  // 字段认证审核队列（React Query）
+  const {
+    data: fieldQueue,
+    isLoading: fieldLoading,
+    error: fieldError,
+    refetch: refetchFieldQueue,
+  } = useFieldReviewQueue({
+    status: 'submitted,under_review',
+    field_key: activeField,
+    limit: 20,
+  })
 
-  // 其他审核类型队列
-  const [videoQueue, setVideoQueue] = useState<VideoSubmission[]>([])
-  const [reportQueue, setReportQueue] = useState<ReportCase[]>([])
-  const [photoQueue, setPhotoQueue] = useState<PhotoRiskItem[]>([])
-  const [appealQueue, setAppealQueue] = useState<AppealCase[]>([])
+  // 其他审核类型队列（React Query）
+  const {
+    data: videoData,
+    isLoading: videoLoading,
+    refetch: refetchVideoQueue,
+  } = useVideoReviewQueue()
 
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    data: reportData,
+    isLoading: reportLoading,
+    refetch: refetchReportQueue,
+  } = useReportReviewQueue()
+
+  const {
+    data: photoData,
+    isLoading: photoLoading,
+    refetch: refetchPhotoQueue,
+  } = usePhotoReviewQueue()
+
+  const {
+    data: appealData,
+    isLoading: appealLoading,
+    refetch: refetchAppealQueue,
+  } = useAppealReviewQueue()
+
+  // 审核操作 mutation
+  const reviewMutation = useFieldReviewMutation()
 
   // 审核详情面板状态
   const [selectedSubmission, setSelectedSubmission] = useState<VerificationSubmissionDetail | null>(null)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
+
+  const normalizeSubmissionDetail = (detail: VerificationSubmissionDetail): VerificationSubmissionDetail => ({
+    submission_id: detail.submission_id,
+    profile_id: detail.profile_id ?? 0,
+    user_id: detail.user_id,
+    field_key: detail.field_key ?? 'education',
+    declared_value: detail.declared_value ?? '未知',
+    status: detail.status ?? 'submitted',
+    evidence: detail.evidence ?? null,
+    review_count: detail.review_count ?? 0,
+    reviews: Array.isArray(detail.reviews) ? detail.reviews : [],
+    created_at: detail.created_at,
+    updated_at: detail.updated_at,
+    submitted_at: detail.submitted_at,
+    dispute_status: detail.dispute_status,
+    verification_expires_at: detail.verification_expires_at,
+    next_review_due_at: detail.next_review_due_at,
+    reverify_strategy: detail.reverify_strategy,
+  })
 
   // 打开审核详情面板
   const openReviewPanel = async (submissionId: string) => {
-    // 先设置状态，但不立即打开面板
-    setIsSubmitting(false)
     setSubmitMessage(null)
 
     try {
@@ -76,15 +112,13 @@ export default function UnifiedReviewWorkbench() {
 
       // 验证数据是否有效且包含必需字段
       if (detail && typeof detail === 'object' && detail.submission_id) {
-        // 检查关键字段是否存在
-        const hasRequiredFields = detail.profile_id && detail.field_key && detail.declared_value
+        const normalizedDetail = normalizeSubmissionDetail(detail)
+        const hasRequiredFields = detail.profile_id != null && !!detail.field_key && detail.declared_value != null
 
         if (hasRequiredFields) {
-          // 数据完整，设置并打开面板
-          setSelectedSubmission(detail)
+          setSelectedSubmission(normalizedDetail)
           setIsPanelOpen(true)
         } else {
-          // 数据不完整，显示警告但仍打开面板
           console.warn('审核详情数据不完整:', {
             submission_id: detail.submission_id,
             profile_id: detail.profile_id,
@@ -92,36 +126,18 @@ export default function UnifiedReviewWorkbench() {
             declared_value: detail.declared_value,
             evidence: detail.evidence,
           })
-
-          // 创建一个补充了默认值的 submission 对象
-          const supplementedSubmission: VerificationSubmissionDetail = {
-            submission_id: detail.submission_id,
-            profile_id: detail.profile_id || 0,
-            field_key: detail.field_key || 'education',
-            declared_value: detail.declared_value || '未知',
-            status: detail.status || 'submitted',
-            evidence: Array.isArray(detail.evidence) ? detail.evidence : [],
-            review_count: detail.review_count || 0,
-            reviews: Array.isArray(detail.reviews) ? detail.reviews : [],
-            created_at: detail.created_at,
-            updated_at: detail.updated_at,
-            submitted_at: detail.submitted_at,
-          }
-
-          setSelectedSubmission(supplementedSubmission)
+          setSelectedSubmission(normalizedDetail)
           setIsPanelOpen(true)
           setSubmitMessage('⚠️ 数据加载不完整，部分信息可能缺失')
         }
       } else {
         // 数据完全无效，不打开面板，显示错误提示
         setSubmitMessage('❌ 加载审核详情失败：返回数据无效')
-        // 使用 alert 作为临时提示（后续可以改为 toast）
         alert('加载审核详情失败：返回数据无效')
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : '加载审核详情失败'
       setSubmitMessage(errorMsg)
-      // 使用 alert 作为临时提示
       alert(`加载审核详情失败：${errorMsg}`)
     }
   }
@@ -135,21 +151,16 @@ export default function UnifiedReviewWorkbench() {
 
   // 提交审核
   const handleReview = async (params: ReviewActionParams) => {
-    setIsSubmitting(true)
     setSubmitMessage(null)
     try {
-      await fieldReview.handleReview(params)
+      await reviewMutation.mutateAsync(params)
       setSubmitMessage('审核提交成功')
-      // 刷新队列
-      void fieldReview.loadQueue(undefined, activeField)
       // 3秒后关闭面板
       setTimeout(() => {
         closeReviewPanel()
       }, 3000)
     } catch (err) {
       setSubmitMessage(getErrorMessage(err, '审核提交失败'))
-    } finally {
-      setIsSubmitting(false)
     }
   }
 
@@ -157,45 +168,6 @@ export default function UnifiedReviewWorkbench() {
   const clearSubmitMessage = () => {
     setSubmitMessage(null)
   }
-
-  // 加载其他审核类型队列
-  const loadOtherQueues = useCallback(async (type: ReviewType) => {
-    setLoading(true)
-    setError(null)
-    try {
-      switch (type) {
-        case 'video':
-          const videoData = await fetchVideoReviewQueue()
-          setVideoQueue(videoData.submissions)
-          break
-        case 'report':
-          const reportData = await fetchReportReviewQueue()
-          setReportQueue(reportData.cases)
-          break
-        case 'photo':
-          const photoData = await fetchPhotoRiskQueue()
-          setPhotoQueue(photoData.photos)
-          break
-        case 'appeal':
-          const appealData = await fetchAppealReviewQueue()
-          setAppealQueue(appealData.appeals)
-          break
-      }
-    } catch (err) {
-      setError(getErrorMessage(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  // 初始化加载
-  useEffect(() => {
-    if (activeReviewType === 'field') {
-      void fieldReview.loadQueue(undefined, activeField)
-    } else {
-      void loadOtherQueues(activeReviewType)
-    }
-  }, [activeReviewType, activeField, fieldReview.loadQueue, loadOtherQueues])
 
   // 简化版审核队列卡片
   const SimpleQueueCard = ({ item, onClick }: { item: any; onClick: () => void }) => (
@@ -279,20 +251,26 @@ export default function UnifiedReviewWorkbench() {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Clock className="h-4 w-4" />
           <span>待审核: {
-            activeReviewType === 'field' ? fieldReview.queue?.submissions.length || 0 :
-            activeReviewType === 'video' ? videoQueue.length :
-            activeReviewType === 'report' ? reportQueue.length :
-            activeReviewType === 'photo' ? photoQueue.length :
-            appealQueue.length
+            activeReviewType === 'field' ? fieldQueue?.submissions.length || 0 :
+            activeReviewType === 'video' ? videoData?.submissions.length || 0 :
+            activeReviewType === 'report' ? reportData?.cases.length || 0 :
+            activeReviewType === 'photo' ? photoData?.photos.length || 0 :
+            appealData?.appeals.length || 0
           } 条</span>
         </div>
         <button
           type="button"
           onClick={() => {
             if (activeReviewType === 'field') {
-              void fieldReview.loadQueue(undefined, activeField)
+              void refetchFieldQueue()
+            } else if (activeReviewType === 'video') {
+              void refetchVideoQueue()
+            } else if (activeReviewType === 'report') {
+              void refetchReportQueue()
+            } else if (activeReviewType === 'photo') {
+              void refetchPhotoQueue()
             } else {
-              void loadOtherQueues(activeReviewType)
+              void refetchAppealQueue()
             }
           }}
           className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground"
@@ -302,48 +280,48 @@ export default function UnifiedReviewWorkbench() {
       </div>
 
       {/* 队列列表 */}
-      {loading ? (
+      {fieldLoading || videoLoading || reportLoading || photoLoading || appealLoading ? (
         <div className="text-sm text-muted-foreground text-center py-8">加载中...</div>
-      ) : error ? (
-        <ErrorState title="加载失败" message={error} onRetry={() => void loadOtherQueues(activeReviewType)} />
+      ) : fieldError ? (
+        <ErrorState title="加载失败" message={getErrorMessage(fieldError)} onRetry={() => void refetchFieldQueue()} />
       ) : (
         <div className="px-4 space-y-2">
           {/* 字段认证队列 */}
-          {activeReviewType === 'field' && fieldReview.queue?.submissions.map((item: any) => (
+          {activeReviewType === 'field' && fieldQueue?.submissions.map((item: any) => (
             <SimpleQueueCard key={item.submission_id} item={item} onClick={() => openReviewPanel(item.submission_id)} />
           ))}
 
           {/* 活体视频队列 */}
-          {activeReviewType === 'video' && videoQueue.map((item: VideoSubmission) => (
+          {activeReviewType === 'video' && videoData?.submissions.map((item: any) => (
             <SimpleQueueCard key={item.submission_id} item={item} onClick={() => alert('视频审核：' + item.video_url)} />
           ))}
 
           {/* 举报队列 */}
-          {activeReviewType === 'report' && reportQueue.map((item: ReportCase) => (
+          {activeReviewType === 'report' && reportData?.cases.map((item: any) => (
             <SimpleQueueCard key={item.case_id} item={item} onClick={() => alert('举报审核：' + item.report_reason_text)} />
           ))}
 
           {/* 照片风险队列 */}
-          {activeReviewType === 'photo' && photoQueue.map((item: PhotoRiskItem) => (
+          {activeReviewType === 'photo' && photoData?.photos.map((item: any) => (
             <SimpleQueueCard key={item.photo_id} item={item} onClick={() => alert('照片审核：风险评分 ' + item.risk_score)} />
           ))}
 
           {/* 申诉队列 */}
-          {activeReviewType === 'appeal' && appealQueue.map((item: AppealCase) => (
+          {activeReviewType === 'appeal' && appealData?.appeals.map((item: any) => (
             <SimpleQueueCard key={item.appeal_id} item={item} onClick={() => alert('申诉审核：' + item.appeal_reason)} />
           ))}
 
           {/* 空状态 */}
-          {activeReviewType === 'field' && !fieldReview.queue?.submissions.length && (
+          {activeReviewType === 'field' && !fieldQueue?.submissions.length && (
             <div className="text-center text-sm text-muted-foreground py-8">
               暂无待审核任务
             </div>
           )}
           {activeReviewType !== 'field' && (
-            (activeReviewType === 'video' && videoQueue.length === 0) ||
-            (activeReviewType === 'report' && reportQueue.length === 0) ||
-            (activeReviewType === 'photo' && photoQueue.length === 0) ||
-            (activeReviewType === 'appeal' && appealQueue.length === 0)
+            (activeReviewType === 'video' && !videoData?.submissions.length) ||
+            (activeReviewType === 'report' && !reportData?.cases.length) ||
+            (activeReviewType === 'photo' && !photoData?.photos.length) ||
+            (activeReviewType === 'appeal' && !appealData?.appeals.length)
           ) && (
             <div className="text-center text-sm text-muted-foreground py-8">
               暂无待审核任务
@@ -365,7 +343,7 @@ export default function UnifiedReviewWorkbench() {
         <ReviewDetailPanel
           submission={selectedSubmission}
           isOpen={isPanelOpen}
-          isSubmitting={isSubmitting}
+          isSubmitting={reviewMutation.isPending}
           submitMessage={submitMessage}
           onClose={closeReviewPanel}
           onReview={handleReview}

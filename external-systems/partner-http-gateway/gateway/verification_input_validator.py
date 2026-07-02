@@ -172,6 +172,7 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
         - content_type: str
         - file_size_bytes: int
         - file_data: bytes
+        - fields: dict[str, str] parsed multipart form fields
 
     Raises:
         InputValidationError: If parsing fails or file is too large
@@ -198,12 +199,30 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
             keep_blank_values=True
         )
 
-        # Find the file field
+        fields: dict[str, str] = {}
         file_field = None
-        for key in fs.keys():
-            if fs[key].filename:
-                file_field = fs[key]
-                break
+        if fs.list:
+            for item in fs.list:
+                if item.filename and file_field is None:
+                    file_field = item
+                    continue
+                if not item.filename:
+                    fields[item.name] = item.value
+
+        if file_field is None:
+            for key in fs.keys():
+                field = fs[key]
+                if isinstance(field, list):
+                    for candidate in field:
+                        if candidate.filename:
+                            file_field = candidate
+                            break
+                    if file_field is not None:
+                        break
+                    continue
+                if field.filename:
+                    file_field = field
+                    break
 
         if file_field is None:
             raise InputValidationError("file", "No file uploaded")
@@ -217,6 +236,7 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
             "content_type": file_content_type,
             "file_size_bytes": len(file_data),
             "file_data": file_data,
+            "fields": fields,
         }
 
     except Exception as e:

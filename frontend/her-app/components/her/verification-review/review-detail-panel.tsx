@@ -5,8 +5,8 @@ import { createPortal } from 'react-dom'
 import { ArrowLeft, CheckCircle, FileText, Image, Send, XCircle, AlertTriangle, RefreshCw, User } from 'lucide-react'
 import { ImageCarousel } from '@/components/her/ui/image-carousel'
 import ReviewHistoryList from './review-history-list'
-import { fetchUserInfo, type UserInfo } from '@/lib/api/endpoints/user-info'
-import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
+import { useUserInfo } from '@/hooks/use-user-info'
+import type { VerificationEvidence, VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
 
 // 动态导入 PDFPreview，避免 SSR 时加载 pdfjs-dist
 const PDFPreview = ({ fileUrl }: { fileUrl: string }) => {
@@ -85,43 +85,46 @@ export default function ReviewDetailPanel({
   const [reviewNote, setReviewNote] = useState('')
   const [approvedValue, setApprovedValue] = useState('')
   const [requestedDocuments, setRequestedDocuments] = useState<string[]>([])
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
-  const [loadingUserInfo, setLoadingUserInfo] = useState(false)
 
-  // 加载用户信息（添加错误日志，优雅降级）
-  useEffect(() => {
-    if (isOpen && submission.profile_id) {
-      setLoadingUserInfo(true)
-      fetchUserInfo(submission.profile_id)
-        .then((info) => {
-          console.log('用户信息加载成功:', info)
-          setUserInfo(info)
-        })
-        .catch((err) => {
-          console.error('用户信息加载失败:', err, 'profile_id:', submission.profile_id)
-          // 优雅降级：不设置 userInfo，面板会显示 profile_id
-          setUserInfo(null)
-        })
-        .finally(() => setLoadingUserInfo(false))
-    } else if (isOpen && !submission.profile_id) {
-      console.warn('submission.profile_id 缺失，无法加载用户信息')
-      setLoadingUserInfo(false)
+  // 用户信息缓存（React Query）
+  const {
+    data: userInfo,
+    isLoading: loadingUserInfo,
+  } = useUserInfo(submission.profile_id)
+
+  const normalizeEvidenceArray = (evidence: VerificationSubmissionDetail['evidence']): VerificationEvidence[] => {
+    if (Array.isArray(evidence)) return evidence
+    if (evidence && typeof evidence === 'object') return [evidence as VerificationEvidence]
+    return []
+  }
+
+  const resolveEvidenceUrl = (evidence: VerificationEvidence) => {
+    if (evidence.file_url) return evidence.file_url
+    if (evidence.data_base64 && evidence.content_type) {
+      return `data:${evidence.content_type};base64,${evidence.data_base64}`
     }
-  }, [isOpen, submission.profile_id])
+    return ''
+  }
 
-  // 确保所有可能为 null/undefined 的数组字段都有默认值
-  const evidenceArray = Array.isArray(submission.evidence) ? submission.evidence : []
+  const resolveEvidenceMimeType = (evidence: VerificationEvidence) => {
+    return evidence.file_type || evidence.content_type || ''
+  }
+
+  // 兼容后端返回单个 evidence 对象和数组两种格式
+  const evidenceArray = normalizeEvidenceArray(submission.evidence)
   const reviewsArray = Array.isArray(submission.reviews) ? submission.reviews : []
 
   // 提取材料图片URL
   const evidenceImages = evidenceArray
-    .filter((e) => e.file_url && e.file_type?.startsWith('image/'))
-    .map((e) => e.file_url || '')
+    .map((e) => ({ url: resolveEvidenceUrl(e), mimeType: resolveEvidenceMimeType(e) }))
+    .filter((e) => e.url && e.mimeType.startsWith('image/'))
+    .map((e) => e.url)
 
   // 提取PDF文件URL
   const evidencePDFs = evidenceArray
-    .filter((e) => e.file_url && e.file_type === 'application/pdf')
-    .map((e) => e.file_url || '')
+    .map((e) => ({ url: resolveEvidenceUrl(e), mimeType: resolveEvidenceMimeType(e) }))
+    .filter((e) => e.url && e.mimeType === 'application/pdf')
+    .map((e) => e.url)
 
   const hasImages = evidenceImages.length > 0
   const hasPDFs = evidencePDFs.length > 0
