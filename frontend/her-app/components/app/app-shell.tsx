@@ -159,7 +159,6 @@ export function AppShell({
             />
           </SlideInTransition>
         )}
-        console.log('[AppShell] 检查 subView === verification:', subView === 'verification')
         {subView === 'verification' && (
           <SlideInTransition key="verification" direction="up">
             <VerificationFlowPage onBack={onBackFromVerification} />
