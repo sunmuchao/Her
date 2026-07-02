@@ -2,18 +2,13 @@
 
 > **文档版本**: v1.0  
 > **创建日期**: 2026-07-02  
-> **目标**: 在不牺牲合规性和可审计性的前提下，提升四个认证的抗伪造能力、审核效率和生命周期管理能力
+> **目标**: 将四个认证的安全等级从当前水平提升到更高水平
 
 ---
 
 ## 一、改进目标与现状分析
 
 ### 1.1 安全等级目标
-
-> **重要原则**：
-> - OCR、规则匹配、企业邮箱、行为检测等能力默认定义为“辅助增信”或“提效”能力，不能单独作为真实性证明
-> - 只有权威数据源交叉验证、强控制权证明、人工复核闭环、事后可撤销机制，才能计入核心安全提升
-> - 所有新增敏感数据能力，必须同步落地最小化采集、加密存储、权限隔离、保留周期和访问审计
 
 | 认证类型 | 当前分数 | 目标分数 | 提升幅度 | 核心问题 |
 |---------|---------|---------|---------|---------|
@@ -196,9 +191,7 @@ CREATE TABLE verification_auto_review_stats (
   manual_review INT NOT NULL DEFAULT 0 COMMENT '转人工审核数',
   manual_approved_after_auto INT NOT NULL DEFAULT 0 COMMENT '人工复核后通过数',
   manual_rejected_after_auto INT NOT NULL DEFAULT 0 COMMENT '人工复核后拒绝数',
-  false_positive_rate DECIMAL(5,2) COMMENT '误拦率（转人工后本可通过的比例）',
-  false_negative_recall_count INT NOT NULL DEFAULT 0 COMMENT '漏放后被追撤数量',
-  post_approval_revocation_rate DECIMAL(5,2) COMMENT '自动通过后追撤率',
+  accuracy_rate DECIMAL(5,2) COMMENT '准确率（人工复核后通过/转人工）',
   avg_auto_review_latency_ms INT COMMENT '平均自动审核耗时（毫秒）',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uk_date_type (stat_date, verification_type),
@@ -213,7 +206,7 @@ CREATE TABLE verification_auto_review_stats (
 
 **预期效果**：
 - ✅ 自动审核质量可量化监控
-- ✅ 自动审核误拦率、漏放后追撤率可追踪
+- ✅ 自动审核准确率可追踪
 - ✅ 数据驱动的阈值调整决策
 
 ---
@@ -240,40 +233,6 @@ ALTER TABLE profile_field_verification_submissions
 - ✅ OCR识别结果存储，便于自动比对
 - ✅ 权威验证结果存储，便于展示"学信网验证"标签
 - ✅ 过期时间存储，便于定期复核
-
----
-
-##### 1.1.6 敏感数据治理与保留策略
-
-**改进内容**：
-
-```sql
-CREATE TABLE verification_data_governance_policies (
-  policy_key VARCHAR(64) PRIMARY KEY,
-  retention_days INT NOT NULL COMMENT '保留天数',
-  encryption_required TINYINT NOT NULL DEFAULT 1 COMMENT '是否强制加密',
-  access_scope VARCHAR(64) NOT NULL COMMENT '可访问角色范围',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='认证敏感数据治理策略表';
-
-INSERT INTO verification_data_governance_policies VALUES
-('raw_verification_media', 30, 1, 'risk_ops,verification_ops', NOW(), NOW()),
-('ocr_extracted_text', 180, 1, 'verification_ops', NOW(), NOW()),
-('authority_verification_result', 365, 1, 'verification_ops,risk_ops', NOW(), NOW()),
-('revocation_evidence', 730, 1, 'risk_ops,compliance_ops', NOW(), NOW());
-```
-
-**治理要求**：
-- OCR全文、身份证号、收入结果、撤销证据等敏感字段必须加密存储
-- 原始图片、视频、截图必须设置自动清理任务，默认不长期保留
-- 审核后台按最小权限开放，默认只展示必要字段，查看完整原文必须记录审计日志
-- 用户注销、材料撤回、投诉成立等场景需要定义对应的数据删除或降权策略
-
-**预期效果**：
-- ✅ 敏感数据采集和留存有统一治理边界
-- ✅ 降低认证资料泄露后的二次风险
-- ✅ 便于后续合规审计和权限收敛
 
 ---
 
@@ -556,8 +515,6 @@ async function submitLiveVideoVerification(params) {
 
 #### 2.1 OCR识别功能实现（5个工作日）
 
-> **定位调整**：OCR的主要作用是“结构化提取材料内容、辅助比对、减少人工录入”，不是“直接判断材料真伪”。
-
 **改进内容**：
 
 ##### 2.1.1 OCR服务抽象层
@@ -607,7 +564,7 @@ class AliyunOCRProvider(OCRProvider):
       "success": True,
       "text_blocks": text_blocks,
       "full_text": ' '.join(b['text'] for b in text_blocks),
-      "avg_confidence": (sum(b['confidence'] for b in text_blocks) / len(text_blocks)) if text_blocks else 0,
+      "avg_confidence": sum(b['confidence'] for b in text_blocks) / len(text_blocks),
     }
 ```
 
@@ -627,15 +584,13 @@ def ocr_verify_document(
     "ocr_success": bool,
     "ocr_text": str,
     "ocr_confidence": float,
-    "field_match_result": {
+    "match_result": {
       "name_match": bool,
       "school_match": bool,  # 学历认证
       "company_match": bool,  # 职业认证
       "income_range_match": bool,  # 收入认证
     },
-    "document_consistency_flags": list[str],
     "mismatch_details": list[str],
-    "risk_level": str,  # 'low' / 'medium' / 'high'
     "requires_manual_review": bool,
   }
   """
@@ -663,33 +618,14 @@ def ocr_verify_document(
   
   # 比对逻辑（收入）
   elif document_type == 'income':
-    extracted_income = extract_income_numbers(ocr_result['full_text'])
-    estimated_income_yuan = max(extracted_income) if extracted_income else None
-    income_range_match = check_income_range_match(
-      declared_range=profile_data.get('income_range'),
-      extracted_range=None,
-      extracted_annual_salary_yuan=estimated_income_yuan,
-    )
+    # OCR识别金额数字
+    income_numbers = extract_income_numbers(ocr_result['full_text'])
+    income_range_match = check_income_range_match(income_numbers, profile_data.get('income_range'))
   
-  field_match_result = {
-    "name_match": name_match,
-  }
-  if document_type == 'education':
-    field_match_result["school_match"] = school_match
-  elif document_type == 'job':
-    field_match_result["company_match"] = company_match
-  elif document_type == 'income':
-    field_match_result["income_range_match"] = income_range_match["match"]
-
-  # 这里只做材料内容提取与一致性检查，不直接判定材料真实性
   return {
     "ocr_success": True,
-    "ocr_text": ocr_result["full_text"],
-    "ocr_confidence": ocr_result["avg_confidence"],
-    "field_match_result": field_match_result,
-    "document_consistency_flags": [],
-    "risk_level": "low" if all(field_match_result.values()) else "medium",
-    "requires_manual_review": not all(field_match_result.values()),
+    "match_result": {...},
+    "requires_manual_review": not all(match_result.values()),
   }
 ```
 
@@ -711,11 +647,13 @@ def submit_profile_field_verification(...):
     VALUES (?, ?, ?, ?)
   """, [..., ocr_result['ocr_text'], int(ocr_result['ocr_confidence'] * 100), datetime.now()])
   
-  # OCR结果只用于分流，不直接自动通过真实性认证
-  if ocr_result['risk_level'] == 'low':
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'fast_lane'")
+  # 根据OCR结果判断下一步
+  if all(ocr_result['match_result'].values()):
+    # 自动通过
+    conn.execute("UPDATE ... SET status = 'approved'")
   else:
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'normal_lane'")
+    # 需要人工审核
+    conn.execute("UPDATE ... SET status = 'under_review'")
 ```
 
 **改进原因**：
@@ -724,10 +662,11 @@ def submit_profile_field_verification(...):
 - 审核效率低，且容易漏判
 
 **预期效果**：
-- ✅ 学历/职业/收入材料可结构化解析，减少人工录入工作量
-- ✅ OCR用于发现材料与档案不一致项，提升人工审核效率
-- ✅ 低风险材料可进入快速人工复核队列，但不因OCR匹配而直接自动通过
-- ✅ 为后续权威校验、规则引擎、撤销追踪提供结构化输入
+- ✅ 学历认证安全等级从55分提升到65分（+10分）
+- ✅ 职业认证安全等级从45分提升到55分（+10分）
+- ✅ 收入认证安全等级从35分提升到45分（+10分）
+- ✅ 自动识别证件文字，减少人工审核工作量
+- ✅ 自动比对证件和档案，提高审核准确率
 
 ---
 
@@ -744,10 +683,6 @@ class EducationVerificationService:
   
   注意：学信网API不对个人开放，需要通过第三方服务商对接
   如：阿里云学历验证、腾讯云学历验证、第三方征信公司
-  
-  设计原则：
-  1. 权威验证结果必须参与最终审批，不是仅做展示标签
-  2. 若无法取得足够的身份要素（如实名信息或必要授权），不得标记为"学信网验证"
   """
   
   def verify_education(
@@ -799,7 +734,7 @@ class EducationVerificationService:
 ```python
 def review_education_verification(...):
   if decision == 'approve':
-    # 审核员给出“拟通过”后，必须进入权威校验闭环
+    # 尝试调用权威API验证
     profile = get_profile(conn, submission['profile_id'])
     
     verification_result = EducationVerificationService().verify_education(
@@ -820,23 +755,13 @@ def review_education_verification(...):
       submission_id,
     ])
     
-    # 权威验证成功才允许发放“权威验证”标签
+    # 如果权威验证成功，延长有效期（10年）
     if verification_result['verified']:
       conn.execute("""
         UPDATE profile_field_verification_submissions
-        SET status = 'approved',
-            expires_at = ?,
-            authority_verification_status = 'verified'
+        SET expires_at = ?
         WHERE submission_id = ?
       """, [datetime.now() + timedelta(days=3650), submission_id])
-    else:
-      conn.execute("""
-        UPDATE profile_field_verification_submissions
-        SET status = 'under_review',
-            authority_verification_status = 'verification_failed',
-            review_reason = ?
-        WHERE submission_id = ?
-      """, ['学历权威校验未通过，需人工二审', submission_id])
 ```
 
 **改进原因**：
@@ -846,7 +771,7 @@ def review_education_verification(...):
 
 **预期效果**：
 - ✅ 学历认证安全等级从65分提升到75分（+10分）
-- ✅ 学历信息有权威数据库验证，并真正参与最终放行决策
+- ✅ 学历信息有权威数据库验证，事后可追溯
 - ✅ 学历造假难度大幅提升（需要同时伪造证件和绕过学信网验证）
 - ✅ 用户可以看到"学信网验证"标签，信任度更高
 
@@ -880,30 +805,24 @@ class EnterpriseEmailVerification:
     
     流程：
     1. 发送验证邮件到企业邮箱
-    2. 用户点击验证链接，证明其控制该邮箱
-    3. 验证成功后再校验邮箱域名与声称公司是否匹配
+    2. 用户点击验证链接
+    3. 验证成功后确认邮箱后缀
     """
     
     email_domain = enterprise_email.split('@')[1]
     domain_info = self.TRUSTED_COMPANY_EMAIL_DOMAINS.get(email_domain)
     
     if domain_info:
-      # 白名单域名只能降低人工核验成本，不能替代邮箱控制权证明
-      send_verification_email(enterprise_email, verification_token)
+      # 可信企业邮箱，直接验证
       return {
-        "verified": False,
-        "status": "email_sent",
+        "verified": True,
         "company_from_domain": domain_info['company'],
         "trust_level": domain_info['trust_level'],
-        "requires_click_verification": True,
       }
     else:
+      # 非可信企业邮箱，发送验证邮件
       send_verification_email(enterprise_email, verification_token)
-      return {
-        "verified": False,
-        "status": "email_sent",
-        "requires_click_verification": True,
-      }
+      return {"verified": False, "status": "email_sent"}
 ```
 
 ##### 2.3.2 岗位包装检测规则
@@ -952,7 +871,6 @@ def detect_job_title_packaging(
   
   return {
     "is_packaging": len(suspicious_reasons) > 0,
-    "packaging_risk_level": "high" if len(suspicious_reasons) >= 2 else ("medium" if suspicious_reasons else "low"),
     "suspicious_reasons": suspicious_reasons,
     "requires_verification": len(suspicious_reasons) > 0,
   }
@@ -984,15 +902,13 @@ def submit_job_verification(...):
 
 **预期效果**：
 - ✅ 职业认证安全等级从55分提升到65分（+10分）
-- ✅ 企业邮箱验证能证明邮箱控制权，而不是只看域名
+- ✅ 企业邮箱验证增加可信度
 - ✅ 岗位包装检测减少"包装"行为
 - ✅ 自动识别可疑包装，强制人工审核
 
 ---
 
 #### 2.4 收入认证增强（4个工作日）
-
-> **定位调整**：收入认证默认输出“区间级增信结果”，不追求从单张截图中自动得出可直接放行的精确年收入结论。
 
 **改进内容**：
 
@@ -1010,13 +926,12 @@ def extract_salary_from_bank_statement(image_bytes: bytes) -> dict:
       {
         "date": str,
         "amount": float,
-        "amount_yuan": float,
         "description": str,  # "工资"、"代发工资"等
       }
     ],
-    "total_salary_6_months_yuan": float,
-    "avg_monthly_salary_yuan": float,
-    "annual_salary_estimate_yuan": float,
+    "total_salary_6_months": float,
+    "avg_monthly_salary": float,
+    "annual_salary_estimate": float,
     "salary_range_estimate": str,  # "20-30万/年"
   }
   """
@@ -1031,29 +946,20 @@ def extract_salary_from_bank_statement(image_bytes: bytes) -> dict:
       amounts = re.findall(r'[\d,]+\.\d{2}', block['text'])
       if amounts:
         max_amount = max([float(amt.replace(',', '')) for amt in amounts])
-        salary_entries.append({
-          "amount": max_amount,
-          "amount_yuan": max_amount,
-          "description": block['text'],
-        })
+        salary_entries.append({"amount": max_amount, "description": block['text']})
   
   # 计算6个月总收入
-  if not salary_entries:
-    return {"success": False, "review_reason": "未识别到稳定工资流水"}
-
-  total_salary_6_months_yuan = sum(e['amount'] for e in salary_entries)
-  avg_monthly_salary_yuan = total_salary_6_months_yuan / len(salary_entries)
-  annual_salary_estimate_yuan = avg_monthly_salary_yuan * 12
+  total_salary_6_months = sum(e['amount'] for e in salary_entries)
+  avg_monthly_salary = total_salary_6_months / len(salary_entries)
+  annual_salary_estimate = avg_monthly_salary * 12
   
   # 映射到收入区间
-  salary_range_estimate = map_to_income_range(annual_salary_estimate_yuan)
+  salary_range_estimate = map_to_income_range(annual_salary_estimate)
   
   return {
     "success": True,
     "salary_entries": salary_entries,
-    "total_salary_6_months_yuan": total_salary_6_months_yuan,
-    "avg_monthly_salary_yuan": avg_monthly_salary_yuan,
-    "annual_salary_estimate_yuan": annual_salary_estimate_yuan,
+    "annual_salary_estimate": annual_salary_estimate,
     "salary_range_estimate": salary_range_estimate,
   }
 ```
@@ -1068,7 +974,8 @@ def extract_income_from_tax_record(image_bytes: bytes) -> dict:
   返回格式：
   {
     "success": bool,
-    "annual_income_yuan": float,
+    "annual_income": float,
+    "tax_paid": float,
     "salary_range_estimate": str,
   }
   """
@@ -1088,12 +995,9 @@ def extract_income_from_tax_record(image_bytes: bytes) -> dict:
       annual_income = float(match.group(1).replace(',', ''))
       break
   
-  if annual_income is None:
-    return {"success": False, "review_reason": "未识别到个税年收入字段"}
-
   return {
     "success": True,
-    "annual_income_yuan": annual_income,
+    "annual_income": annual_income,
     "salary_range_estimate": map_to_income_range(annual_income),
   }
 ```
@@ -1104,7 +1008,7 @@ def extract_income_from_tax_record(image_bytes: bytes) -> dict:
 def check_income_range_match(
   declared_range: str,  # "20-30万/年"
   extracted_range: str,  # "20-30万/年"（从OCR识别）
-  extracted_annual_salary_yuan: float | None,
+  extracted_annual_salary: float,  # 25.5（从OCR识别的精确值）
 ) -> dict:
   """
   检查收入区间是否匹配（精确匹配）
@@ -1117,22 +1021,20 @@ def check_income_range_match(
   }
   """
   
-  # 提取声明区间上下限，单位统一转换为“元/年”
+  # 提取声明区间上下限
   declared_numbers = re.findall(r'(\d+)', declared_range)
-  declared_min_yuan = int(declared_numbers[0]) * 10000
-  declared_max_yuan = (int(declared_numbers[1]) if len(declared_numbers) > 1 else int(declared_numbers[0])) * 10000
+  declared_min = int(declared_numbers[0])
+  declared_max = int(declared_numbers[1]) if len(declared_numbers) > 1 else declared_min
   
-  # 优先按精确值判断；没有精确值时退化为区间判断
-  if extracted_annual_salary_yuan is not None:
-    if declared_min_yuan <= extracted_annual_salary_yuan <= declared_max_yuan:
+  # 检查精确值是否在区间内
+  if extracted_annual_salary:
+    if extracted_annual_salary >= declared_min and extracted_annual_salary <= declared_max:
       return {"match": True, "match_level": "exact"}
-    elif declared_min_yuan - 50000 <= extracted_annual_salary_yuan <= declared_max_yuan + 50000:
+    elif extracted_annual_salary >= declared_min - 5 and extracted_annual_salary <= declared_max + 5:
+      # 允许±5万误差
       return {"match": True, "match_level": "close"}
     else:
       return {"match": False, "match_level": "mismatch"}
-  if extracted_range:
-    return {"match": declared_range == extracted_range, "match_level": "range_only" if declared_range == extracted_range else "mismatch"}
-  return {"match": False, "match_level": "unknown", "mismatch_detail": "未提取到可用收入结果"}
 ```
 
 ##### 2.4.4 收入与职业匹配度检测
@@ -1191,10 +1093,7 @@ def submit_income_verification(...):
   income_match_result = check_income_range_match(
     declared_range=declared_income_range,
     extracted_range=extracted_result.get('salary_range_estimate'),
-    extracted_annual_salary_yuan=(
-      extracted_result.get('annual_salary_estimate_yuan')
-      or extracted_result.get('annual_income_yuan')
-    ),
+    extracted_annual_salary=extracted_result.get('annual_salary_estimate'),
   )
   
   # 检查收入与职业匹配
@@ -1202,10 +1101,11 @@ def submit_income_verification(...):
   
   # 判断下一步
   if income_match_result['match'] and job_match_result['match']:
-    # 低风险样本进入快速人工复核，不因OCR直接自动通过
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'fast_lane'")
+    # 匹配成功，可以自动通过
+    conn.execute("UPDATE ... SET status = 'approved'")
   else:
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'normal_lane'")
+    # 需要人工审核
+    conn.execute("UPDATE ... SET status = 'under_review'")
 ```
 
 **改进原因**：
@@ -1216,8 +1116,7 @@ def submit_income_verification(...):
 **预期效果**：
 - ✅ 收入认证安全等级从45分提升到60分（+15分）
 - ✅ OCR自动识别金额，减少人工审核工作量
-- ✅ 收入单位统一为“元/年”后再做区间匹配，避免系统性误判
-- ✅ 税单和流水两类材料输出字段统一，便于风控规则复用
+- ✅ 收入区间精确匹配，替代宽松的区间匹配
 - ✅ 收入与职业匹配度检测，发现异常组合
 
 ---
@@ -1493,35 +1392,35 @@ def evaluate_candidate_search_gate(candidate: dict) -> GateDecision:
 ##### 3.2.4 前端展示认证时间和过期提示
 
 ```typescript
-function buildVerificationItems(profile: any, expiryCheck: any) {
-  const items = []
-
-  if (profile.photo_verification_level === 'live_video_verified' && profile.photo_verification_at) {
-    const verificationAt = new Date(profile.photo_verification_at)
-    const expiresAt = new Date(verificationAt.getTime() + 365 * 24 * 60 * 60 * 1000)
-
-    items.push({
-      verification_type: 'video',
-      label: '身份认证',
-      status: 'verified',
-      verified_at: verificationAt,
-      verified_date_label: formatDate(verificationAt, 'YYYY年M月认证'),
-      expires_at: expiresAt,
-      expiring_soon: expiryCheck.expiring_soon_fields.includes('video'),
-    })
-  }
-
-  if (profile.education_verification_status === 'approved') {
-    items.push({
-      verification_type: 'education',
-      label: '学历认证',
-      authority_verified: profile.education_authority_verified,
-      authority_label: profile.education_authority_verified ? '学信网验证' : null,
-    })
-  }
-
+function buildVerificationItems(profile: dict) -> list[dict]:
+  expiry_check = check_verification_expiry(profile)
+  
+  // 视频认证
+  if profile.get('photo_verification_level') == 'live_video_verified'):
+    verification_at = profile.get('photo_verification_at')
+    expires_at = verification_at + timedelta(days=365)
+    
+    item = {
+      "verification_type": "video",
+      "label": "身份认证",
+      "status": "verified",
+      "verified_at": verification_at,
+      "verified_date_label": format_date(verification_at, "YYYY年M月认证"),
+      "expires_at": expires_at,
+      "days_remaining": (expires_at - datetime.now()).days,
+      "expiring_soon": expiry_check['expiring_soon_fields'].includes('video'),
+    }
+  
+  // 学历认证（包含权威验证标签）
+  if profile.get('education_verification_status') == 'approved'):
+    item = {
+      "verification_type": "education",
+      "label": "学历认证",
+      "authority_verified": profile.get('education_authority_verified'),
+      "authority_label": "学信网验证" if profile.get('education_authority_verified') else None,
+    }
+  
   return items
-}
 ```
 
 **改进原因**：
@@ -1562,9 +1461,7 @@ def get_verification_quality_metrics(
       SUM(auto_resubmission) as auto_resubmission,
       SUM(manual_review) as manual_review,
       SUM(manual_approved_after_auto) as manual_approved_after_auto,
-      AVG(false_positive_rate) as avg_false_positive_rate,
-      SUM(false_negative_recall_count) as false_negative_recall_count,
-      AVG(post_approval_revocation_rate) as avg_post_approval_revocation_rate,
+      AVG(accuracy_rate) as avg_accuracy_rate,
       AVG(avg_auto_review_latency_ms) as avg_auto_review_latency_ms
     FROM verification_auto_review_stats
     WHERE stat_date BETWEEN ? AND ?
@@ -1574,19 +1471,15 @@ def get_verification_quality_metrics(
   
   # 计算综合指标
   total_submissions = sum(s['total_auto_reviews'] for s in stats)
-  auto_approve_rate = sum(s['auto_approved'] for s in stats) / total_submissions if total_submissions else 0
-  manual_review_total = sum(s['manual_review'] for s in stats)
-  false_positive_rate = sum(s['manual_approved_after_auto'] for s in stats) / manual_review_total if manual_review_total else 0
-  false_negative_recall_count = sum(s['false_negative_recall_count'] for s in stats)
+  auto_approve_rate = sum(s['auto_approved'] for s in stats) / total_submissions
+  auto_accuracy = sum(s['manual_approved_after_auto'] for s in stats) / sum(s['manual_review'] for s in stats)
   
   return {
     "period": {"start_date": start_date, "end_date": end_date},
     "summary": {
       "total_submissions": total_submissions,
       "auto_approve_rate": auto_approve_rate,
-      "false_positive_rate": false_positive_rate,
-      "false_negative_recall_count": false_negative_recall_count,
-      "avg_post_approval_revocation_rate": ...,
+      "auto_accuracy_rate": auto_accuracy,
       "avg_auto_review_latency_ms": ...,
     },
     "daily_stats": stats,
@@ -1626,7 +1519,7 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 
 **预期效果**：
 - ✅ 审核质量可量化监控
-- ✅ 自动审核误拦率、漏放后追撤率可追踪
+- ✅ 自动审核准确率可追踪
 - ✅ 审核延迟可监控
 - ✅ 数据驱动的阈值调整决策
 
@@ -1647,16 +1540,15 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 
 **Phase 1（基础架构优化）**：
 - ✅ 数据库表结构优化（权重表、metadata拆分、过期机制）
-- ✅ 敏感数据治理（加密、保留周期、最小权限、访问审计）
 - ✅ 自动审核阈值配置化（动态调整能力）
 - ✅ API安全和效率优化（rate limiting、multipart上传）
 - ✅ 前端流程优化（SSE重连、权限引导、文件上传）
 
 **Phase 2（核心功能增强）**：
-- ✅ OCR识别功能（自动识别证件文字，辅助审核分流）
-- ✅ 学历权威API对接（学信网验证，并参与最终审批）
+- ✅ OCR识别功能（自动识别证件文字）
+- ✅ 学历权威API对接（学信网验证）
 - ✅ 职业认证增强（企业邮箱验证、岗位包装检测）
-- ✅ 收入认证增强（金额识别、统一单位后的区间匹配）
+- ✅ 收入认证增强（金额识别、区间精确匹配）
 
 **Phase 3（高级功能和完善）**：
 - ✅ Deepfake检测增强（多模型交叉验证、实时换脸检测）
@@ -1666,20 +1558,19 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 ### 3.3 实施优先级排序
 
 **优先级排序**：
-1. **Phase 1.1 数据库表结构优化 + 敏感数据治理**（不先收敛数据边界，后续能力上线风险过高）
-2. **Phase 2.2 学历权威API对接**（唯一真正能显著增强真实性校验的字段认证能力）
-3. **Phase 2.1 OCR识别功能**（提升录入效率和人工审核分流效率）
-4. **Phase 2.4 收入认证增强**（统一单位、规则和输出字段，降低误判）
+1. **Phase 2.1 OCR识别功能**（提升三个字段认证安全等级，效果最明显）
+2. **Phase 2.4 收入认证增强**（当前安全等级最低，优先提升）
+3. **Phase 2.2 学历权威API对接**（学历认证价值最高，优先对接）
+4. **Phase 1.1 数据库表结构优化**（为后续功能打基础）
 5. **Phase 1.2 自动审核阈值配置化**（提升系统灵活性）
 
 ### 3.4 风险评估和成本分析
 
 **风险评估**：
 - OCR服务成本：阿里云OCR约0.01元/次，每月预算约500-1000元
-- 权威API成本：学历验证约5-10元/次，需要控制调用频率（仅进入拟通过阶段时调用）
+- 权威API成本：学历验证约5-10元/次，需要控制调用频率（仅审核通过时调用）
 - Deepfake检测延迟：多模型检测可能增加2-3秒延迟
 - 前端改造成本：需要更新前端SDK和页面组件
-- 敏感数据风险：若不做字段级加密和访问审计，认证资料泄露影响远高于普通业务数据
 
 **回滚方案**：
 - OCR识别失败：降级到纯人工审核
@@ -1691,15 +1582,13 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 
 **Phase 1验收标准**：
 - [ ] 数据库表结构变更完成，迁移脚本测试通过
-- [ ] 敏感字段加密、保留周期、访问审计策略落地
 - [ ] 自动审核阈值可通过rule_config动态调整
 - [ ] API rate limiting生效，恶意调用被拦截
 - [ ] 前端SSE重连机制稳定，摄像头权限引导UI可用
 
 **Phase 2验收标准**：
 - [ ] OCR识别功能上线，证件文字识别准确率≥85%
-- [ ] OCR结果仅用于分流，不因字段匹配而直接自动通过
-- [ ] 学历权威API对接完成，且未通过权威校验的样本不会自动放行
+- [ ] 学历权威API对接完成，验证成功率≥90%
 - [ ] 岗位包装检测生效，高风险包装被拦截
 - [ ] 收入金额识别功能上线，区间匹配准确率≥80%
 
@@ -1707,7 +1596,6 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 - [ ] Deepfake多模型检测上线，准确率提升≥5%
 - [ ] 认证过期机制生效，过期认证自动降级
 - [ ] 审核质量仪表板上线，数据可视化可用
-- [ ] 仪表板可查看误拦率、漏放后追撤数、自动通过后追撤率
 - [ ] 所有认证安全等级达到目标分数
 
 ---
