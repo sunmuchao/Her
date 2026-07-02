@@ -128,8 +128,9 @@ def rest_profile_get_basic_info(
     except ValueError:
         return 400, {"error": {"code": "invalid_request", "message": "Invalid profile_id format"}}
 
-    # 获取默认 source
-    source_dsn = _default_profile_source()
+    q = _query_dict(environ)
+    source_dsn = q.get("source_dsn") or _default_profile_source()
+    source_table_name = q.get("source_table_name") or "profiles"
     if not source_dsn:
         return 500, {"error": {"code": "config_error", "message": "Profile source not configured"}}
 
@@ -137,7 +138,7 @@ def rest_profile_get_basic_info(
     try:
         profile = get_profile(
             source_dsn=source_dsn,
-            source_table_name="profiles",
+            source_table_name=source_table_name,
             profile_id=profile_id_int,
         )
 
@@ -151,6 +152,7 @@ def rest_profile_get_basic_info(
             "user_name": profile.get("user_name") or profile.get("name"),
             "nickname": profile.get("nickname"),
             "avatar_url": profile.get("avatar_url") or profile.get("photo_url"),
+            "education": profile.get("education"),
         }
 
         return 200, {"profile": _json_safe(basic_info)}

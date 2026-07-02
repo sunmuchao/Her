@@ -34,5 +34,6 @@ export const queryKeys = {
   appealReviewQueue: ['review', 'appeal', 'queue'] as const,
 
   // 用户信息
-  userInfo: (profileId: number) => ['user', 'info', profileId] as const,
+  userInfo: (profileId: number, sourceDsn?: string, sourceTableName?: string) =>
+    ['user', 'info', profileId, sourceDsn ?? 'default', sourceTableName ?? 'default'] as const,
 }

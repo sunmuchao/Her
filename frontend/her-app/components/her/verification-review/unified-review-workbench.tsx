@@ -91,6 +91,8 @@ export default function UnifiedReviewWorkbench() {
     declared_value: detail.declared_value ?? '未知',
     status: detail.status ?? 'submitted',
     evidence: detail.evidence ?? null,
+    source_dsn: detail.source_dsn,
+    source_table_name: detail.source_table_name,
     review_count: detail.review_count ?? 0,
     reviews: Array.isArray(detail.reviews) ? detail.reviews : [],
     created_at: detail.created_at,

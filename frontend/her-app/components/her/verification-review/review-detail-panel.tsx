@@ -90,7 +90,7 @@ export default function ReviewDetailPanel({
   const {
     data: userInfo,
     isLoading: loadingUserInfo,
-  } = useUserInfo(submission.profile_id)
+  } = useUserInfo(submission)
 
   const normalizeEvidenceArray = (evidence: VerificationSubmissionDetail['evidence']): VerificationEvidence[] => {
     if (Array.isArray(evidence)) return evidence
@@ -129,6 +129,10 @@ export default function ReviewDetailPanel({
   const hasImages = evidenceImages.length > 0
   const hasPDFs = evidencePDFs.length > 0
   const hasEvidence = hasImages || hasPDFs
+  const normalizedDeclaredValue = submission.declared_value?.trim()
+  const declaredValue = normalizedDeclaredValue && normalizedDeclaredValue !== '未知'
+    ? normalizedDeclaredValue
+    : (userInfo?.education || '未知')
 
   // 重置表单
   const resetForm = () => {
@@ -271,7 +275,7 @@ export default function ReviewDetailPanel({
         <div className="rounded-xl bg-muted/30 p-3 space-y-2 text-xs">
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">申报学历:</span>
-            <span className="text-foreground font-medium">{submission.declared_value}</span>
+            <span className="text-foreground font-medium">{declaredValue}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">审核次数:</span>

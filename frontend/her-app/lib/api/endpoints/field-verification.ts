@@ -45,6 +45,8 @@ export type VerificationSubmissionDetail = {
   declared_value: string
   status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'resubmission_required'
   evidence?: VerificationEvidence | VerificationEvidence[] | Record<string, unknown> | null
+  source_dsn?: string
+  source_table_name?: string
   created_at?: string  // 创建时间
   updated_at?: string  // 更新时间
   submitted_at?: string // 兼容字段
