@@ -27,7 +27,7 @@ from .identity import ROLE_OPS_OPERATOR, ROLE_PLATFORM_ADMIN, ROLE_RISK_REVIEWER
 class RuleConfigGateway(Protocol):
     def _current_actor(self, environ: dict[str, Any]) -> Any: ...
 
-    def _require_roles(self, actor: Any, roles: set[str]) -> None: ...
+    def _require_roles(self, environ: dict[str, Any], roles: set[str]) -> None: ...
 
     def _with_rec(self, fn: Any, *args: Any, **kwargs: Any) -> Any: ...
 
@@ -38,7 +38,7 @@ def _require_ops_actor(gateway: RuleConfigGateway, environ: dict[str, Any]) -> t
         return None, (401, {"error": {"code": "unauthorized", "message": "authentication required"}})
     try:
         gateway._require_roles(
-            actor,
+            environ,
             {ROLE_OPS_OPERATOR, ROLE_RISK_REVIEWER, ROLE_PLATFORM_ADMIN},
         )
     except GatewayPermissionError as exc:

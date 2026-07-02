@@ -1456,6 +1456,26 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(payload["principal"]["user_id"], "ops-1")
         self.assertIn("ops_operator", payload["principal"]["roles"])
 
+    def test_ops_rule_config_active_allows_ops_actor(self) -> None:
+        tokens = json.dumps({"token-ops": {"actor_id": "ops-1", "roles": ["ops_operator", "service_worker"]}})
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with mock.patch.object(gw, "_with_rec", return_value={"active": []}):
+                env = _wsgi_env(
+                    "GET",
+                    "/v1/ops/rule-config/active",
+                    extra=_auth_headers("token-ops"),
+                )
+                status, payload = self._run_with_gateway(gw, env)
+
+        self.assertIn("200", status)
+        self.assertEqual(payload["active"], [])
+
     def test_matchmaking_reply_defaults_member_to_current_actor(self) -> None:
         tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
         fake_case = {
