@@ -14,6 +14,8 @@ interface VerificationFlowPageProps {
 }
 
 function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
+  console.log('[VerificationFlowContent] 开始渲染')
+
   const {
     fieldVerificationTypes,
     loadError,
@@ -24,6 +26,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     recordingTime,
     liveChallenge,
     recordedVideo,
+    previewStream,
     setRecordedVideo,
     isSubmittingVideo,
     selectedFile,
@@ -37,9 +40,17 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     handleSubmitField,
   } = useVerificationFlow(onBack)
 
+  console.log('[VerificationFlowContent] useVerificationFlow 返回值:', {
+    loadError,
+    step,
+    selectedField,
+    fieldVerificationTypesLength: fieldVerificationTypes?.length,
+  })
+
   if (loadError) {
+    console.log('[VerificationFlowContent] 显示错误页面:', loadError)
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6 text-center">
+      <div className="h-full bg-background flex items-center justify-center px-6 text-center">
         <div>
           <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
           <button
@@ -54,7 +65,10 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     )
   }
 
+  console.log('[VerificationFlowContent] 当前 step:', step)
+
   if (step === 'video-intro') {
+    console.log('[VerificationFlowContent] 渲染 video-intro')
     return (
       <VerificationVideoIntro
         isSubmittingVideo={isSubmittingVideo}
@@ -66,10 +80,12 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
   }
 
   if (step === 'video-record') {
+    console.log('[VerificationFlowContent] 渲染 video-record')
     return (
       <VerificationVideoRecord
         isRecording={isRecording}
         recordingTime={recordingTime}
+        previewStream={previewStream}
         onBack={() => setStep('video-intro')}
         onRecordVideo={handleRecordVideo}
       />
@@ -77,6 +93,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
   }
 
   if (step === 'video-review') {
+    console.log('[VerificationFlowContent] 渲染 video-review')
     return (
       <VerificationVideoReview
         recordedVideo={recordedVideo}
@@ -92,10 +109,12 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
   }
 
   if (step === 'video-pending') {
+    console.log('[VerificationFlowContent] 渲染 video-pending')
     return <VerificationVideoPending onBack={onBack} />
   }
 
   if (step === 'field-upload') {
+    console.log('[VerificationFlowContent] 渲染 field-upload')
     return (
       <VerificationFieldUpload
         selectedField={selectedField}
@@ -111,16 +130,20 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
   }
 
   if (step === 'field-pending') {
+    console.log('[VerificationFlowContent] 渲染 field-pending')
     return <VerificationFieldPending onBack={onBack} />
   }
 
+  console.log('[VerificationFlowContent] 没有匹配的 step，返回 null')
   return null
 }
 
 export default function VerificationFlowPage({ onBack }: VerificationFlowPageProps) {
+  console.log('[VerificationFlowPage] 开始渲染，onBack:', typeof onBack)
+
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="h-full bg-background flex items-center justify-center">
         <div className="text-sm text-muted-foreground">加载中...</div>
       </div>
     }>

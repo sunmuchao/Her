@@ -31,7 +31,7 @@ export function VerificationFieldUpload({
   const activeRef = fileInputRef?.current ? fileInputRef : internalFileInputRef
 
   return (
-    <PageTransition className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+    <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3 flex items-center gap-3">
           <button onClick={onBack} className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors">

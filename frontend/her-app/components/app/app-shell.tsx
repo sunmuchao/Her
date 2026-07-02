@@ -68,6 +68,9 @@ export function AppShell({
   fromSubPage,
   inboxFilter,
 }: AppShellProps) {
+  console.log('[AppShell] 开始渲染')
+  console.log('[AppShell] props:', { currentTab, subView, selectedCandidateId, selectedChatId })
+
   const router = useRouter()
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
   const { isConnected: sseConnected } = useGlobalSSE() // ✅ 新增：全局SSE订阅
@@ -156,6 +159,7 @@ export function AppShell({
             />
           </SlideInTransition>
         )}
+        console.log('[AppShell] 检查 subView === verification:', subView === 'verification')
         {subView === 'verification' && (
           <SlideInTransition key="verification" direction="up">
             <VerificationFlowPage onBack={onBackFromVerification} />

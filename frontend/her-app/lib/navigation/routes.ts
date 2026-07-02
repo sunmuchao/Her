@@ -113,7 +113,11 @@ export function pageToPath(page: AppPage, params: RouteParams = {}): string {
 }
 
 export function pathToPage(pathname: string): ParsedRoute {
+  console.log('[pathToPage] 输入 pathname:', pathname)
+
   const path = pathname.replace(/\/+$/, '') || '/splash'
+
+  console.log('[pathToPage] 处理后的 path:', path)
 
   if (path === '/' || path === '/splash') return { page: 'splash' }
   if (path === '/welcome') return { page: 'auth-welcome' }
@@ -127,7 +131,13 @@ export function pathToPage(pathname: string): ParsedRoute {
   if (path === '/discover') return { page: 'main-matchmaker' }
   if (path === '/relationships') return { page: 'main-relationships' }
   if (path === '/profile') return { page: 'main-profile' }
-  if (path === '/verification') return { page: 'sub-verification' }
+
+  console.log('[pathToPage] 检查 /verification')
+  if (path === '/verification') {
+    console.log('[pathToPage] 匹配到 /verification，返回 sub-verification')
+    return { page: 'sub-verification' }
+  }
+
   if (path === '/trust') return { page: 'main-profile' }
   if (path === '/profile/collected') return { page: 'sub-collected-preferences' }
   if (path === '/profile/edit') return { page: 'sub-edit-profile' }

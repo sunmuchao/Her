@@ -34,17 +34,28 @@ export type ChatUserInfo = {
 let lastSourceTab: TabType | null = null
 
 export function useAppRouter() {
+  console.log('[useAppRouter] 开始初始化')
+
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  console.log('[useAppRouter] pathname:', pathname)
+  console.log('[useAppRouter] searchParams:', searchParams.toString())
+
   const parsed = useMemo(() => pathToPage(pathname), [pathname])
   const currentPage = parsed.page
+
+  console.log('[useAppRouter] parsed page:', currentPage)
+
   // 当进入详情页时，使用记录的来源 tab
   const currentTab = currentPage === 'sub-candidate-detail' && lastSourceTab
     ? lastSourceTab
     : pageToTab(currentPage)
   const subView = pageToSubView(currentPage)
+
+  console.log('[useAppRouter] currentTab:', currentTab)
+  console.log('[useAppRouter] subView:', subView)
 
   const [selectedCandidate, setSelectedCandidate] = useState<CandidatePreview | null>(null)
   const [discoverySessionId, setDiscoverySessionId] = useState<string | null>(null)

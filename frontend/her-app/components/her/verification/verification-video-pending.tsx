@@ -9,7 +9,7 @@ interface VerificationVideoPendingProps {
 
 export function VerificationVideoPending({ onBack }: VerificationVideoPendingProps) {
   return (
-    <PageTransition className="min-h-screen bg-background max-w-md mx-auto flex flex-col">
+    <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
           <h1 className="font-medium text-foreground">提交成功</h1>

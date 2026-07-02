@@ -13,7 +13,13 @@ import {
   listFieldVerifications,
   submitFieldVerification,
 } from '@/lib/api/endpoints/field-verification'
-import { recordVideoFromCamera, type RecordedVideo } from '@/lib/media/video-recorder'
+import {
+  recordVideoFromCamera,
+  recordVideoFromStream,
+  startUserFacingCamera,
+  stopMediaStream,
+  type RecordedVideo,
+} from '@/lib/media/video-recorder'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
@@ -64,11 +70,23 @@ function resolveInitialStep(target: string | null): VerificationStep {
 }
 
 export function useVerificationFlow(onBack: () => void) {
+  console.log('[useVerificationFlow] 开始初始化')
+
   const searchParams = useSearchParams()
   const initialTarget = searchParams.get('target')
+
+  console.log('[useVerificationFlow] searchParams:', {
+    target: initialTarget,
+    from: searchParams.get('from'),
+  })
+
   const [fieldVerificationTypes, setFieldVerificationTypes] = useState<FieldItem[]>(DEFAULT_FIELDS)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [step, setStep] = useState<VerificationStep>(() => resolveInitialStep(initialTarget))
+  const [step, setStep] = useState<VerificationStep>(() => {
+    const resolved = resolveInitialStep(initialTarget)
+    console.log('[useVerificationFlow] resolveInitialStep 结果:', resolved)
+    return resolved
+  })
   const [selectedField] = useState<string | null>(() =>
     initialTarget === 'education' || initialTarget === 'occupation' || initialTarget === 'income' ? initialTarget : null,
   )
@@ -77,6 +95,7 @@ export function useVerificationFlow(onBack: () => void) {
   const [liveChallenge, setLiveChallenge] = useState<LiveVideoChallenge | null>(null)
   const [recordedVideo, setRecordedVideo] = useState<RecordedVideo | null>(null)
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false)
+  const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -84,23 +103,39 @@ export function useVerificationFlow(onBack: () => void) {
   const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
+    console.log('[useVerificationFlow] useEffect 开始执行')
+
     const userId = getUserId()
+    console.log('[useVerificationFlow] userId:', userId)
+
     if (!userId) {
+      console.log('[useVerificationFlow] 用户未登录，设置 loadError')
       setLoadError('请先登录后再进行认证')
       return
     }
 
     let cancelled = false
     async function loadVerificationState() {
+      console.log('[loadVerificationState] 开始加载认证状态')
       try {
         const [submissions, notifications, fieldSubmissions] = await Promise.all([
           listVerificationSubmissions(),
           listVerificationNotifications(),
           listFieldVerifications(),
         ])
+
+        console.log('[loadVerificationState] API 返回数据:', {
+          submissionsLength: submissions?.length,
+          notificationsLength: notifications?.length,
+          fieldSubmissionsLength: fieldSubmissions?.length,
+        })
+
         if (cancelled) return
         const latest = submissions[0]
         const videoStatus = mapSubmissionStatus(latest?.status)
+
+        console.log('[loadVerificationState] videoStatus:', videoStatus)
+
         const pendingHint =
           notifications.find((n) => n.type?.includes('resubmission'))?.body ||
           notifications[0]?.body ||
@@ -125,9 +160,12 @@ export function useVerificationFlow(onBack: () => void) {
             return fieldStatus ? { ...item, status: fieldStatus } : item
           }),
         )
+
+        console.log('[loadVerificationState] fieldVerificationTypes 已更新')
         setLoadError(null)
       } catch (error) {
         if (cancelled) return
+        console.error('[loadVerificationState] 加载失败:', error)
         setLoadError(getErrorMessage(error, '认证状态加载失败'))
       }
     }
@@ -137,6 +175,43 @@ export function useVerificationFlow(onBack: () => void) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function ensurePreview() {
+      if (step !== 'video-record' || previewStream) return
+      try {
+        const stream = await startUserFacingCamera()
+        if (cancelled) {
+          stopMediaStream(stream)
+          return
+        }
+        setPreviewStream(stream)
+      } catch (error) {
+        if (!cancelled) {
+          notifyError(error, '无法打开摄像头')
+        }
+      }
+    }
+
+    void ensurePreview()
+
+    if (step !== 'video-record' && previewStream) {
+      stopMediaStream(previewStream)
+      setPreviewStream(null)
+    }
+
+    return () => {
+      cancelled = true
+    }
+  }, [previewStream, step])
+
+  useEffect(() => {
+    return () => {
+      stopMediaStream(previewStream)
+    }
+  }, [previewStream])
 
   // ✅ 新增：SSE监听验证状态变化
   useEffect(() => {
@@ -251,8 +326,12 @@ export function useVerificationFlow(onBack: () => void) {
     setRecordingTime(0)
     const timer = window.setInterval(() => setRecordingTime((prev) => prev + 1), 1000)
     try {
-      const video = await recordVideoFromCamera(6000)
+      const video = previewStream
+        ? await recordVideoFromStream(previewStream, 6000, false)
+        : await recordVideoFromCamera(6000)
       setRecordedVideo(video)
+      stopMediaStream(previewStream)
+      setPreviewStream(null)
       setStep('video-review')
     } catch (error) {
       notifyError(error, '录制失败')
@@ -315,6 +394,7 @@ export function useVerificationFlow(onBack: () => void) {
     recordingTime,
     liveChallenge,
     recordedVideo,
+    previewStream,
     setRecordedVideo,
     isSubmittingVideo,
     selectedFile,

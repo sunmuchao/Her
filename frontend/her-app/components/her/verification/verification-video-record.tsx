@@ -1,10 +1,12 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
 interface VerificationVideoRecordProps {
   isRecording: boolean
   recordingTime: number
+  previewStream: MediaStream | null
   onBack: () => void
   onRecordVideo: () => void
 }
@@ -12,11 +14,37 @@ interface VerificationVideoRecordProps {
 export function VerificationVideoRecord({
   isRecording,
   recordingTime,
+  previewStream,
   onBack,
   onRecordVideo,
 }: VerificationVideoRecordProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.srcObject = previewStream
+    if (previewStream) {
+      void video.play().catch(() => {})
+    }
+    return () => {
+      if (video) {
+        video.srcObject = null
+      }
+    }
+  }, [previewStream])
+
   return (
-    <div className="min-h-screen bg-foreground max-w-md mx-auto flex flex-col relative">
+    <div className="h-full bg-foreground flex flex-col relative">
+      {previewStream ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          className="absolute inset-0 h-full w-full object-cover scale-x-[-1]"
+        />
+      ) : null}
       <div className="absolute inset-0 bg-gradient-to-b from-foreground/80 to-foreground" />
       <button
         onClick={onBack}
@@ -26,8 +54,8 @@ export function VerificationVideoRecord({
       </button>
       <div className="relative z-10 flex-1 flex flex-col items-center justify-between py-16 px-8">
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/40 flex items-center justify-center">
-            <p className="text-white/60 text-sm">将面部置于框内</p>
+          <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/40 flex items-center justify-center backdrop-blur-[1px]">
+            {!previewStream ? <p className="text-white/60 text-sm">正在打开摄像头...</p> : null}
           </div>
         </div>
         <div className="text-center mb-8">

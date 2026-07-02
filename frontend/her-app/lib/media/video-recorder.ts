@@ -5,6 +5,21 @@ export type RecordedVideo = {
   mimeType: string
 }
 
+export async function startUserFacingCamera(): Promise<MediaStream> {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error('当前环境不支持摄像头录制')
+  }
+
+  return navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'user' },
+    audio: true,
+  })
+}
+
+export function stopMediaStream(stream: MediaStream | null | undefined) {
+  stream?.getTracks().forEach((track) => track.stop())
+}
+
 function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -22,15 +37,14 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<RecordedVideo> {
-  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-    throw new Error('当前环境不支持摄像头录制')
+export async function recordVideoFromStream(
+  stream: MediaStream,
+  maxDurationMs = 6000,
+  stopStreamAfterRecord = false,
+): Promise<RecordedVideo> {
+  if (!stream) {
+    throw new Error('缺少摄像头流')
   }
-
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: 'user' },
-    audio: true,
-  })
 
   const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
     ? 'video/webm;codecs=vp9'
@@ -62,7 +76,9 @@ export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<Recor
     recorder.stop()
   }
 
-  stream.getTracks().forEach((track) => track.stop())
+  if (stopStreamAfterRecord) {
+    stopMediaStream(stream)
+  }
 
   const blob = await recorded
   const base64 = await blobToBase64(blob)
@@ -74,4 +90,9 @@ export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<Recor
     base64,
     mimeType: blob.type || 'video/webm',
   }
+}
+
+export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<RecordedVideo> {
+  const stream = await startUserFacingCamera()
+  return recordVideoFromStream(stream, maxDurationMs, true)
 }
