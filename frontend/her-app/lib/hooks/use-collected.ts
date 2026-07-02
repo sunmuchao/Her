@@ -15,14 +15,14 @@ export type CollectedStatementsData = {
 }
 
 export function useCollectedStatements() {
+  const profileId = getProfileId()
+
   return useQuery({
-    queryKey: queryKeys.collectedStatements,
+    queryKey: queryKeys.collectedStatements(profileId),
+    enabled: Boolean(profileId),
     queryFn: async (): Promise<CollectedStatementsData> => {
-      // ✅ 修复：先获取profileId，再传给fetchCollectedStatements（防止使用默认值）
-      const profileId = getProfileId()
       if (!profileId) {
-        // 如果没有profileId，返回空对象（防止403错误）
-        return { collected_statements: {}, collected_items: {} }
+        throw new Error('profileId is required')
       }
       return fetchCollectedStatements(profileId)
     },

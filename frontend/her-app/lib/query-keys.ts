@@ -8,7 +8,7 @@ export const queryKeys = {
   trustHub: (userId: string, profileId?: number) => ['trust', 'hub', userId, profileId] as const,
 
   // 已收集偏好
-  collectedStatements: ['collected', 'statements'] as const,
+  collectedStatements: (profileId?: number) => ['collected', 'statements', profileId ?? 'anonymous'] as const,
 
   // 认证状态
   verificationSubmissions: ['verification', 'submissions'] as const,
