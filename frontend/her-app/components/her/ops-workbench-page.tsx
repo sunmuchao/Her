@@ -151,9 +151,6 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
           message={getErrorMessage(loadError)}
           onRetry={() => void loadSummary()}
         />
-        <p className="mt-4 text-xs text-muted-foreground">
-          需要 ops_operator / risk_reviewer / platform_admin 角色；本地联调可使用 Gateway legacy API key。
-        </p>
       </div>
     )
   }
