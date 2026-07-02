@@ -1,46 +1,20 @@
-# 开发模式 docker-compose
-# 特点：挂载代码目录，修改代码后只需重启，不需要重建
-
 services:
-  sse-server:
-    volumes:
-      - ./external-systems/sse-server:/app/external-systems/sse-server
-      - ./her_env.py:/app/her_env.py
-    # 修改代码后：docker compose restart sse-server
-
   gateway-public:
     volumes:
-      - ./external-systems/partner-http-gateway:/app/external-systems/partner-http-gateway
-      - ./external-systems/partner-chat-system:/app/external-systems/partner-chat-system
-      - ./external-systems/partner-discovery-system:/app/external-systems/partner-discovery-system
-      - ./external-systems/partner-matchmaking-system:/app/external-systems/partner-matchmaking-system
-      - ./external-systems/partner-recommendation-system:/app/external-systems/partner-recommendation-system
-      - ./match_domain:/app/match_domain
-      - ./partner_search:/app/partner_search
-      - ./her_env.py:/app/her_env.py
-      - ./her_json_utils.py:/app/her_json_utils.py
-    # 修改代码后：docker compose restart gateway-public
-
-  gateway-internal:
-    volumes:
-      - ./external-systems/partner-http-gateway:/app/external-systems/partner-http-gateway
-      - ./external-systems/partner-chat-system:/app/external-systems/partner-chat-system
-      - ./external-systems/partner-discovery-system:/app/external-systems/partner-discovery-system
-      - ./external-systems/partner-matchmaking-system:/app/external-systems/partner-matchmaking-system
-      - ./external-systems/partner-recommendation-system:/app/external-systems/partner-recommendation-system
-      - ./match_domain:/app/match_domain
-      - ./partner_search:/app/partner_search
-      - ./her_env.py:/app/her_env.py
-      - ./her_json_utils.py:/app/her_json_utils.py
+      - .:/app
 
   gateway-ops:
     volumes:
-      - ./external-systems/partner-http-gateway:/app/external-systems/partner-http-gateway
-      - ./external-systems/partner-chat-system:/app/external-systems/partner-chat-system
-      - ./external-systems/partner-discovery-system:/app/external-systems/partner-discovery-system
-      - ./external-systems/partner-matchmaking-system:/app/external-systems/partner-matchmaking-system
-      - ./external-systems/partner-recommendation-system:/app/external-systems/partner-recommendation-system
-      - ./match_domain:/app/match_domain
-      - ./partner_search:/app/partner_search
-      - ./her_env.py:/app/her_env.py
-      - ./her_json_utils.py:/app/her_json_utils.py
+      - .:/app
+
+  gateway-internal:
+    volumes:
+      - .:/app
+
+  scheduler:
+    volumes:
+      - .:/app
+
+  sse-server:
+    volumes:
+      - .:/app
