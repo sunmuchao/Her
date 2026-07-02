@@ -1430,6 +1430,32 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertIn("403", status)
         self.assertEqual(payload["error"]["code"], "forbidden")
 
+    def test_ops_workbench_summary_allows_ops_actor(self) -> None:
+        tokens = json.dumps({"token-ops": {"actor_id": "ops-1", "roles": ["ops_operator", "service_worker"]}})
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with (
+                mock.patch.object(gw, "_build_async_job_dashboard", return_value={"totals": {"total": 1}}),
+                mock.patch.object(gw, "_with_ledger", return_value=[]),
+            ):
+                env = _wsgi_env(
+                    "GET",
+                    "/v1/ops/workbench/summary",
+                    query="limit=3",
+                    extra=_auth_headers("token-ops"),
+                )
+                status, payload = self._run_with_gateway(gw, env)
+
+        self.assertIn("200", status)
+        self.assertEqual(payload["dashboard"]["totals"]["total"], 1)
+        self.assertEqual(payload["principal"]["user_id"], "ops-1")
+        self.assertIn("ops_operator", payload["principal"]["roles"])
+
     def test_matchmaking_reply_defaults_member_to_current_actor(self) -> None:
         tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
         fake_case = {

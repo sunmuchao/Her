@@ -28,7 +28,7 @@ from .profile_source_defaults import default_profile_source
 class SupportGateway(Protocol):
     def _current_actor(self, environ: dict[str, Any]) -> Any: ...
 
-    def _require_roles(self, actor: Any, roles: set[str]) -> None: ...
+    def _require_roles(self, environ: dict[str, Any], roles: set[str]) -> None: ...
 
     def _resolve_end_user_principal(self, environ: dict[str, Any], *, require_profile: bool = False) -> Any: ...
 
@@ -239,7 +239,7 @@ def rest_ops_override(
     # Step 1: Role check
     try:
         gateway._require_roles(
-            actor,
+            environ,
             {ROLE_OPS_OPERATOR, ROLE_RISK_REVIEWER, ROLE_PLATFORM_ADMIN},
         )
     except GatewayPermissionError as exc:
@@ -404,7 +404,7 @@ def rest_ops_workbench_summary(
         return 401, {"error": {"code": "unauthorized", "message": "authentication required"}}
     try:
         gateway._require_roles(
-            actor,
+            environ,
             {ROLE_OPS_OPERATOR, ROLE_RISK_REVIEWER, ROLE_PLATFORM_ADMIN},
         )
     except GatewayPermissionError as exc:
