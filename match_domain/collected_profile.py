@@ -78,8 +78,11 @@ COLLECTED_PERSONA_FIELDS = frozenset(
         "target_requires_partner_accept_my_children",
         "target_want_children",
         "target_marriage_timeline",
-        # must_have_tags 和 must_not_have_tags 已删除
-        # 不可量化字段已删除：preferred_traits, disliked_traits（性格特质偏好）
+        # 标签字段仅用于展示与人工编辑，不参与量化筛选。
+        "must_have_tags",
+        "must_not_have_tags",
+        "preferred_traits",
+        "disliked_traits",
     }
 )
 

@@ -78,6 +78,7 @@ class CollectedRoutesTests(unittest.TestCase):
                 "target_age_min": 25,
                 "target_age_max": 32,
                 "target_cities": "上海",
+                "preferred_traits": "情绪稳定,会沟通",
                 "persona_summary_internal": "should not appear",
             },
             "observations": [],
@@ -85,6 +86,7 @@ class CollectedRoutesTests(unittest.TestCase):
                 "target_age_min": {"value": 25, "source_channel": "matchmaker_chat"},
                 "target_age_max": {"value": 32, "source_channel": "matchmaker_chat"},
                 "target_cities": {"value": "上海", "source_channel": "matchmaker_chat"},
+                "preferred_traits": {"value": "情绪稳定,会沟通", "source_channel": "profile_form"},
             },
         }
         gateway = _CollectedGatewayStub()
@@ -96,6 +98,7 @@ class CollectedRoutesTests(unittest.TestCase):
         self.assertEqual(body["profile_id"], 42)
         collected = body["collected_statements"]
         self.assertEqual(collected["target_age_min"], 25)
+        self.assertEqual(collected["preferred_traits"], "情绪稳定,会沟通")
         self.assertNotIn("persona_summary_internal", collected)
         self.assertIn("target_cities", body["collected_items"])
 

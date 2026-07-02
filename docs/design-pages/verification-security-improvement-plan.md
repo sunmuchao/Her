@@ -177,12 +177,19 @@ CREATE TABLE verification_submission_metadata (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (submission_id) REFERENCES verification_submissions(submission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='认证提交元数据表';
+
+CREATE INDEX idx_verification_submissions_machine_outcome
+  ON verification_submissions (machine_review_outcome, updated_at);
+
+CREATE INDEX idx_verification_submissions_expires_at
+  ON verification_submissions (expires_at);
 ```
 
 **改进原因**：
 - 当前metadata_json存储了完整的machine_review结果、workflow_history、photo_review_task
 - 单行数据可能超过1MB，影响查询性能
 - 关键字段（machine_review_outcome、expires_at）需要单独索引，便于快速查询
+- 现网落地时需要遵循“先双写、再回填、后切读、最后清理旧字段”的迁移顺序，不能直接切换
 
 **预期效果**：
 - ✅ metadata拆分，避免单行数据过大
@@ -243,6 +250,17 @@ CREATE TABLE verification_auto_review_stats (
   UNIQUE KEY uk_date_type (stat_date, verification_type),
   INDEX idx_stats_date (stat_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动审核质量统计表';
+
+CREATE TABLE verification_review_latency (
+  latency_id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  submission_id VARCHAR(64) NOT NULL,
+  review_type VARCHAR(32) NOT NULL COMMENT 'auto/manual',
+  decision VARCHAR(32) NOT NULL,
+  latency_ms INT NOT NULL,
+  recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_review_latency_time (recorded_at),
+  INDEX idx_review_latency_submission (submission_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核延迟明细表';
 ```
 
 **改进原因**：
@@ -266,14 +284,14 @@ ALTER TABLE profile_field_verification_submissions
   ADD COLUMN ocr_processed_at DATETIME COMMENT 'OCR处理时间',
   ADD COLUMN authority_verification_status VARCHAR(32) COMMENT '权威机构验证状态',
   ADD COLUMN authority_verification_result LONGTEXT COMMENT '权威机构验证结果',
-  ADD COLUMN expires_at DATETIME COMMENT '认证过期时间',
+  ADD COLUMN verification_expires_at DATETIME COMMENT '认证过期时间（如现网已存在则跳过）',
   ADD COLUMN revoked_at DATETIME COMMENT '认证撤销时间';
 ```
 
 **改进原因**：
 - 字段认证（学历、职业、收入）缺少OCR识别字段
 - 缺少权威验证状态字段，无法记录学信网验证结果
-- 缺少过期时间字段，无法实现过期机制
+- 文档实现必须复用现有 `verification_expires_at` 语义，避免并行维护 `expires_at`
 
 **预期效果**：
 - ✅ OCR识别结果存储，便于自动比对
@@ -797,10 +815,11 @@ def submit_profile_field_verification(...):
   """, [..., ocr_result['ocr_text'], int(ocr_result['ocr_confidence'] * 100), datetime.now()])
   
   # OCR结果只用于分流，不直接自动通过真实性认证
+  # 分流结果写入任务系统或审核服务上下文，不要求在 submission 表新增 review_queue 字段
   if ocr_result['risk_level'] == 'low':
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'fast_lane'")
+    enqueue_manual_review(submission_id, lane='fast_lane')
   else:
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'normal_lane'")
+    enqueue_manual_review(submission_id, lane='normal_lane')
 ```
 
 **改进原因**：
@@ -823,13 +842,13 @@ def submit_profile_field_verification(...):
 | 方案 | 成本 | 准确率 | 用户体验 | 安全等级提升 | 推荐度 |
 |------|------|--------|---------|-------------|--------|
 | **权威API验证（原方案）** | 30000元/年 | 99% | 简单（系统自动验证） | +20分（55→75分） | ⭐⭐⭐⭐（预算充足时推荐） |
-| **OCR+用户自查（低成本）** | **免费** | 95% | 稍复杂（用户需自查学信网） | +15分（55→70分） | ⭐⭐⭐⭐⭐（预算有限时推荐） |
-| **只做OCR识别（最省钱）** | **免费** | 85% | 简单 | +10分（55→65分） | ⭐⭐⭐（预算为0时备选） |
+| **OCR+用户自查（低成本）** | **免费** | 仅能做到“材料一致性辅助判断”，不能等同权威核验 | 稍复杂（用户需自查学信网） | +15分（55→70分） | ⭐⭐⭐⭐（预算有限时推荐） |
+| **只做OCR识别（最省钱）** | **免费** | 仅提升材料录入和分流效率，不单独计入真实性提升 | 简单 | 不建议单独作为安全升级方案 | ⭐⭐（仅作提效备选） |
 
 **推荐策略**：
 - **预算≥30000元/年**：使用权威API验证（用户体验最好）
-- **预算有限**：使用OCR+用户自查（三方比对，可信度高）
-- **预算为0**：只做OCR识别（最简单）
+- **预算有限**：使用OCR+用户自查，但对外口径定义为“辅助增信+人工复核”，不是“权威验证”
+- **预算为0**：可以先上OCR提效，但不要把“只做OCR”写成学历真实性能力升级完成
 
 **改进内容**：
 
@@ -900,12 +919,15 @@ def guide_user_verify_education(user_id: str, profile_id: int) -> dict:
   4. 系统OCR识别学信网截图，验证学校名称是否一致
   """
   
-  # 创建学历认证任务（状态：待用户自查）
-  conn.execute("""
-    INSERT INTO profile_field_verification_submissions
-    (user_id, profile_id, field_key, status, review_reason, created_at)
-    VALUES (?, ?, 'education', 'pending_user_verify', '请到学信网查询并上传截图', ?)
-  """, [user_id, profile_id, datetime.now()])
+  # 创建学历认证跟进任务
+  # 这里应复用现有字段认证提交流程，避免直接写一条不完整的 submission 行
+  create_profile_field_verification_followup(
+    subject_user_id=user_id,
+    profile_id=profile_id,
+    field_key='education',
+    status='pending_user_verify',
+    review_note='请到学信网查询并上传截图',
+  )
   
   # 返回引导信息
   return {
@@ -960,13 +982,13 @@ def verify_education_from_chsi_screenshot(
     and profile_school == chsi_school
   )
   
-  # 如果三方一致且OCR置信度高，自动通过
+  # 如果三方一致且OCR置信度高，进入快速人工复核
   if school_match and graduation_info['ocr_confidence'] >= 0.9:
     return {
       "verified": True,
-      "verification_method": "ocr_cross_check",
+      "verification_method": "ocr_cross_check_for_manual_fast_lane",
       "match_result": {"school_match": True},
-      "requires_manual_review": False,
+      "requires_manual_review": True,
     }
   
   # 否则需要人工审核
@@ -1104,12 +1126,14 @@ def review_education_verification(...):
   if decision == 'approve':
     # 审核员给出“拟通过”后，必须进入权威校验闭环
     profile = get_profile(conn, submission['profile_id'])
+    school_name = submission.get('approved_value') or submission.get('declared_value')
+    degree_level = extract_degree_level(submission.get('ocr_extracted_text') or '')
     
     verification_result = EducationVerificationService().verify_education(
       name=profile['name'],
       id_number=profile.get('id_number'),
-      school_name=submission['declared_value'].get('school'),
-      degree_level=submission['declared_value'].get('degree'),
+      school_name=school_name,
+      degree_level=degree_level,
     )
     
     # 存储权威验证结果
@@ -1128,7 +1152,7 @@ def review_education_verification(...):
       conn.execute("""
         UPDATE profile_field_verification_submissions
         SET status = 'approved',
-            expires_at = ?,
+            verification_expires_at = ?,
             authority_verification_status = 'verified'
         WHERE submission_id = ?
       """, [datetime.now() + timedelta(days=3650), submission_id])
@@ -1137,7 +1161,7 @@ def review_education_verification(...):
         UPDATE profile_field_verification_submissions
         SET status = 'under_review',
             authority_verification_status = 'verification_failed',
-            review_reason = ?
+            review_note = ?
         WHERE submission_id = ?
       """, ['学历权威校验未通过，需人工二审', submission_id])
 ```
@@ -1275,7 +1299,7 @@ def submit_job_verification(...):
   if packaging_result['is_packaging'] and packaging_result['packaging_risk_level'] == 'high':
     conn.execute("""
       UPDATE profile_field_verification_submissions
-      SET status = 'under_review', review_reason = ?
+      SET status = 'under_review', review_note = ?
       WHERE submission_id = ?
     """, ['岗位疑似包装：' + '; '.join(packaging_result['suspicious_reasons']), submission_id])
 ```
@@ -1506,9 +1530,9 @@ def submit_income_verification(...):
   # 判断下一步
   if income_match_result['match'] and job_match_result['match']:
     # 低风险样本进入快速人工复核，不因OCR直接自动通过
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'fast_lane'")
+    enqueue_manual_review(submission_id, lane='fast_lane')
   else:
-    conn.execute("UPDATE ... SET status = 'under_review', review_queue = 'normal_lane'")
+    enqueue_manual_review(submission_id, lane='normal_lane')
 ```
 
 **改进原因**：
@@ -1996,8 +2020,8 @@ def get_verification_quality_metrics(
       "auto_approve_rate": auto_approve_rate,
       "false_positive_rate": false_positive_rate,
       "false_negative_recall_count": false_negative_recall_count,
-      "avg_post_approval_revocation_rate": ...,
-      "avg_auto_review_latency_ms": ...,
+      "avg_post_approval_revocation_rate": weighted_avg(stats, "post_approval_revocation_rate"),
+      "avg_auto_review_latency_ms": weighted_avg(stats, "avg_auto_review_latency_ms"),
     },
     "daily_stats": stats,
   }
@@ -2171,12 +2195,12 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 - [ ] 收入金额识别功能上线（阿里云OCR），区间匹配准确率≥90%
 
 **低成本方案验收标准**：
-- [ ] OCR识别功能上线（PaddleOCR），证件文字识别准确率≥95%
+- [ ] OCR识别功能上线（PaddleOCR），在抽样集上的字段提取准确率达到预期基线，并形成持续评估口径
 - [ ] OCR结果仅用于分流，不因字段匹配而直接自动通过
-- [ ] 学历验证上线（OCR+用户自查），三方比对准确率≥95%
+- [ ] 学历验证上线（OCR+用户自查），并在产品文案和后台标签中明确区分“辅助增信”与“权威验证”
 - [ ] 用户自查学信网引导UI可用，用户上传学信网截图流程完整
 - [ ] 岗位包装检测生效，高风险包装被拦截
-- [ ] 收入金额识别功能上线（PaddleOCR），区间匹配准确率≥95%
+- [ ] 收入金额识别功能上线（PaddleOCR），区间匹配能力达到灰度验收要求，并保留人工兜底
 
 **Phase 3验收标准对比**：
 
@@ -2196,7 +2220,7 @@ def record_review_latency(submission_id: str, review_type: str, decision: str):
 - [ ] 所有认证安全等级达到目标分数（学历认证70分）
 
 **验收标准总结**：
-- **低成本方案验收标准略高**：因为开源PaddleOCR准确率更高（95% vs 90%）
+- **低成本方案验收重点不同**：核心是流程闭环、风险分流和文案边界清晰，不是宣称比权威方案更高准确率
 - **学历认证目标分数略低**：低成本方案70分 vs 原方案75分（差距仅5分）
 - **用户体验验收**：低成本方案需要验收用户自查引导UI
 

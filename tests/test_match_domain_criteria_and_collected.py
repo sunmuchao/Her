@@ -48,10 +48,12 @@ class MatchDomainCriteriaTests(unittest.TestCase):
         collected = extract_collected_statements(
             {
                 "target_age_min": 27,
+                "preferred_traits": "情绪稳定,会沟通",
                 "persona_summary_internal": "推断摘要",
             }
         )
         self.assertEqual(collected.get("target_age_min"), 27)
+        self.assertEqual(collected.get("preferred_traits"), "情绪稳定,会沟通")
         self.assertNotIn("persona_summary_internal", collected)
 
     def test_merge_collected_prefers_synced_profile_over_stale_persona(self):
