@@ -65,12 +65,33 @@ const FIELD_OPTIONS_MAP: Record<string, Array<{ value: string; label: string }>>
   income: INCOME_OPTIONS,
 }
 
-const REQUESTED_DOCUMENTS_OPTIONS = [
-  { value: '毕业证', label: '毕业证' },
-  { value: '学位证', label: '学位证' },
-  { value: '学信网截图', label: '学信网截图' },
-  { value: '在读证明', label: '在读证明' },
-]
+const FIELD_LABEL_MAP: Record<string, string> = {
+  education: '学历',
+  job: '职业',
+  income: '收入',
+}
+
+const REQUESTED_DOCUMENTS_OPTIONS_MAP: Record<string, Array<{ value: string; label: string }>> = {
+  education: [
+    { value: '毕业证', label: '毕业证' },
+    { value: '学位证', label: '学位证' },
+    { value: '学信网截图', label: '学信网截图' },
+    { value: '在读证明', label: '在读证明' },
+  ],
+  job: [
+    { value: '工牌', label: '工牌' },
+    { value: '在职证明', label: '在职证明' },
+    { value: '名片', label: '名片' },
+    { value: '社保截图', label: '社保截图' },
+    { value: '劳动合同首页', label: '劳动合同首页' },
+  ],
+  income: [
+    { value: '近半年工资流水', label: '近半年工资流水' },
+    { value: '个税截图', label: '个税截图' },
+    { value: '收入证明', label: '收入证明' },
+    { value: 'offer/合同含薪酬页', label: 'offer/合同含薪酬页' },
+  ],
+}
 
 export default function ReviewDetailPanel({
   submission,
@@ -129,10 +150,13 @@ export default function ReviewDetailPanel({
   const hasImages = evidenceImages.length > 0
   const hasPDFs = evidencePDFs.length > 0
   const hasEvidence = hasImages || hasPDFs
+  const fieldLabel = FIELD_LABEL_MAP[submission.field_key] || '资料'
+  const requestedDocumentOptions = REQUESTED_DOCUMENTS_OPTIONS_MAP[submission.field_key] || REQUESTED_DOCUMENTS_OPTIONS_MAP.education
   const normalizedDeclaredValue = submission.declared_value?.trim()
+  const fallbackDeclaredValue = submission.field_key === 'education' ? userInfo?.education : undefined
   const declaredValue = normalizedDeclaredValue && normalizedDeclaredValue !== '未知'
     ? normalizedDeclaredValue
-    : (userInfo?.education || '未知')
+    : (fallbackDeclaredValue || '未知')
 
   // 重置表单
   const resetForm = () => {
@@ -236,7 +260,7 @@ export default function ReviewDetailPanel({
           {hasImages && (
             <div className="mb-4">
               <p className="text-xs text-muted-foreground mb-2">图片材料</p>
-              <ImageCarousel images={evidenceImages} alt="学历证书" aspectRatio="portrait" showIndicators indicatorStyle="dots" />
+              <ImageCarousel images={evidenceImages} alt={`${fieldLabel}材料`} aspectRatio="portrait" showIndicators indicatorStyle="dots" />
             </div>
           )}
 
@@ -274,7 +298,7 @@ export default function ReviewDetailPanel({
         </div>
         <div className="rounded-xl bg-muted/30 p-3 space-y-2 text-xs">
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">申报学历:</span>
+            <span className="text-muted-foreground">{`申报${fieldLabel}:`}</span>
             <span className="text-foreground font-medium">{declaredValue}</span>
           </div>
           <div className="flex items-center justify-between">
@@ -341,7 +365,7 @@ export default function ReviewDetailPanel({
           {decision === 'approve' && (
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                批准{submission.field_key === 'education' ? '学历' : submission.field_key === 'job' ? '职业' : '收入'}值
+                批准{fieldLabel}值
               </label>
               <select
                 value={approvedValue}
@@ -363,7 +387,7 @@ export default function ReviewDetailPanel({
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">需补充文件</label>
               <div className="space-y-2">
-                {REQUESTED_DOCUMENTS_OPTIONS.map((doc) => (
+                {requestedDocumentOptions.map((doc) => (
                   <label key={doc.value} className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
