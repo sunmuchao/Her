@@ -75,7 +75,7 @@ export function AppShell({
   const { inboxUnreadCount, relationshipsBadge, refreshBadges } = useBadgeCounts()
   const { isConnected: sseConnected } = useGlobalSSE() // ✅ 新增：全局SSE订阅
   const isMatchmakerMain = currentTab === 'matchmaker' && subView === 'main'
-  const isFullscreenSubView = subView === 'chat'
+  const isFullscreenSubView = subView === 'chat' || subView === 'verification'
 
   return (
     <div className="flex h-dvh max-h-dvh w-full max-w-md mx-auto flex-col relative overflow-hidden bg-background">
@@ -160,7 +160,11 @@ export function AppShell({
           </SlideInTransition>
         )}
         {subView === 'verification' && (
-          <SlideInTransition key="verification" direction="up">
+          <SlideInTransition
+            key="verification"
+            direction="up"
+            className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <VerificationFlowPage onBack={onBackFromVerification} />
           </SlideInTransition>
         )}
