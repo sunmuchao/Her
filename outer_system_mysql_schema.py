@@ -1366,6 +1366,26 @@ def chat_tables() -> tuple[TableDef, ...]:
             ),
         ),
         TableDef(
+            name="auth_phone_role_bindings",
+            columns=(
+                ColumnDef("binding_id", "VARCHAR(64)", nullable=False),
+                ColumnDef("phone_hash", "VARCHAR(64)", nullable=False),
+                ColumnDef("role_key", "VARCHAR(64)", nullable=False),
+                ColumnDef("status", "VARCHAR(32)", nullable=False),
+                ColumnDef("note", "VARCHAR(255)", nullable=True),
+                ColumnDef("created_at", "DATETIME", nullable=False),
+                ColumnDef("updated_at", "DATETIME", nullable=False),
+            ),
+            primary_key=("binding_id",),
+            uniques=(
+                UniqueKeyDef(("phone_hash", "role_key"), name="uniq_auth_phone_role_phone_role"),
+            ),
+            indexes=(
+                IndexDef(("phone_hash", "status"), "idx_auth_phone_role_phone_status"),
+                IndexDef(("role_key", "status"), "idx_auth_phone_role_role_status"),
+            ),
+        ),
+        TableDef(
             name="auth_otp_challenges",
             columns=(
                 ColumnDef("challenge_id", "VARCHAR(64)", nullable=False),

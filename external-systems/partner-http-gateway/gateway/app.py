@@ -64,6 +64,7 @@ from match_domain import (
 from observability import audit_event, emit_pipeline_record
 
 from chat_system import get_session_by_access_token  # type: ignore[import-untyped]
+from chat_system.auth_accounts import get_auth_session_roles  # type: ignore[import-untyped]
 from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
@@ -273,9 +274,13 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         session_id = str(session.get("session_id") or "").strip()
         if not user_id or not session_id:
             return None
+        try:
+            roles = self._with_chat(get_auth_session_roles, user_id)
+        except Exception:
+            roles = ["end_user"]
         return ActorPrincipal(
             actor_id=user_id,
-            roles=frozenset({"end_user"}),
+            roles=frozenset(str(role).strip() for role in roles if str(role).strip()),
             token_id=session_id,
             auth_source="auth_session",
         )

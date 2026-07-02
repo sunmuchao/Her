@@ -21,6 +21,8 @@ from gateway import auth_routes  # noqa: E402
 from gateway.identity import ActorPrincipal  # noqa: E402
 from gateway.logging_setup import configure_gateway_logging  # noqa: E402
 from gateway_tests.helpers import build_wsgi_env as _wsgi_env, run_wsgi_json  # noqa: E402
+from chat_system import get_session_by_access_token  # noqa: E402
+from chat_system.auth_accounts import get_auth_session_roles  # noqa: E402
 
 
 def _auth_headers(token: str) -> dict[str, str]:
@@ -204,6 +206,59 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertTrue(str(verify_payload["user"]["user_id"]).startswith("usr-mem-"))
         self.assertTrue(str(verify_payload["session"]["access_token"]).startswith("atk_mem_"))
         self.assertEqual(verify_payload["flow"]["next_path"], "/onboarding")
+
+    def test_auth_session_principal_defaults_to_end_user_role(self) -> None:
+        gw = PartnerGateway(
+            recommendation_dsn="mysql://noop",
+            matchmaking_dsn="mysql://noop",
+            chat_dsn="mysql://noop",
+            db_pool_max=0,
+        )
+
+        def chat_side_effect(fn, *args, **kwargs):
+          if fn is get_session_by_access_token:
+              return {
+                  "user": {"user_id": "usr-default", "primary_phone": "13900000000"},
+                  "session": {"session_id": "sess-default"},
+              }
+          if fn is get_auth_session_roles:
+              return ["end_user"]
+          raise AssertionError(fn)
+
+        with mock.patch.object(gw, "_with_chat", side_effect=chat_side_effect):
+            actor = gw._resolve_auth_session_principal("atk_default_valid")
+
+        self.assertIsNotNone(actor)
+        assert actor is not None
+        self.assertEqual(actor.actor_id, "usr-default")
+        self.assertEqual(actor.roles, frozenset({"end_user"}))
+
+    def test_auth_session_principal_uses_database_bound_roles(self) -> None:
+        gw = PartnerGateway(
+            recommendation_dsn="mysql://noop",
+            matchmaking_dsn="mysql://noop",
+            chat_dsn="mysql://noop",
+            db_pool_max=0,
+        )
+
+        def chat_side_effect(fn, *args, **kwargs):
+          if fn is get_session_by_access_token:
+              return {
+                  "user": {"user_id": "usr-admin", "primary_phone": "18846811193"},
+                  "session": {"session_id": "sess-admin"},
+              }
+          if fn is get_auth_session_roles:
+              self.assertEqual(args[0], "usr-admin")
+              return ["platform_admin"]
+          raise AssertionError(fn)
+
+        with mock.patch.object(gw, "_with_chat", side_effect=chat_side_effect):
+            actor = gw._resolve_auth_session_principal("atk_admin_valid")
+
+        self.assertIsNotNone(actor)
+        assert actor is not None
+        self.assertEqual(actor.actor_id, "usr-admin")
+        self.assertEqual(actor.roles, frozenset({"platform_admin"}))
 
     def test_aliyun_sms_provider_request_shape(self) -> None:
         class FakeResponse:

@@ -39,6 +39,7 @@ LOGIN_METHOD_SMS = "sms"
 LOGIN_METHOD_WECHAT = "wechat"
 LOGIN_METHOD_ONE_TAP = "one_tap"
 ROLE_END_USER = "end_user"
+ROLE_ACTIVE_STATUS = "active"
 
 IDENTITY_TYPE_PHONE = "phone"
 IDENTITY_TYPE_WECHAT_OPENID = "wechat_openid"
@@ -89,6 +90,10 @@ def _generate_user_id() -> str:
 
 def _generate_identity_id() -> str:
     return f"ident-{uuid.uuid4().hex[:16]}"
+
+
+def _generate_role_binding_id() -> str:
+    return f"rolebind-{uuid.uuid4().hex[:16]}"
 
 
 def _generate_challenge_id() -> str:
@@ -200,6 +205,27 @@ def _user_by_id(conn, user_id: str) -> dict[str, Any] | None:
     if row and row.get("primary_phone"):
         row["primary_phone"] = SensitiveDataCrypto.decrypt_phone(row["primary_phone"])
     return row
+
+
+def _active_roles_by_phone(conn, phone: str | None) -> frozenset[str]:
+    if not phone:
+        return frozenset()
+    rows = conn.execute(
+        """
+        SELECT role_key
+        FROM auth_phone_role_bindings
+        WHERE phone_hash = ? AND status = ?
+        ORDER BY role_key ASC
+        """,
+        (_hash_value(phone), ROLE_ACTIVE_STATUS),
+    ).fetchall()
+    roles: list[str] = []
+    for item in rows:
+        row = row_to_dict(item)
+        role_key = str(row.get("role_key") or "").strip()
+        if role_key:
+            roles.append(role_key)
+    return frozenset(roles)
 
 
 def _onboarding_state(conn, user_id: str) -> dict[str, Any] | None:
@@ -683,6 +709,84 @@ def _create_session(
         "refresh_expires_in_seconds": int(REFRESH_TOKEN_TTL.total_seconds()),
         "access_expires_at": access_expires_at,
         "refresh_expires_at": refresh_expires_at,
+    }
+
+
+def get_auth_session_roles(
+    conn,
+    user_id: str,
+    *,
+    now: datetime | None = None,
+) -> list[str]:
+    del now
+    user = _user_by_id(conn, user_id)
+    phone = str((user or {}).get("primary_phone") or "").strip() or None
+    roles = _active_roles_by_phone(conn, phone)
+    if not roles:
+        return [ROLE_END_USER]
+    return sorted(roles)
+
+
+def upsert_phone_role_binding(
+    conn,
+    *,
+    phone: str,
+    role_key: str,
+    note: str | None = None,
+    status: str = ROLE_ACTIVE_STATUS,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    ts = _utcnow(now)
+    normalized_phone = str(phone or "").strip()
+    normalized_role = str(role_key or "").strip()
+    normalized_status = str(status or "").strip() or ROLE_ACTIVE_STATUS
+    if not normalized_phone:
+        raise AuthDomainError(400, "invalid_phone", "phone is required")
+    if not normalized_role:
+        raise AuthDomainError(400, "invalid_role", "role_key is required")
+    phone_hash = _hash_value(normalized_phone)
+    existing = _row(
+        conn,
+        """
+        SELECT *
+        FROM auth_phone_role_bindings
+        WHERE phone_hash = ? AND role_key = ?
+        LIMIT 1
+        """,
+        (phone_hash, normalized_role),
+    )
+    if existing:
+        conn.execute(
+            """
+            UPDATE auth_phone_role_bindings
+            SET status = ?, note = ?, updated_at = ?
+            WHERE binding_id = ?
+            """,
+            (normalized_status, note, ts, existing["binding_id"]),
+        )
+        conn.commit()
+        existing["status"] = normalized_status
+        existing["note"] = note
+        existing["updated_at"] = ts
+        return existing
+    binding_id = _generate_role_binding_id()
+    conn.execute(
+        """
+        INSERT INTO auth_phone_role_bindings (
+          binding_id, phone_hash, role_key, status, note, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (binding_id, phone_hash, normalized_role, normalized_status, note, ts, ts),
+    )
+    conn.commit()
+    return {
+        "binding_id": binding_id,
+        "phone_hash": phone_hash,
+        "role_key": normalized_role,
+        "status": normalized_status,
+        "note": note,
+        "created_at": ts,
+        "updated_at": ts,
     }
 
 
@@ -1574,6 +1678,7 @@ __all__ = [
     "bind_phone_with_sms",
     "classify_phone_scenario",
     "create_one_tap_attempt",
+    "get_auth_session_roles",
     "get_current_auth_payload",
     "get_onboarding_profile",
     "get_session_by_access_token",
@@ -1582,6 +1687,7 @@ __all__ = [
     "refresh_session",
     "revoke_session_by_access_token",
     "submit_onboarding_profile",
+    "upsert_phone_role_binding",
     "verify_one_tap_login",
     "verify_sms_code",
 ]
