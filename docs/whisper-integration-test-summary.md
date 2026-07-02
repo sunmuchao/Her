@@ -167,9 +167,6 @@ pnpm install
 ```bash
 # 启动 Gateway
 docker compose up -d gateway-public
-
-# 或使用 gunicorn
-gunicorn -c external-systems/partner-http-gateway/gunicorn_config.py gateway.app:PartnerGateway
 ```
 
 ### Q4: 集成测试跳过 "Test audio file not found"
