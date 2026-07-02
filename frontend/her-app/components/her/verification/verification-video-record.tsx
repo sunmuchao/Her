@@ -45,7 +45,9 @@ export function VerificationVideoRecord({
           className="absolute inset-0 h-full w-full object-cover scale-x-[-1]"
         />
       ) : null}
-      <div className="absolute inset-0 bg-gradient-to-b from-foreground/80 to-foreground" />
+      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/60 via-black/25 to-transparent" />
+      <div className="absolute inset-0 bg-black/10" />
       <button
         onClick={onBack}
         className="absolute top-12 right-5 w-10 h-10 rounded-full bg-background/20 flex items-center justify-center z-10"
@@ -54,7 +56,7 @@ export function VerificationVideoRecord({
       </button>
       <div className="relative z-10 flex-1 flex flex-col items-center justify-between py-16 px-8">
         <div className="flex-1 flex items-center justify-center">
-          <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/40 flex items-center justify-center backdrop-blur-[1px]">
+          <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/55 flex items-center justify-center bg-black/10">
             {!previewStream ? <p className="text-white/60 text-sm">正在打开摄像头...</p> : null}
           </div>
         </div>
