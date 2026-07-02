@@ -24,13 +24,13 @@ export function useVerificationReview() {
   /**
    * 加载审核队列
    */
-  const loadQueue = useCallback(async (status?: string) => {
+  const loadQueue = useCallback(async (status?: string, fieldKey?: string) => {
     setLoading(true)
     setError(null)
     try {
       const data = await fetchReviewQueue({
         status: status || 'submitted,under_review',
-        field_key: 'education',
+        field_key: fieldKey || 'education',
         limit: 20,
       })
       setQueue(data)

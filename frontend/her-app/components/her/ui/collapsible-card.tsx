@@ -2,11 +2,13 @@
 
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useState } from 'react'
+import { cn } from '@/lib/utils'
 
 interface CollapsibleCardProps {
   title: string
   icon?: React.ReactNode
   defaultExpanded?: boolean
+  className?: string
   children: React.ReactNode
 }
 
@@ -14,12 +16,13 @@ export function CollapsibleCard({
   title,
   icon,
   defaultExpanded = false,
+  className,
   children,
 }: CollapsibleCardProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded)
 
   return (
-    <div className="rounded-2xl border-2 border-border bg-card overflow-hidden">
+    <div className={cn('rounded-2xl border-2 border-border bg-card overflow-hidden', className)}>
       {/* 标题栏 */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}

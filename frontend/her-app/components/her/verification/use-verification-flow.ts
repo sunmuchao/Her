@@ -23,9 +23,10 @@ import {
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
+import { getSSEServerUrl } from '@/lib/sse'
 
 // SSE服务器URL
-const SSE_SERVER_URL = process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8000'
+const SSE_SERVER_URL = getSSEServerUrl()
 
 export type VerificationStep = 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
 
@@ -276,7 +277,7 @@ export function useVerificationFlow(onBack: () => void) {
 
             // 显示通知
             if (event.type === 'verification_passed') {
-              notifySuccess('验证通过', event.message || '恭喜！您的身份验证已通过')
+              notifySuccess(event.message || '恭喜！您的身份验证已通过')
             } else {
               notifyError(new Error(event.message || '验证未通过，请重新提交材料'))
             }

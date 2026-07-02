@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { getProfileId } from '@/lib/auth/session'
+import { getSSEServerUrl } from '@/lib/sse'
 
 /**
  * 全局SSE订阅Hook
@@ -21,7 +22,7 @@ export function useGlobalSSE() {
     if (!profileId) return
 
     // 创建SSE连接
-    const sseUrl = `${process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8081'}/sse/profile/${profileId}`
+    const sseUrl = `${getSSEServerUrl()}/sse/profile/${profileId}`
     const eventSource = new EventSource(sseUrl)
     eventSourceRef.current = eventSource
 

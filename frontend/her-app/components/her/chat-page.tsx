@@ -22,6 +22,7 @@ import { notifyError } from '@/lib/notify'
 import { DEMO_CHAT_MESSAGES } from '@/lib/fixtures/demo-profiles'
 import { PLACEHOLDER_AVATAR } from '@/lib/image-url'
 import { DEMO_DEFAULT_CHAT_ID } from '@/lib/navigation/defaults'
+import { getSSEServerUrl } from '@/lib/sse'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
@@ -409,7 +410,7 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     if (!userId) return
 
     // 创建SSE连接
-    const sseUrl = `${process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8081'}/sse/chat/${resolvedCaseId}?participant_id=${userId}`
+    const sseUrl = `${getSSEServerUrl()}/sse/chat/${resolvedCaseId}?participant_id=${userId}`
     const eventSource = new EventSource(sseUrl)
     eventSourceRef.current = eventSource
 

@@ -25,6 +25,8 @@ export type DiscoveryView = {
     cards?: Array<{
       card_id?: string
       profile_id?: string | number
+      case_id?: string // 案件 ID（被动推荐场景）
+      view_type?: 'interest' | 'matched' | 'delayed' | 'candidate' // 卡片类型
       title?: string
       subtitle?: string
       cover_image_url?: string

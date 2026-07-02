@@ -29,7 +29,7 @@ import {
 } from '@/lib/api/endpoints/rule-config'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
-import VerificationReviewTab from '@/components/her/verification-review'
+import UnifiedReviewWorkbench from '@/components/her/verification-review/unified-review-workbench'
 
 type OpsWorkbenchPageProps = {
   onBack?: () => void // 保留兼容性，但优先使用 router.back()
@@ -217,7 +217,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
 
       {/* 根据Tab渲染不同内容 */}
       {activeTab === 'review' ? (
-        <VerificationReviewTab />
+        <UnifiedReviewWorkbench />
       ) : (
         <div className="px-4 pt-4 space-y-6">
         <FadeIn>

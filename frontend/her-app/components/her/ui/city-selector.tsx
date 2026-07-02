@@ -27,7 +27,7 @@ const ALL_CITIES = [
 ]
 
 interface CitySelectorProps {
-  value: string
+  value: string | null
   onChange: (city: string) => void
   placeholder?: string
 }

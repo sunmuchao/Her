@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getProfileId } from '@/lib/auth/session'
+import { getSSEServerUrl } from '@/lib/sse'
 
 /**
  * 全局 SSE 连接管理器（Singleton模式）
@@ -17,7 +18,7 @@ import { getProfileId } from '@/lib/auth/session'
  * 2. 各页面只需要监听事件，不需要创建连接
  */
 
-const SSE_SERVER_URL = process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8000'
+const SSE_SERVER_URL = getSSEServerUrl()
 
 export interface ProfileSSEEvent {
   type: string
@@ -94,10 +95,14 @@ class SSEConnectionManager {
         // 连接成功后重置重连参数
         this.reconnectAttempts = 0
         this.reconnectDelay = 3000
+        this.stopPollingFallback()
       })
 
       this.connection.onerror = (err) => {
-        console.error('[SSE Manager] 连接错误', err)
+        console.warn('[SSE Manager] 连接中断，准备重连', {
+          readyState: this.connection?.readyState,
+          error: err,
+        })
         this.disconnect()
 
         // 检查是否达到最大重连次数
@@ -167,7 +172,7 @@ class SSEConnectionManager {
           if (event.badge_type && event.count !== undefined) {
             this.queryClient.setQueryData(['badge-counts', this.profileId], (old: any) => ({
               ...old,
-              [event.badge_type]: event.count
+              [event.badge_type as string]: event.count
             }))
           }
           break
@@ -281,7 +286,7 @@ export function useProfileRealtime() {
     if (!profileId) return
 
     // 初始化全局连接
-    sseManager.init(profileId, queryClient)
+    sseManager.init(String(profileId), queryClient)
 
     // 检查连接状态
     const checkConnection = setInterval(() => {

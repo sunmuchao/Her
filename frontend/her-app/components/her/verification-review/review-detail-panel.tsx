@@ -27,6 +27,30 @@ const EDUCATION_OPTIONS = [
   { value: '博士', label: '博士' },
 ]
 
+const JOB_OPTIONS = [
+  { value: '程序员', label: '程序员' },
+  { value: '医生', label: '医生' },
+  { value: '教师', label: '教师' },
+  { value: '工程师', label: '工程师' },
+  { value: '设计师', label: '设计师' },
+  { value: '销售', label: '销售' },
+  { value: '其他', label: '其他' },
+]
+
+const INCOME_OPTIONS = [
+  { value: '5万以下', label: '5万以下' },
+  { value: '5-10万', label: '5-10万' },
+  { value: '10-20万', label: '10-20万' },
+  { value: '20-50万', label: '20-50万' },
+  { value: '50万以上', label: '50万以上' },
+]
+
+const FIELD_OPTIONS_MAP: Record<string, Array<{ value: string; label: string }>> = {
+  education: EDUCATION_OPTIONS,
+  job: JOB_OPTIONS,
+  income: INCOME_OPTIONS,
+}
+
 const REQUESTED_DOCUMENTS_OPTIONS = [
   { value: '毕业证', label: '毕业证' },
   { value: '学位证', label: '学位证' },
@@ -262,14 +286,16 @@ export default function ReviewDetailPanel({
           {/* 动态字段 - 通过 */}
           {decision === 'approve' && (
             <div>
-              <label className="block text-sm font-medium text-foreground mb-2">批准学历值</label>
+              <label className="block text-sm font-medium text-foreground mb-2">
+                批准{submission.field_key === 'education' ? '学历' : submission.field_key === 'job' ? '职业' : '收入'}值
+              </label>
               <select
                 value={approvedValue}
                 onChange={(e) => setApprovedValue(e.target.value)}
                 className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"
               >
-                <option value="">请选择学历</option>
-                {EDUCATION_OPTIONS.map((opt) => (
+                <option value="">请选择</option>
+                {(FIELD_OPTIONS_MAP[submission.field_key] || EDUCATION_OPTIONS).map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

@@ -17,6 +17,7 @@ import { canUseMockFallback } from '@/lib/mock'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { logDataProvenance, usePageDataSource } from '@/lib/data-provenance'
 import { DEMO_CANDIDATES } from '@/lib/fixtures/demo-profiles'
+import { getSSEServerUrl } from '@/lib/sse'
 import {
   mapDiscoveryView,
   timelineHasCandidates,
@@ -501,7 +502,7 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     if (!profileId) return
 
     // 创建SSE连接
-    const sseUrl = `${process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8081'}/sse/discovery/${sessionId}?profile_id=${profileId}`
+    const sseUrl = `${getSSEServerUrl()}/sse/discovery/${sessionId}?profile_id=${profileId}`
     const eventSource = new EventSource(sseUrl)
     eventSourceRef.current = eventSource
 

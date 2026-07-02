@@ -21,7 +21,7 @@ export function SSEInitializer() {
     // 只有登录后才初始化SSE连接
     if (profileId && accessToken) {
       console.log('[SSE Initializer] 初始化全局SSE连接', profileId)
-      sseManager.init(profileId, queryClient)
+      sseManager.init(String(profileId), queryClient)
     }
 
     // 注意：不要在组件卸载时断开连接，因为整个应用都在使用

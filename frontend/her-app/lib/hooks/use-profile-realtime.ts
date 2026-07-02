@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { getProfileId } from '@/lib/auth/session'
+import { getSSEServerUrl } from '@/lib/sse'
 
 /**
  * 全局 Profile SSE 实时推送 Hook
@@ -23,7 +24,7 @@ import { getProfileId } from '@/lib/auth/session'
  * - 兜底机制（SSE失败时提示用户刷新）
  */
 
-const SSE_SERVER_URL = process.env.NEXT_PUBLIC_SSE_SERVER_URL || 'http://localhost:8000'
+const SSE_SERVER_URL = getSSEServerUrl()
 
 export interface ProfileSSEEvent {
   type: string
@@ -110,7 +111,7 @@ export function useProfileRealtime() {
               if (event.badge_type && event.count !== undefined) {
                 queryClient.setQueryData(['badge-counts', profileId], (old: any) => ({
                   ...old,
-                  [event.badge_type]: event.count
+                  [event.badge_type as string]: event.count
                 }))
                 console.log('[SSE] 徽章更新', event.badge_type, event.count)
               }

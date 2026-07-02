@@ -59,7 +59,8 @@ services:
       - .env
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-}
-      PARTNER_GATEWAY_SURFACE: public
+      PARTNER_GATEWAY_SURFACE: all
+      PARTNER_GATEWAY_API_KEY: local-dev-ops-key-2024
       PARTNER_GATEWAY_ENABLE_JSONRPC: "0"
       PARTNER_GATEWAY_DB_POOL_MAX: "32"
       HER_E2E_MYSQL_HOST: mysql
@@ -273,6 +274,7 @@ services:
     environment:
       CI: "true"
       PARTNER_GATEWAY_BASE_URL: http://gateway-public:8080
+      PARTNER_GATEWAY_API_KEY: local-dev-ops-key-2024
       NEXT_PUBLIC_ALLOW_MOCK_FALLBACK: "false"
       NEXT_PUBLIC_USE_AUTH_STUB: "true"
       NEXT_PUBLIC_SSE_SERVER_URL: http://localhost:8081

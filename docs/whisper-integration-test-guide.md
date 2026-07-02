@@ -1,22 +1,30 @@
 # Whisper 语音识别集成测试指南
 
-## 🚀 智能一键启动（推荐）
+## 🚀 启动服务（Docker Compose）
 
-**最快启动方式**：
+**统一启动方式**：
 
 ```bash
 cd /Users/sunmuchao/Downloads/Her
-./scripts/restart_with_whisper.sh
+docker compose up -d
+docker compose ps
+docker compose logs -f gateway-public frontend
 ```
 
 **自动完成**：
-- ✅ 停止本地服务栈
-- ✅ 检测 Whisper 模型是否已下载
-- ✅ 自动下载模型（如果未下载）
-- ✅ 启动 MySQL、Gateway、Frontend
-- ✅ 显示服务状态和下一步操作
+- ✅ 启动 MySQL、Redis、MinIO
+- ✅ 启动 Gateway（Public、Ops、Internal）
+- ✅ 启动 Scheduler、SSE Server、Signaling Server
+- ✅ 启动 Frontend（Next.js）
+- ✅ 显示服务状态
 
-**详细说明**：参见 [智能启动脚本文档](../docs/smart-start-script.md)
+** Whisper 模型预热**：
+
+首次使用语音功能时，需要下载 Whisper 模型（500MB-1.5GB），建议提前预热：
+
+```bash
+python scripts/preload_whisper_model.py
+```
 
 ---
 
@@ -55,18 +63,17 @@ huggingface_hub.errors.LocalEntryNotFoundError
 
 ## ✅ 提前下载模型（推荐）
 
-### 方案 1：一键启动脚本（最简单）
+### 方案 1：预热模型脚本
 
 ```bash
 cd /Users/sunmuchao/Downloads/Her
-./scripts/start-gateway-with-whisper.sh
+python scripts/preload_whisper_model.py
 ```
 
 **优势**：
 - ✅ 自动检查模型是否已下载
 - ✅ 如果未下载，自动预热模型
 - ✅ 使用镜像站点，下载速度快
-- ✅ 启动 Gateway 服务
 
 ---
 

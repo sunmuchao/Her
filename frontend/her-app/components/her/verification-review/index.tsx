@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Clock, FileCheck, FileX, RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useVerificationReview } from '@/hooks/use-verification-review'
 import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
@@ -9,7 +10,16 @@ import ReviewQueueList from './review-queue-list'
 import ReviewDetailPanel from './review-detail-panel'
 import ReviewStatisticsPanel from './review-statistics-panel'
 
+type FieldKeyType = 'education' | 'job' | 'income'
+
+const FIELD_TAB_CONFIG: Record<FieldKeyType, { label: string; key: string }> = {
+  education: { label: '学历认证', key: 'education' },
+  job: { label: '职业认证', key: 'job' },
+  income: { label: '收入认证', key: 'income' },
+}
+
 export default function VerificationReviewTab() {
+  const [activeField, setActiveField] = useState<FieldKeyType>('education')
   const {
     queue,
     selectedItem,
@@ -25,10 +35,10 @@ export default function VerificationReviewTab() {
     clearMessage,
   } = useVerificationReview()
 
-  // 初始化加载审核队列
+  // 初始化加载审核队列（根据activeField）
   useEffect(() => {
-    void loadQueue()
-  }, [loadQueue])
+    void loadQueue(undefined, activeField)
+  }, [loadQueue, activeField])
 
   // 加载状态
   if (loading) {
@@ -78,17 +88,40 @@ export default function VerificationReviewTab() {
       {/* 审核统计 */}
       <ReviewStatisticsPanel />
 
+      {/* 字段类型子Tab切换 */}
+      <FadeIn>
+        <div className="px-4 pt-2 mb-3">
+          <div className="flex gap-2 bg-muted/30 rounded-xl p-1">
+            {Object.entries(FIELD_TAB_CONFIG).map(([key, config]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setActiveField(key as FieldKeyType)}
+                className={cn(
+                  'flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                  activeField === key
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {config.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </FadeIn>
+
       {/* 头部统计 */}
       <FadeIn>
-        <div className="px-4 pt-4 mb-4">
+        <div className="px-4 pt-2 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span>待审核: {queue.submissions.length} 条</span>
+              <span>{FIELD_TAB_CONFIG[activeField].label}待审核: {queue.submissions.length} 条</span>
             </div>
             <button
               type="button"
-              onClick={() => void loadQueue()}
+              onClick={() => void loadQueue(undefined, activeField)}
               className="rounded-full border border-border p-2 text-muted-foreground hover:text-foreground transition-colors"
               aria-label="刷新队列"
             >

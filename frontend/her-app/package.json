@@ -22,6 +22,7 @@
     "e2e:mock-banner": "playwright test tests/e2e/mock-fallback-banner.spec.ts --reporter=line"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.18",
     "@radix-ui/react-slot": "1.2.4",
     "@tanstack/react-query": "^5.0.0",
     "@vercel/analytics": "1.6.1",
@@ -32,6 +33,7 @@
     "next-themes": "^0.4.6",
     "react": "^19",
     "react-dom": "^19",
+    "react-pdf": "^10.4.1",
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.3.1",
     "zod": "^3.24.1"
