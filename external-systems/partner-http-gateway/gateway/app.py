@@ -126,6 +126,8 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         "/v1/auth/logout",
     ])
 
+    _UNSET_DISCOVERY = object()
+
     def __init__(
         self,
         *,
@@ -155,12 +157,18 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             self._mm_pool = GatewayConnectionPool(self._matchmaking_dsn, "matchmaking", max_size=pool_n)
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
             self._ledger_pool = GatewayConnectionPool(self._relation_ledger_dsn, "relationship_ledger", max_size=pool_n)
-        self._discovery = create_default_discovery_service()
+        self._discovery_service: Any = self._UNSET_DISCOVERY
         self._auth_otp = AuthOtpService(chat_executor=self._with_chat)
         self._wechat_login_provider = _build_wechat_login_provider()
         self._one_tap_login_provider = _build_one_tap_login_provider()
         self._identity_resolver = IdentityResolver(session_resolver=self._resolve_auth_session_principal)
         self._rate_limiter = rate_limiter_from_environ()
+
+    @property
+    def _discovery(self) -> Any:
+        if self._discovery_service is self._UNSET_DISCOVERY:
+            self._discovery_service = create_default_discovery_service()
+        return self._discovery_service
 
     def _is_public_auth_route(self, method: str, path: str) -> bool:
         """检查是否是公共认证路由（需要在执行前进行限流检查）。"""
