@@ -33,13 +33,7 @@ export function VerificationVideoIntro({
           <Camera className="w-10 h-10 text-primary" />
         </div>
         <h2 className="font-serif text-xl text-foreground mb-3">开始身份认证</h2>
-        <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
-          点击开始后，按屏幕提示依次完成动作。
-        </p>
-        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left text-sm text-muted-foreground mb-6 space-y-2">
-          <p>请保持光线充足，单人出镜。</p>
-          <p>如出现数字口令，直接大声读出。</p>
-        </div>
+        <p className="text-sm text-muted-foreground mb-8 leading-relaxed">按屏幕提示完成动作。</p>
         <button
           type="button"
           disabled={isSubmittingVideo}
