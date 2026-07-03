@@ -511,6 +511,8 @@ def _build_verification_items(
             submission_by_field_key[field_key] = submission
 
     # 构建 photo_requests 的状态（身份认证）
+    latest_request: dict[str, Any] = {}
+    photo_status = ""
     photo_request_status = "unverified"
     photo_request_description = "录制一段简短视频完成认证"
     if photo_requests:
