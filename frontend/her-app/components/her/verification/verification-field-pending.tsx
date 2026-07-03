@@ -33,7 +33,8 @@ export function VerificationFieldPending({
   onBack,
 }: VerificationFieldPendingProps) {
   const status = String(latestSubmission?.status || 'submitted').toLowerCase()
-  const fieldName = FIELD_LABELS[selectedField || ''] || '材料认证'
+  const fieldKey = String(latestSubmission?.field_key || selectedField || '').toLowerCase()
+  const fieldName = FIELD_LABELS[fieldKey] || FIELD_LABELS[selectedField || ''] || '材料认证'
   const statusLabel = FIELD_STATUS_LABELS[status] || (latestSubmission?.status || '已提交')
 
   const tone =
@@ -91,7 +92,7 @@ export function VerificationFieldPending({
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>认证项目：{fieldName}</p>
             <p>状态：{statusLabel}</p>
-            {latestSubmission?.field_key ? <p>字段键：{latestSubmission.field_key}</p> : null}
+            {latestSubmission?.field_key ? <p>认证类型：{fieldName}</p> : null}
           </div>
         </div>
         <button onClick={onBack} className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium">
