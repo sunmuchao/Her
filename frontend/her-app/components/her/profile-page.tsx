@@ -633,11 +633,6 @@ export default function ProfilePage({
                                 ? item.statusText
                                 : '未认证'}
                         </span>
-                        {item.status === 'action_required' && item.detail ? (
-                          <span className="px-1 text-[10px] leading-4 text-center text-muted-foreground line-clamp-2">
-                            {item.detail}
-                          </span>
-                        ) : null}
                       </button>
                     )
                   })}
