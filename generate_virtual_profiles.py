@@ -18,29 +18,17 @@ SEED = 20260428
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_PHOTO_PROVIDER = "cdn_stub"
 
-PUBLIC_CN_WOMEN_PEXELS_IDS = [
-    25471921,
-    18976826,
-    16763214,
-    20348581,
-    19059641,
-    33481910,
-    34643405,
-    36652512,
-]
+PUBLIC_CN_WOMEN_PEXELS_IDS = {
+    "young": [16763214, 20348581, 19059641, 33481910],
+    "mid": [18976826, 25471921, 34643405, 36652512],
+    "mature": [34643405, 18976826, 25471921, 36652512],
+}
 
-PUBLIC_CN_MEN_PEXELS_IDS = [
-    18285574,
-    18285584,
-    18285576,
-    18285573,
-    31630003,
-    8460426,
-    18285581,
-    18285588,
-    15059594,
-    34152753,
-]
+PUBLIC_CN_MEN_PEXELS_IDS = {
+    "young": [18285574, 18285584, 18285576, 18285573, 18285581],
+    "mid": [31630003, 8460426, 15059594, 34152753, 18285588],
+    "mature": [8460426, 34152753, 31630003, 15059594, 18285588],
+}
 
 DEFAULT_MYSQL = {
     "host": "127.0.0.1",
@@ -552,7 +540,22 @@ def _pexels_photo_url(photo_id: int) -> str:
     return f"https://images.pexels.com/photos/{photo_id}/pexels-photo-{photo_id}.jpeg"
 
 
-def choose_public_cn_test_photo_assets(profile_id, gender, verified_level, source_channel):
+def _age_band_for_public_cn_pool(age: int) -> str:
+    if age <= 27:
+        return "young"
+    if age <= 32:
+        return "mid"
+    return "mature"
+
+
+def _pexels_variant_url(photo_id: int, *, width: int, height: int, crop: str) -> str:
+    return (
+        f"{_pexels_photo_url(photo_id)}"
+        f"?auto=compress&cs=tinysrgb&w={width}&h={height}&fit=crop&crop={crop}"
+    )
+
+
+def choose_public_cn_test_photo_assets(profile_id, gender, age, verified_level, source_channel):
     avatar_url, gallery_urls = choose_photo_assets(
         random.Random(f"stub-{profile_id}"),
         profile_id,
@@ -560,13 +563,31 @@ def choose_public_cn_test_photo_assets(profile_id, gender, verified_level, sourc
         source_channel,
     )
     photo_count = len(gallery_urls)
-    pool = PUBLIC_CN_WOMEN_PEXELS_IDS if gender == "女" else PUBLIC_CN_MEN_PEXELS_IDS
-    avatar_index = profile_id % len(pool)
-    avatar_url = _pexels_photo_url(pool[avatar_index])
-    photo_urls = [
-        _pexels_photo_url(pool[(avatar_index + idx) % len(pool)])
-        for idx in range(1, photo_count + 1)
+    grouped_pool = PUBLIC_CN_WOMEN_PEXELS_IDS if gender == "女" else PUBLIC_CN_MEN_PEXELS_IDS
+    band = _age_band_for_public_cn_pool(age)
+    pool = grouped_pool[band]
+    base_photo_id = pool[profile_id % len(pool)]
+    avatar_url = _pexels_variant_url(base_photo_id, width=480, height=640, crop="faces")
+    gallery_sizes = [
+        (720, 960, "faces"),
+        (768, 1024, "faces"),
+        (800, 1100, "entropy"),
+        (720, 1080, "faces"),
+        (828, 1170, "entropy"),
+        (768, 1152, "faces"),
+        (800, 1200, "entropy"),
     ]
+    photo_urls = []
+    for idx in range(photo_count):
+        width, height, crop = gallery_sizes[idx % len(gallery_sizes)]
+        photo_urls.append(
+            _pexels_variant_url(
+                base_photo_id,
+                width=width,
+                height=height,
+                crop=crop,
+            )
+        )
     return avatar_url, photo_urls
 
 
@@ -1019,6 +1040,7 @@ def make_record(rng, profile_id, *, photo_provider=DEFAULT_PHOTO_PROVIDER):
         avatar_url, photo_urls_list = choose_public_cn_test_photo_assets(
             profile_id,
             gender,
+            age,
             verified_level,
             source_channel,
         )
