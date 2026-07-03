@@ -70,6 +70,11 @@ export default function ProfilePage({
   const editInputRef = useRef<HTMLInputElement>(null)
   const headlineTextareaRef = useRef<HTMLTextAreaElement>(null)
   const tagsAreaRef = useRef<HTMLDivElement>(null)
+  const editedTagsRef = useRef<string[]>([])
+  const isAddingTagRef = useRef(false)
+  const newTagInputRef = useRef('')
+  const editingTagIndexRef = useRef<number | null>(null)
+  const editingTagValueRef = useRef('')
 
   // 构建视图数据
   const profile = useMemo(
@@ -78,11 +83,35 @@ export default function ProfilePage({
   )
   const displayedHeadline = headlineOverride ?? profile.headline
   const displayedTags = tagsOverride ?? profile.tags
+  const normalizedDisplayedTags = useMemo(
+    () => displayedTags.filter((tag) => tag && tag !== '待完善'),
+    [displayedTags],
+  )
+
+  useEffect(() => {
+    editedTagsRef.current = editedTags
+  }, [editedTags])
+
+  useEffect(() => {
+    isAddingTagRef.current = isAddingTag
+  }, [isAddingTag])
+
+  useEffect(() => {
+    newTagInputRef.current = newTagInput
+  }, [newTagInput])
+
+  useEffect(() => {
+    editingTagIndexRef.current = editingTagIndex
+  }, [editingTagIndex])
+
+  useEffect(() => {
+    editingTagValueRef.current = editingTagValue
+  }, [editingTagValue])
 
   // 进入编辑模式（单击触发）
   const handleEnterEdit = () => {
     if (isSavingTags) return
-    setEditedTags([...displayedTags])
+    setEditedTags([...normalizedDisplayedTags])
     setIsEditingTags(true)
     setIsAddingTag(false)
     setNewTagInput('')
@@ -241,15 +270,15 @@ export default function ProfilePage({
     const handleClickOutside = (e: MouseEvent) => {
       if (tagsAreaRef.current && !tagsAreaRef.current.contains(e.target as Node)) {
         // 先确认正在编辑的内容
-        const finalTags = [...editedTags]
-        if (editingTagIndex !== null && editingTagValue.trim()) {
-          const trimmed = editingTagValue.trim().slice(0, 20)
-          if (!finalTags.some((t, i) => i !== editingTagIndex && t === trimmed)) {
-            finalTags[editingTagIndex] = trimmed
+        const finalTags = [...editedTagsRef.current]
+        if (editingTagIndexRef.current !== null && editingTagValueRef.current.trim()) {
+          const trimmed = editingTagValueRef.current.trim().slice(0, 20)
+          if (!finalTags.some((t, i) => i !== editingTagIndexRef.current && t === trimmed)) {
+            finalTags[editingTagIndexRef.current] = trimmed
           }
         }
-        if (isAddingTag && newTagInput.trim()) {
-          const trimmed = newTagInput.trim().slice(0, 20)
+        if (isAddingTagRef.current && newTagInputRef.current.trim()) {
+          const trimmed = newTagInputRef.current.trim().slice(0, 20)
           if (!finalTags.includes(trimmed) && finalTags.length < 6) {
             finalTags.push(trimmed)
           }
@@ -267,7 +296,7 @@ export default function ProfilePage({
       clearTimeout(timer)
       document.removeEventListener('click', handleClickOutside)
     }
-  }, [isEditingTags]) // 只依赖 isEditingTags，避免循环
+  }, [handleSaveAndExit, isEditingTags])
 
   // 处理输入框键盘事件
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -502,8 +531,8 @@ export default function ProfilePage({
               ) : (
                 <>
                   {/* 展示模式：只显示标签 */}
-                  {displayedTags.length > 0 ? (
-                    displayedTags.map((tag, i) => (
+                  {normalizedDisplayedTags.length > 0 ? (
+                    normalizedDisplayedTags.map((tag, i) => (
                       <span
                         key={i}
                         className="px-2 py-1 bg-secondary text-xs text-muted-foreground rounded-md"

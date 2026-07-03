@@ -53,4 +53,26 @@ describe('buildProfileView', () => {
 
     expect(view.tags).toEqual(['阅读', '旅行'])
   })
+
+  it('returns empty tags instead of placeholder when user has no saved tags', () => {
+    const view = buildProfileView(
+      {
+        user: {
+          display_name: '测试用户',
+        },
+        onboarding: {
+          preference: {},
+        },
+      },
+      {
+        profile_facts: {},
+      },
+      {
+        collected_statements: {},
+      },
+      undefined,
+    )
+
+    expect(view.tags).toEqual([])
+  })
 })

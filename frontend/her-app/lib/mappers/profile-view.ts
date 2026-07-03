@@ -151,7 +151,7 @@ export function buildProfileView(
     ),
     education: safeString(rawProfile.public_education, rawProfile.education, ''),
     relationshipGoal: safeString(rawProfile.relationship_goal, ''),
-    tags: tags.length > 0 ? tags : DEFAULT_PROFILE_VIEW.tags,
+    tags,
     verificationItems,
   }
 }
