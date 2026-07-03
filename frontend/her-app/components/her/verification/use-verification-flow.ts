@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   createLiveVideoChallenge,
+  isLiveVideoChallengeExpired,
   listVerificationNotifications,
   listVerificationSubmissions,
   submitLiveVideoVerification,
@@ -355,6 +356,13 @@ export function useVerificationFlow(onBack: () => void) {
       setStep('video-intro')
       return
     }
+    if (isLiveVideoChallengeExpired(liveChallenge)) {
+      notifyError(new Error('本次认证已超时，请重新开始录制'))
+      setLiveChallenge(null)
+      setRecordedVideo(null)
+      setStep('video-intro')
+      return
+    }
     setIsSubmittingVideo(true)
     try {
       await submitLiveVideoVerification({
@@ -374,8 +382,16 @@ export function useVerificationFlow(onBack: () => void) {
 
       setStep('video-pending')
     } catch (error) {
-      notifyError(error, '视频提交失败')
-      setStep('video-review')
+      const message = getErrorMessage(error, '视频提交失败')
+      if (message.includes('challenge_token has expired')) {
+        notifyError(new Error('本次认证已超时，请重新开始录制'))
+        setLiveChallenge(null)
+        setRecordedVideo(null)
+        setStep('video-intro')
+      } else {
+        notifyError(error, '视频提交失败')
+        setStep('video-review')
+      }
     } finally {
       setIsSubmittingVideo(false)
     }

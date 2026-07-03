@@ -51,6 +51,7 @@ export type LiveVideoChallenge = {
   challenge_token?: string
   challenge_phrase?: string
   required_actions?: string[]
+  expires_at?: string
 }
 
 function hasSpokenCodePrompt(challengePhrase?: string): boolean {
@@ -137,7 +138,16 @@ export async function createLiveVideoChallenge(): Promise<LiveVideoChallenge> {
     challenge_token: challengeToken,
     challenge_phrase: response.challenge_phrase ?? response.challenge?.challenge_phrase,
     required_actions: response.required_actions ?? response.challenge?.required_actions,
+    expires_at: response.expires_at ?? response.challenge?.expires_at,
   }
+}
+
+export function isLiveVideoChallengeExpired(challenge?: Pick<LiveVideoChallenge, 'expires_at'> | null) {
+  const expiresAt = String(challenge?.expires_at || '').trim()
+  if (!expiresAt) return false
+  const expiresAtMs = Date.parse(expiresAt.replace(' ', 'T'))
+  if (!Number.isFinite(expiresAtMs)) return false
+  return Date.now() > expiresAtMs
 }
 
 export async function submitLiveVideoVerification(params: {
