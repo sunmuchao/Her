@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Flag,
   Bug,
   Shield,
   BarChart3,
