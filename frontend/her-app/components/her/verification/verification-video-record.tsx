@@ -38,6 +38,7 @@ export function VerificationVideoRecord({
   const guideSteps = useMemo(() => buildGuideSteps(liveChallenge), [liveChallenge])
   const remainingSeconds = getChallengeRemainingSeconds(liveChallenge?.expires_at, nowMs)
   const isChallengeExpired = remainingSeconds !== null && remainingSeconds <= 0
+  const previousStep = isRecording && guideState.currentIndex > 0 ? guideSteps[guideState.currentIndex - 1] : null
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -105,7 +106,9 @@ export function VerificationVideoRecord({
                   : '最后一步完成后会自动结束录制'
                 : isChallengeExpired
                   ? '请退出后重新生成本次 challenge，避免提交时提示超时。'
-                  : liveChallenge?.challenge_phrase || '系统已生成本次 challenge，开始后请按顺序完成动作'}
+                  : guideSteps.length > 0
+                    ? `本次共 ${guideSteps.length} 步，开始后按顺序逐项完成`
+                    : liveChallenge?.challenge_phrase || '系统已生成本次 challenge，开始后请按顺序完成动作'}
             </p>
           </div>
           <div className="mb-4 h-2 w-full max-w-xs rounded-full bg-white/20 overflow-hidden mx-auto">
@@ -114,26 +117,23 @@ export function VerificationVideoRecord({
               style={{ width: `${isRecording ? guideState.progress : 0}%` }}
             />
           </div>
-          <div className="grid gap-2 text-left max-w-xs mx-auto mb-4">
-            {guideSteps.map((step, index) => {
-              const isDone = isRecording && index < guideState.currentIndex
-              const isCurrent = isRecording && index === guideState.currentIndex
-              return (
-                <div
-                  key={step.key}
-                  className={`rounded-2xl px-3 py-2 text-sm transition-colors ${
-                    isCurrent
-                      ? 'bg-white text-foreground'
-                      : isDone
-                        ? 'bg-emerald-400/80 text-foreground'
-                        : 'bg-white/10 text-white/70'
-                  }`}
-                >
-                  {index + 1}. {step.instruction}
+          {isRecording ? (
+            <div className="grid gap-2 text-left max-w-xs mx-auto mb-4 w-full">
+              {previousStep ? (
+                <div className="rounded-2xl bg-emerald-400/80 px-3 py-2 text-sm text-foreground">
+                  已完成：{previousStep.instruction}
                 </div>
-              )
-            })}
-          </div>
+              ) : null}
+              <div className="rounded-2xl bg-white px-3 py-3 text-sm text-foreground">
+                当前动作：{guideState.currentStep?.instruction || '请按提示完成'}
+              </div>
+              {guideState.nextStep ? (
+                <div className="rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/70">
+                  下一步：{guideState.nextStep.instruction}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <p className="text-white/60 text-sm">
             {isRecording
               ? `录制中 ${recordingTime}s / 6s`
