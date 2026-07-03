@@ -1340,6 +1340,11 @@ class DiscoveryService:
             }
         )
         safe_candidate = json_safe(candidate)
+        self._record_appearance_positive_feedback(
+            session=session,
+            candidate=safe_candidate,
+            session_id=session_id,
+        )
 
         conn = self._open_recommendation_conn()
         case_conn = None
@@ -2365,6 +2370,52 @@ class DiscoveryService:
 
     def _persona_memory_source(self) -> str:
         return _persona_memory_source_impl()
+
+    def _record_appearance_positive_feedback(
+        self,
+        *,
+        session: StoredSession,
+        candidate: dict[str, Any],
+        session_id: str,
+    ) -> None:
+        try:
+            from match_domain.appearance_features import (
+                record_feedback_event,
+                rebuild_user_preference_from_events,
+            )
+
+            persona_source = self._persona_memory_source()
+            if not persona_source:
+                return
+            candidate_profile_id = int(candidate.get("id") or 0)
+            if candidate_profile_id <= 0:
+                return
+            record_feedback_event(
+                source_dsn=persona_source,
+                user_key=str(session.requester_id),
+                profile_id=int(session.profile_id or 0),
+                candidate_profile_id=candidate_profile_id,
+                event_type="express_interest",
+                event_weight=3.0,
+                scene="discovery",
+                session_id=session_id,
+                metadata={
+                    "source": "discovery_express_interest",
+                    "candidate_name": candidate.get("name"),
+                },
+            )
+            candidate_feature = dict(candidate.get("photo_features") or {})
+            if candidate_feature:
+                rebuild_user_preference_from_events(
+                    source_dsn=persona_source,
+                    user_key=str(session.requester_id),
+                    profile_id=int(session.profile_id or 0) or None,
+                    candidate_feature_rows=[candidate_feature],
+                    positive_sample_count=1,
+                    negative_sample_count=0,
+                )
+        except Exception:
+            return
 
     def _sync_requester_persona_memory(
         self,

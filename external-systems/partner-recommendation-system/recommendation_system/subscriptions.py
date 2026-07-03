@@ -505,6 +505,11 @@ def load_subscription_search_args(
     )
     request["include_source"] = True
     request["include_text"] = False
+    request["persona_source"] = (
+        os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+        or subscription.get("source")
+    )
+    request["requester_id"] = int(subscription.get("requester_id") or 0) or None
     request["moderation_dsn"] = os.environ.get("HER_CHAT_MODERATION_DB") or os.environ.get("PARTNER_CHAT_DB")
     return request
 

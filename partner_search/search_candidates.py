@@ -174,6 +174,11 @@ from profile_service import (
     list_profiles,
     resolve_profile_source,
 )
+from match_domain.appearance_features import (
+    compute_photo_bonus_breakdown as _compute_photo_bonus_breakdown,
+    load_candidate_photo_features as _load_candidate_photo_features,
+    load_requester_appearance_preference as _load_requester_appearance_preference,
+)
 
 argparse = _argparse
 
@@ -1523,6 +1528,56 @@ def attach_photo_previews(results, preview_count, photos_table_name=None):
     )
 
 
+def attach_photo_features(records, *, persona_source=None):
+    normalized_source = str(persona_source or "").strip()
+    candidate_ids = []
+    for record in records or []:
+        candidate_id = as_int(record.get("id"))
+        if candidate_id is not None and candidate_id > 0:
+            candidate_ids.append(candidate_id)
+    if not normalized_source or not candidate_ids:
+        return
+    feature_map = _load_candidate_photo_features(
+        source_dsn=normalized_source,
+        profile_ids=candidate_ids,
+    )
+    for record in records or []:
+        candidate_id = as_int(record.get("id"))
+        if candidate_id is None or candidate_id <= 0:
+            continue
+        feature_row = feature_map.get(candidate_id)
+        if not feature_row:
+            continue
+        record["photo_features"] = feature_row
+        for field_name in (
+            "appearance_score_global",
+            "photo_quality_score",
+            "photo_authenticity_score",
+            "mature_score",
+            "clean_score",
+            "gentle_score",
+            "sunny_score",
+            "stylish_score",
+            "appearance_summary",
+            "appearance_tags_json",
+            "analysis_status",
+            "embedding_status",
+        ):
+            if feature_row.get(field_name) is not None:
+                record[field_name] = feature_row.get(field_name)
+
+
+def load_user_appearance_preference(*, source_dsn, user_key):
+    return _load_requester_appearance_preference(
+        source_dsn=source_dsn,
+        user_key=user_key,
+    )
+
+
+def compute_photo_bonus_breakdown(candidate_photo_features, user_appearance_preference=None):
+    return _compute_photo_bonus_breakdown(candidate_photo_features, user_appearance_preference)
+
+
 _search_runtime_helpers = SearchRuntimeHelpers(
     SearchRuntime(
         signal_field_specs=SIGNAL_FIELD_SPECS,
@@ -1544,6 +1599,8 @@ _search_runtime_helpers = SearchRuntimeHelpers(
         build_fallback_candidates=build_fallback_candidates,
         build_no_match_diagnostics=build_no_match_diagnostics,
         attach_photo_previews=lambda *args, **kwargs: attach_photo_previews(*args, **kwargs),
+        attach_photo_features=lambda *args, **kwargs: attach_photo_features(*args, **kwargs),
+        load_user_appearance_preference=lambda *args, **kwargs: load_user_appearance_preference(*args, **kwargs),
         effective_activity_info=effective_activity_info,
         effective_activity_datetime=effective_activity_datetime,
         format_datetime=format_datetime,

@@ -21,6 +21,8 @@ class SearchRequest:
     self_id: int | None = None
     table_name: str | None = None
     photos_table_name: str | None = None
+    persona_source: str | None = None
+    requester_id: int | None = None
     limit: int = 10
     photo_preview_count: int = 0
     include_source: bool = False
@@ -32,9 +34,11 @@ class SearchRequest:
             source=self.source,
             table_name=self.table_name,
             photos_table_name=self.photos_table_name,
+            persona_source=self.persona_source,
             criteria=dict(self.criteria or {}),
             self_profile=dict(self.self_profile or {}) or None,
             self_id=self.self_id,
+            requester_id=self.requester_id,
             limit=self.limit,
             photo_preview_count=self.photo_preview_count,
             moderation_dsn=self.moderation_dsn,
@@ -81,6 +85,8 @@ def search(request: SearchRequest | Mapping[str, Any]) -> SearchResponse:
             self_id=request.get("self_id"),
             table_name=request.get("table_name"),
             photos_table_name=request.get("photos_table_name"),
+            persona_source=request.get("persona_source"),
+            requester_id=request.get("requester_id"),
             limit=request.get("limit", 10),
             photo_preview_count=request.get("photo_preview_count", 0),
             include_source=bool(request.get("include_source", False)),
@@ -89,23 +95,27 @@ def search(request: SearchRequest | Mapping[str, Any]) -> SearchResponse:
         )
 
     engine_request = search_request.to_engine_request()
-    cached = get_cached_search_run(
-        criteria=dict(search_request.criteria or {}),
-        self_id=search_request.self_id,
-        limit=int(search_request.limit),
-        source=str(search_request.source) if search_request.source is not None else None,
-    )
-    if cached is not None:
-        search_run = cached
-    else:
-        search_run = engine.execute_search_request(engine_request)
-        store_cached_search_run(
+    cache_eligible = search_request.persona_source is None and search_request.requester_id is None
+    cached = None
+    if cache_eligible:
+        cached = get_cached_search_run(
             criteria=dict(search_request.criteria or {}),
             self_id=search_request.self_id,
             limit=int(search_request.limit),
             source=str(search_request.source) if search_request.source is not None else None,
-            search_run=search_run,
         )
+    if cached is not None:
+        search_run = cached
+    else:
+        search_run = engine.execute_search_request(engine_request)
+        if cache_eligible:
+            store_cached_search_run(
+                criteria=dict(search_request.criteria or {}),
+                self_id=search_request.self_id,
+                limit=int(search_request.limit),
+                source=str(search_request.source) if search_request.source is not None else None,
+                search_run=search_run,
+            )
     return SearchResponse(
         search_run=search_run,
         include_source=search_request.include_source,
@@ -120,6 +130,8 @@ def search_profiles(
     self_id: int | None = None,
     table_name: str | None = None,
     photos_table_name: str | None = None,
+    persona_source: str | None = None,
+    requester_id: int | None = None,
     limit: int = 10,
     photo_preview_count: int = 0,
     include_source: bool = False,
@@ -135,6 +147,8 @@ def search_profiles(
             self_id=self_id,
             table_name=table_name,
             photos_table_name=photos_table_name,
+            persona_source=persona_source,
+            requester_id=requester_id,
             limit=limit,
             photo_preview_count=photo_preview_count,
             include_source=include_source,

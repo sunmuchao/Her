@@ -218,6 +218,64 @@ class ProfileServiceTests(unittest.TestCase):
         )
         self.assertTrue(fake_conn.closed)
 
+    def test_list_profile_photo_features_returns_mapping(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(
+                    fetchall_result=[
+                        {"profile_id": 12, "appearance_score_global": 80, "photo_quality_score": 75},
+                        {"profile_id": 18, "appearance_score_global": 66, "photo_quality_score": 70},
+                    ]
+                )
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.list_profile_photo_features(
+                source_dsn="mysql://persona",
+                profile_ids=[12, 18],
+            )
+
+        self.assertEqual(result[12]["appearance_score_global"], 80)
+        self.assertEqual(result[18]["photo_quality_score"], 70)
+
+    def test_upsert_user_appearance_preference_inserts_row(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "user_key": "user-1",
+                        "preferred_mature_score": 80,
+                        "positive_sample_count": 3,
+                    }
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.upsert_user_appearance_preference(
+                source_dsn="mysql://persona",
+                user_key="user-1",
+                patch={
+                    "preferred_mature_score": 80,
+                    "positive_sample_count": 3,
+                },
+            )
+
+        self.assertEqual(result["user_key"], "user-1")
+        self.assertEqual(result["preferred_mature_score"], 80)
+
     def test_get_public_profile_loads_single_view_row(self):
         fake_conn = _FakeConnection(
             responses=[_FakeResult(fetchone_result={"id": 12, "name": "用户0012", "job": "产品经理"})]

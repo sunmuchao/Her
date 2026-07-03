@@ -676,9 +676,11 @@ def search_partner_candidates_with(
         response = search_profiles_with_visibility_gate(
             search,
             source=source,
+            persona_source=persona_source,
             criteria=dict(compiled_request.get("criteria") or {}),
             self_profile=compiled_self_profile,
             self_id=effective_self_id,
+            requester_id=session.requester_id,
             limit=search_limit,  # ✅ 方案C：第一阶段搜索数量（至少50）
             photo_preview_count=3,
             moderation_dsn=os.environ.get("PARTNER_CHAT_DB"),

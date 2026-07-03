@@ -9,6 +9,7 @@ from typing import Any, Callable, Sequence
 
 from partner_search.search_profile_utils import has_explicit_field_value as _has_explicit_field_value
 from match_domain.onboarding_search import genders_match_for_search
+from match_domain.appearance_features import compute_photo_bonus_breakdown
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,28 @@ PROFILE_STATUS_LABELS = {
     "matched": "已匹配",
     "inactive": "不活跃",
 }
+
+
+def _photo_feature_summary(record: dict[str, Any]) -> dict[str, Any]:
+    photo_features = record.get("photo_features")
+    if isinstance(photo_features, dict):
+        return dict(photo_features)
+    summary: dict[str, Any] = {}
+    for field_name in (
+        "appearance_score_global",
+        "photo_quality_score",
+        "photo_authenticity_score",
+        "mature_score",
+        "clean_score",
+        "gentle_score",
+        "sunny_score",
+        "stylish_score",
+        "appearance_summary",
+    ):
+        value = record.get(field_name)
+        if value is not None:
+            summary[field_name] = value
+    return summary
 
 
 def missing_field_penalty(runtime: SearchMatchingRuntime, field: str) -> int:
@@ -1306,6 +1329,7 @@ def evaluate_candidate(
     fit_score = 0
     confidence_score = 0
     self_profile = criteria.get("self_profile") or {}
+    appearance_preference = criteria.get("appearance_preference") or {}
     self_city = self_profile.get("city")
     lowered_self_city = runtime.as_lower(self_city) if self_city else ""
     # 性能优化：使用提前提取的 record_city
@@ -1873,6 +1897,22 @@ def evaluate_candidate(
     ) + self_gap_penalty
     score = fit_score + confidence_score - risk_score
 
+    photo_bonus = compute_photo_bonus_breakdown(
+        _photo_feature_summary(record),
+        appearance_preference,
+    )
+    if photo_bonus.quality_bonus > 0:
+        reasons.append("照片质量较好")
+    if photo_bonus.global_bonus >= 8:
+        reasons.append("第一眼眼缘较强")
+    elif photo_bonus.global_bonus >= 4:
+        reasons.append("照片整体比较顺眼")
+    if photo_bonus.preference_bonus >= 8:
+        reasons.append("长相类型更贴近你的偏好")
+    elif photo_bonus.preference_bonus <= -5:
+        risk_flags.append("长相类型和你的偏好有一定偏差")
+    score = round(score + photo_bonus.total, 2)
+
     follow_up_questions = build_follow_up_questions(
         runtime,
         record,
@@ -1909,6 +1949,12 @@ def evaluate_candidate(
         criteria,
         criteria.get("self_profile") or {},
     )
+    result["photo_bonus_breakdown"] = {
+        "quality_bonus": photo_bonus.quality_bonus,
+        "global_bonus": photo_bonus.global_bonus,
+        "preference_bonus": photo_bonus.preference_bonus,
+        "total_bonus": photo_bonus.total,
+    }
     if not diagnostics:
         result.pop("matched", None)
         result.pop("reject_reason", None)

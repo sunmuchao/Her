@@ -172,6 +172,8 @@ class SearchRuntime:
     build_fallback_candidates: Callable[..., list[dict[str, Any]]]
     build_no_match_diagnostics: Callable[..., dict[str, Any]]
     attach_photo_previews: Callable[..., None]
+    attach_photo_features: Callable[..., None]
+    load_user_appearance_preference: Callable[..., dict[str, Any] | None]
     effective_activity_info: Callable[[dict[str, Any]], tuple[str | None, Any]]
     effective_activity_datetime: Callable[[dict[str, Any]], Any]
     format_datetime: Callable[[Any], str | None]
@@ -336,9 +338,11 @@ class SearchRuntimeHelpers:
         sources=None,
         table_name=None,
         photos_table_name=None,
+        persona_source=None,
         criteria=None,
         self_profile=None,
         self_id=None,
+        requester_id=None,
         limit=10,
         photo_preview_count=0,
         moderation_dsn=None,
@@ -355,9 +359,11 @@ class SearchRuntimeHelpers:
             "sources": normalized_sources,
             "table_name": table_name,
             "photos_table_name": photos_table_name,
+            "persona_source": persona_source,
             "criteria": self.runtime.normalize_request_criteria(criteria),
             "self_profile": self.runtime.normalize_self_profile_input(self_profile),
             "self_id": self.runtime.as_int(self_id),
+            "requester_id": self.runtime.as_int(requester_id),
             "limit": self.runtime.as_int(limit) or 10,
             "photo_preview_count": self.runtime.as_int(photo_preview_count) or 0,
             "moderation_dsn": moderation_dsn,
@@ -372,9 +378,11 @@ class SearchRuntimeHelpers:
             sources=args.source,
             table_name=args.table,
             photos_table_name=args.photos_table,
+            persona_source=None,
             criteria=self.runtime.build_criteria_from_args(args),
             self_profile=self.build_cli_self_profile_input(args),
             self_id=args.self_id,
+            requester_id=None,
             limit=args.limit,
             photo_preview_count=args.photo_preview_count,
         )
@@ -704,9 +712,11 @@ class SearchRuntimeHelpers:
             source=request.get("source") if isinstance(request, dict) else None,
             table_name=request.get("table_name") if isinstance(request, dict) else None,
             photos_table_name=request.get("photos_table_name") if isinstance(request, dict) else None,
+            persona_source=request.get("persona_source") if isinstance(request, dict) else None,
             criteria=request.get("criteria") if isinstance(request, dict) else None,
             self_profile=request.get("self_profile") if isinstance(request, dict) else None,
             self_id=request.get("self_id") if isinstance(request, dict) else None,
+            requester_id=request.get("requester_id") if isinstance(request, dict) else None,
             limit=request.get("limit", 10) if isinstance(request, dict) else 10,
             photo_preview_count=request.get("photo_preview_count", 0) if isinstance(request, dict) else 0,
             moderation_dsn=request.get("moderation_dsn") if isinstance(request, dict) else None,
@@ -714,6 +724,15 @@ class SearchRuntimeHelpers:
         )
         criteria = self.runtime.normalize_request_criteria(normalized_request.get("criteria"))
         sources = self.resolve_request_sources(normalized_request)
+        persona_source = normalized_request.get("persona_source")
+        requester_id = normalized_request.get("requester_id")
+        if persona_source and requester_id is not None:
+            appearance_preference = self.runtime.load_user_appearance_preference(
+                source_dsn=persona_source,
+                user_key=str(requester_id),
+            )
+            if appearance_preference:
+                criteria["appearance_preference"] = appearance_preference
         self.resolve_request_self_profile(normalized_request, criteria, sources)
         records = []
         results = []
@@ -739,6 +758,10 @@ class SearchRuntimeHelpers:
                         source_batch,
                         moderation_dsn=moderation_dsn,
                         include_blocked=include_blocked,
+                    )
+                    self.runtime.attach_photo_features(
+                        moderated_batch,
+                        persona_source=persona_source,
                     )
                     scanned_count += len(moderated_batch)
                     matched_in_batch = False
@@ -827,6 +850,7 @@ class SearchRuntimeHelpers:
             "fit_score": result.get("fit_score"),
             "confidence_score": result.get("confidence_score"),
             "risk_score": result.get("risk_score"),
+            "photo_bonus_breakdown": dict(result.get("photo_bonus_breakdown") or {}),
             "match_tier": result.get("match_tier", "strict"),
             "compatibility_flags": list(result.get("compatibility_flags") or []),
             "verified_level": profile.get("verified_level") or "none",
@@ -848,6 +872,7 @@ class SearchRuntimeHelpers:
             "match_evidence": list(result.get("match_evidence") or []),
             "follow_up_questions": list(result.get("follow_up_questions") or []),
             "photo_preview": list(result.get("photo_preview") or []),
+            "appearance_summary": profile.get("appearance_summary"),
             "fallback_reason": result.get("fallback_reason"),
             "profile": display_cache["json_safe_profile"],
         }
