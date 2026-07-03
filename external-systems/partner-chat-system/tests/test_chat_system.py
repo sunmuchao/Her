@@ -59,6 +59,7 @@ import chat_system.verification as verification_module  # noqa: E402
 import chat_system.live_video_local as live_video_local_module  # noqa: E402
 import chat_system.persona_jobs as persona_jobs_module  # noqa: E402
 import chat_system.profile_reviews as profile_reviews_module  # noqa: E402
+import chat_system.self_service as self_service_module  # noqa: E402
 from chat_system.outbox import (  # noqa: E402
     claim_pending_outbox_batch,
     get_outbox_row,
@@ -1374,6 +1375,7 @@ class ChatSystemTests(unittest.TestCase):
         listed = list_verification_submissions(self.conn, user_id="user-v1")
         self.assertEqual(len(listed), 1)
         self.assertEqual(listed[0]["submission_id"], submission["submission_id"])
+
 
         row = self.conn.execute(
             "SELECT * FROM profiles WHERE id = ? LIMIT 1",
@@ -3576,6 +3578,38 @@ class ChatSystemTests(unittest.TestCase):
         self.assertTrue(submission["machine_review"]["risk_flags"])
         self.assertFalse(submission["auto_review_applied"])
         self.assertEqual(len(submission["reviews"]), 0)
+
+
+class SelfServiceTrustHubTests(unittest.TestCase):
+    def test_trust_hub_uses_first_sorted_submission_for_same_field(self):
+        items = self_service_module._build_verification_items(  # type: ignore[attr-defined]
+            user_id="candidate-1",
+            profile_id=1001,
+            photo_requests=[],
+            field_submissions=[
+                {
+                    "submission_id": "edu-newer-rejected",
+                    "field_key": "education",
+                    "status": "rejected",
+                    "updated_at": "2026-07-03 10:00:00",
+                    "created_at": "2026-07-03 09:00:00",
+                },
+                {
+                    "submission_id": "edu-older-pending",
+                    "field_key": "education",
+                    "status": "under_review",
+                    "updated_at": "2026-7-2 10:00:00",
+                    "created_at": "2026-7-2 09:00:00",
+                },
+            ],
+            profile_cases=[],
+        )
+
+        education_item = next(item for item in items if item["field_key"] == "education")
+        self.assertEqual(education_item["item_id"], "edu-newer-rejected")
+        self.assertEqual(education_item["status"], "action_required")
+        self.assertEqual(education_item["status_label"], "已驳回")
+        self.assertEqual(education_item["description"], "已驳回")
 
 
 if __name__ == "__main__":

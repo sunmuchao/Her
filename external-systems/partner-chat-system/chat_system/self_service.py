@@ -501,14 +501,14 @@ def _build_verification_items(
     items: list[dict[str, Any]] = []
 
     # 构建 field_submissions 的查询 map（field_key -> 最新提交）
+    # 这里直接信任后端列表的排序结果：list_profile_field_verification_submissions
+    # 已按 updated_at DESC, created_at DESC 返回。不要再次做字符串时间比较，
+    # 否则在时间格式不完全一致时，旧的“审核中”记录可能覆盖新的“已驳回”记录。
     submission_by_field_key: dict[str, dict[str, Any]] = {}
     for submission in field_submissions:
         field_key = _as_text(submission.get("field_key"))
-        if field_key:
-            # 如果已有记录，保留最新的（按时间排序）
-            existing = submission_by_field_key.get(field_key)
-            if not existing or _item_time(submission) > _item_time(existing):
-                submission_by_field_key[field_key] = submission
+        if field_key and field_key not in submission_by_field_key:
+            submission_by_field_key[field_key] = submission
 
     # 构建 photo_requests 的状态（身份认证）
     photo_request_status = "unverified"
