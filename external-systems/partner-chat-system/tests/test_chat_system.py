@@ -1382,6 +1382,37 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(row["photo_verification_level"], "live_video_verified")
         self.assertEqual(int(row["live_video_verified"]), 1)
 
+        latency_rows = self.conn.execute(
+            """
+            SELECT review_type, decision, latency_ms
+            FROM verification_review_latency
+            WHERE submission_id = ?
+            ORDER BY latency_id ASC
+            """,
+            (submission["submission_id"],),
+        ).fetchall()
+        self.assertEqual(len(latency_rows), 2)
+        self.assertEqual(latency_rows[0]["review_type"], "auto")
+        self.assertEqual(latency_rows[0]["decision"], "manual_review")
+        self.assertEqual(int(latency_rows[0]["latency_ms"]), 0)
+        self.assertEqual(latency_rows[1]["review_type"], "manual")
+        self.assertEqual(latency_rows[1]["decision"], "approve")
+        self.assertEqual(int(latency_rows[1]["latency_ms"]), 600000)
+
+        stats_row = self.conn.execute(
+            """
+            SELECT total_auto_reviews, manual_review, manual_approved_after_auto
+            FROM verification_auto_review_stats
+            WHERE stat_date = ? AND verification_type = ?
+            LIMIT 1
+            """,
+            ("2026-05-05", "live_video"),
+        ).fetchone()
+        self.assertIsNotNone(stats_row)
+        self.assertEqual(int(stats_row["total_auto_reviews"]), 1)
+        self.assertEqual(int(stats_row["manual_review"]), 1)
+        self.assertEqual(int(stats_row["manual_approved_after_auto"]), 1)
+
     def test_live_video_verification_can_auto_approve_with_strong_machine_review(self):
         with self.conn.driver_connection.cursor() as cursor:
             cursor.execute(
@@ -1437,6 +1468,9 @@ class ChatSystemTests(unittest.TestCase):
         self.assertEqual(submission["review_decision"], "approve")
         self.assertEqual(submission["reviewer_id"], "system:auto_verification")
         self.assertEqual(submission["recommended_next_step"], "complete")
+        self.assertEqual(submission["machine_review_outcome"], "complete")
+        self.assertEqual(submission["queue_priority"], "resolved")
+        self.assertGreaterEqual(int(submission["machine_review_score"] or 0), 90)
         self.assertEqual(submission["profile_sync"]["status"], "synced")
         self.assertEqual(len(submission["reviews"]), 1)
         self.assertEqual(submission["reviews"][0]["decision"], "approve")
@@ -1447,6 +1481,36 @@ class ChatSystemTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(row["photo_verification_level"], "live_video_verified")
         self.assertEqual(int(row["live_video_verified"]), 1)
+
+        latency_row = self.conn.execute(
+            """
+            SELECT review_type, decision, latency_ms
+            FROM verification_review_latency
+            WHERE submission_id = ?
+            ORDER BY latency_id ASC
+            LIMIT 1
+            """,
+            (submission["submission_id"],),
+        ).fetchone()
+        self.assertIsNotNone(latency_row)
+        self.assertEqual(latency_row["review_type"], "auto")
+        self.assertEqual(latency_row["decision"], "approve")
+        self.assertEqual(int(latency_row["latency_ms"]), 0)
+
+        stats_row = self.conn.execute(
+            """
+            SELECT total_auto_reviews, auto_approved, manual_review, avg_auto_review_latency_ms
+            FROM verification_auto_review_stats
+            WHERE stat_date = ? AND verification_type = ?
+            LIMIT 1
+            """,
+            ("2026-05-05", "live_video"),
+        ).fetchone()
+        self.assertIsNotNone(stats_row)
+        self.assertEqual(int(stats_row["total_auto_reviews"]), 1)
+        self.assertEqual(int(stats_row["auto_approved"]), 1)
+        self.assertEqual(int(stats_row["manual_review"]), 0)
+        self.assertEqual(int(stats_row["avg_auto_review_latency_ms"]), 0)
 
     def test_live_video_verification_can_request_resubmission_and_upload_again(self):
         with tempfile.TemporaryDirectory() as temp_dir:

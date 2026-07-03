@@ -610,6 +610,9 @@ def _inflate_submission(
     out["verification_provider"] = runtime.get("verification_provider")
     out["auto_review_applied"] = bool(runtime.get("auto_review_applied"))
     out["profile_sync"] = runtime.get("profile_sync")
+    out["queue_priority"] = _queue_priority_for_outcome(
+        out.get("machine_review_outcome") or out.get("recommended_next_step")
+    )
     moderation_state = preloaded_moderation_state
     if moderation_state is None:
         moderation_state = get_active_moderation_state(
@@ -1661,6 +1664,173 @@ def _merge_machine_review_metadata(metadata: dict[str, Any], machine_review: dic
     return merged
 
 
+def _compute_machine_review_score(machine_review: dict[str, Any]) -> int:
+    liveness_score = _normalize_machine_score(machine_review.get("liveness_score"), 0)
+    face_match_score = _normalize_machine_score(machine_review.get("face_match_score"), 0)
+    challenge_score = _normalize_machine_score(machine_review.get("challenge_score"), 0)
+    risk_flags = _normalize_flag_list(machine_review.get("risk_flags"))
+    severe_penalty = 18 * len([flag for flag in risk_flags if flag in SEVERE_MACHINE_RISK_FLAGS])
+    general_penalty = 6 * len([flag for flag in risk_flags if flag not in SEVERE_MACHINE_RISK_FLAGS])
+    weighted = int(round((liveness_score * 0.35) + (face_match_score * 0.4) + (challenge_score * 0.25)))
+    return max(0, min(100, weighted - severe_penalty - general_penalty))
+
+
+def _machine_review_outcome_key(machine_review: dict[str, Any]) -> str | None:
+    next_step = str(machine_review.get("recommended_next_step") or "").strip().lower()
+    if next_step:
+        return next_step
+    decision = str(machine_review.get("recommended_decision") or "").strip().lower()
+    return decision or None
+
+
+def _review_latency_ms(submitted_at: Any, reviewed_at: datetime) -> int | None:
+    if not isinstance(submitted_at, datetime):
+        return None
+    return max(0, int((reviewed_at - submitted_at).total_seconds() * 1000))
+
+
+def _queue_priority_for_outcome(machine_review_outcome: Any) -> str:
+    outcome = str(machine_review_outcome or "").strip().lower()
+    if outcome == MACHINE_NEXT_STEP_STRONG_IDENTITY:
+        return "high"
+    if outcome == MACHINE_NEXT_STEP_MANUAL_REVIEW:
+        return "medium"
+    if outcome == MACHINE_NEXT_STEP_RETRY_LIVE_VIDEO:
+        return "low"
+    if outcome == MACHINE_NEXT_STEP_COMPLETE:
+        return "resolved"
+    return "medium"
+
+
+def _record_review_latency(
+    conn,
+    *,
+    submission_id: str,
+    review_type: str,
+    decision: str,
+    submitted_at: Any,
+    reviewed_at: datetime,
+) -> int | None:
+    latency_ms = _review_latency_ms(submitted_at, reviewed_at)
+    if latency_ms is None:
+        return None
+    conn.execute(
+        """
+        INSERT INTO verification_review_latency (
+          submission_id, review_type, decision, latency_ms, recorded_at
+        ) VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            submission_id,
+            review_type,
+            decision,
+            latency_ms,
+            reviewed_at,
+        ),
+    )
+    return latency_ms
+
+
+def _update_auto_review_stats(
+    conn,
+    *,
+    stat_date: Any,
+    verification_type: str,
+    total_auto_reviews_inc: int = 0,
+    auto_approved_inc: int = 0,
+    auto_resubmission_inc: int = 0,
+    manual_review_inc: int = 0,
+    manual_approved_after_auto_inc: int = 0,
+    manual_rejected_after_auto_inc: int = 0,
+    false_negative_recall_count_inc: int = 0,
+    auto_latency_ms: int | None = None,
+) -> None:
+    row = conn.execute(
+        """
+        SELECT *
+        FROM verification_auto_review_stats
+        WHERE stat_date = ? AND verification_type = ?
+        LIMIT 1
+        """,
+        (stat_date, verification_type),
+    ).fetchone()
+    if row:
+        current = row_to_dict(row)
+        total_auto_reviews = int(current.get("total_auto_reviews") or 0) + int(total_auto_reviews_inc)
+        auto_approved = int(current.get("auto_approved") or 0) + int(auto_approved_inc)
+        auto_resubmission = int(current.get("auto_resubmission") or 0) + int(auto_resubmission_inc)
+        manual_review = int(current.get("manual_review") or 0) + int(manual_review_inc)
+        manual_approved_after_auto = int(current.get("manual_approved_after_auto") or 0) + int(manual_approved_after_auto_inc)
+        manual_rejected_after_auto = int(current.get("manual_rejected_after_auto") or 0) + int(manual_rejected_after_auto_inc)
+        false_negative_recall_count = int(current.get("false_negative_recall_count") or 0) + int(false_negative_recall_count_inc)
+        avg_auto_review_latency_ms = current.get("avg_auto_review_latency_ms")
+        if auto_latency_ms is not None:
+            prior_total = int(current.get("total_auto_reviews") or 0)
+            prior_avg = int(avg_auto_review_latency_ms or 0)
+            combined_total = max(1, total_auto_reviews)
+            avg_auto_review_latency_ms = int(round(((prior_avg * prior_total) + auto_latency_ms) / combined_total))
+        false_positive_rate = None
+        if auto_approved > 0:
+            false_positive_rate = round((manual_rejected_after_auto / auto_approved) * 100, 2)
+        conn.execute(
+            """
+            UPDATE verification_auto_review_stats
+            SET total_auto_reviews = ?,
+                auto_approved = ?,
+                auto_resubmission = ?,
+                manual_review = ?,
+                manual_approved_after_auto = ?,
+                manual_rejected_after_auto = ?,
+                false_positive_rate = ?,
+                false_negative_recall_count = ?,
+                avg_auto_review_latency_ms = ?
+            WHERE stat_date = ? AND verification_type = ?
+            """,
+            (
+                total_auto_reviews,
+                auto_approved,
+                auto_resubmission,
+                manual_review,
+                manual_approved_after_auto,
+                manual_rejected_after_auto,
+                false_positive_rate,
+                false_negative_recall_count,
+                avg_auto_review_latency_ms,
+                stat_date,
+                verification_type,
+            ),
+        )
+        return
+
+    false_positive_rate = None
+    if auto_approved_inc > 0:
+        false_positive_rate = round((manual_rejected_after_auto_inc / auto_approved_inc) * 100, 2)
+    conn.execute(
+        """
+        INSERT INTO verification_auto_review_stats (
+          stat_date, verification_type, total_auto_reviews, auto_approved, auto_resubmission,
+          manual_review, manual_approved_after_auto, manual_rejected_after_auto,
+          false_positive_rate, false_negative_recall_count, post_approval_revocation_rate,
+          avg_auto_review_latency_ms, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
+        """,
+        (
+            stat_date,
+            verification_type,
+            int(total_auto_reviews_inc),
+            int(auto_approved_inc),
+            int(auto_resubmission_inc),
+            int(manual_review_inc),
+            int(manual_approved_after_auto_inc),
+            int(manual_rejected_after_auto_inc),
+            false_positive_rate,
+            int(false_negative_recall_count_inc),
+            auto_latency_ms,
+            _current_time(None),
+        ),
+    )
+
+
 def _apply_machine_triage(
     conn,
     *,
@@ -1672,6 +1842,8 @@ def _apply_machine_triage(
 ) -> None:
     merged_metadata = _merge_machine_review_metadata(metadata, machine_review)
     recommended_decision = str(machine_review.get("recommended_decision") or "").strip().lower()
+    machine_review_outcome = _machine_review_outcome_key(machine_review)
+    machine_review_score = _compute_machine_review_score(machine_review)
     sync_result: dict[str, Any] | None = None
     latest_sync_status: str | None = None
     latest_sync_error: str | None = None
@@ -1682,6 +1854,12 @@ def _apply_machine_triage(
     rejected_at: datetime | None = None
     next_status = SUBMISSION_STATUS_UNDER_REVIEW
     review_decision: str | None = None
+    auto_stats_kwargs: dict[str, Any] = {
+        "total_auto_reviews_inc": 1,
+        "auto_approved_inc": 0,
+        "auto_resubmission_inc": 0,
+        "manual_review_inc": 0,
+    }
 
     if recommended_decision == REVIEW_DECISION_APPROVE:
         reviewer_id = SYSTEM_AUTO_REVIEWER_ID
@@ -1700,6 +1878,7 @@ def _apply_machine_triage(
         latest_sync_status = sync_result.get("status")
         if sync_result.get("status") != "synced":
             latest_sync_error = str(sync_result.get("reason") or "").strip() or None
+        auto_stats_kwargs["auto_approved_inc"] = 1
     elif recommended_decision == REVIEW_DECISION_REQUEST_RESUBMISSION:
         reviewer_id = SYSTEM_AUTO_REVIEWER_ID
         review_decision = REVIEW_DECISION_REQUEST_RESUBMISSION
@@ -1712,6 +1891,7 @@ def _apply_machine_triage(
             occurred_at=now,
             payload={"decision": REVIEW_DECISION_REQUEST_RESUBMISSION, "auto_review": True},
         )
+        auto_stats_kwargs["auto_resubmission_inc"] = 1
     elif _submission_has_photo_review_task(submission_snapshot):
         merged_metadata = append_workflow_history(
             merged_metadata,
@@ -1719,6 +1899,9 @@ def _apply_machine_triage(
             occurred_at=now,
             payload={"decision": REVIEW_DECISION_MANUAL_REVIEW, "auto_review": False},
         )
+        auto_stats_kwargs["manual_review_inc"] = 1
+    else:
+        auto_stats_kwargs["manual_review_inc"] = 1
 
     runtime = _normalize_metadata(merged_metadata.get(MACHINE_RUNTIME_METADATA_KEY))
     runtime["profile_sync"] = sync_result
@@ -1752,6 +1935,14 @@ def _apply_machine_triage(
             ),
         )
 
+    auto_latency_ms = _record_review_latency(
+        conn,
+        submission_id=submission_id,
+        review_type="auto",
+        decision=review_decision or REVIEW_DECISION_MANUAL_REVIEW,
+        submitted_at=submission_snapshot.get("submitted_at") or now,
+        reviewed_at=now,
+    )
     conn.execute(
         """
         UPDATE verification_submissions
@@ -1764,6 +1955,8 @@ def _apply_machine_triage(
             reviewed_at = ?,
             approved_at = ?,
             rejected_at = ?,
+            machine_review_outcome = ?,
+            machine_review_score = ?,
             metadata_json = ?,
             updated_at = ?
         WHERE submission_id = ?
@@ -1778,10 +1971,19 @@ def _apply_machine_triage(
             reviewed_at,
             approved_at,
             rejected_at,
+            machine_review_outcome,
+            machine_review_score,
             json_dumps(merged_metadata),
             now,
             submission_id,
         ),
+    )
+    _update_auto_review_stats(
+        conn,
+        stat_date=now.date(),
+        verification_type=VERIFICATION_TYPE_LIVE_VIDEO,
+        auto_latency_ms=auto_latency_ms,
+        **auto_stats_kwargs,
     )
     updated = get_verification_submission(conn, submission_id)
     if updated and review_decision == REVIEW_DECISION_REQUEST_RESUBMISSION:
@@ -2259,6 +2461,7 @@ def review_live_video_verification(
     next_status = SUBMISSION_STATUS_REJECTED
     approved_at: datetime | None = None
     rejected_at: datetime | None = None
+    prior_machine_outcome = str(current.get("machine_review_outcome") or "").strip().lower()
     if normalized_decision == REVIEW_DECISION_APPROVE:
         sync_result = _sync_live_video_status_to_profile(current, reviewed_at=ts)
         next_status = SUBMISSION_STATUS_APPROVED
@@ -2308,6 +2511,14 @@ def review_live_video_verification(
             ts,
         ),
     )
+    _record_review_latency(
+        conn,
+        submission_id=submission_id,
+        review_type="manual",
+        decision=normalized_decision,
+        submitted_at=current.get("submitted_at"),
+        reviewed_at=ts,
+    )
     conn.execute(
         """
         UPDATE verification_submissions
@@ -2339,6 +2550,15 @@ def review_live_video_verification(
             submission_id,
         ),
     )
+    if prior_machine_outcome in {MACHINE_NEXT_STEP_MANUAL_REVIEW, MACHINE_NEXT_STEP_STRONG_IDENTITY}:
+        _update_auto_review_stats(
+            conn,
+            stat_date=ts.date(),
+            verification_type=VERIFICATION_TYPE_LIVE_VIDEO,
+            manual_approved_after_auto_inc=1 if normalized_decision == REVIEW_DECISION_APPROVE else 0,
+            manual_rejected_after_auto_inc=1 if normalized_decision == REVIEW_DECISION_REJECT else 0,
+            false_negative_recall_count_inc=1 if normalized_decision == REVIEW_DECISION_REJECT else 0,
+        )
     conn.commit()
     updated = get_verification_submission(conn, submission_id)
     assert updated is not None
