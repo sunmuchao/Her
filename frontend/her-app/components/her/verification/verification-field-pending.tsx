@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
-import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle, Clock } from 'lucide-react'
 import { PageTransition } from '@/components/her/ui/animations'
 import type { FieldVerificationSubmission, VerificationSubmissionDetail } from '@/lib/api/endpoints/field-verification'
 
@@ -50,20 +49,6 @@ export function VerificationFieldPending({
     ''
   const showResubmit = ['rejected', 'resubmission_required', 'expired', 'awaiting_submission'].includes(status)
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' || (event.metaKey && event.key === '[')) {
-        event.preventDefault()
-        onBack()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [onBack])
-
   const tone =
     status === 'approved'
       ? {
@@ -104,7 +89,15 @@ export function VerificationFieldPending({
   return (
     <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
-        <div className="px-4 py-3">
+        <div className="px-4 py-3 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="w-10 h-10 rounded-full hover:bg-secondary flex items-center justify-center transition-colors"
+            aria-label="返回"
+          >
+            <ArrowLeft className="w-5 h-5 text-foreground" />
+          </button>
           <h1 className="font-medium text-foreground">{fieldName}</h1>
         </div>
       </header>
@@ -130,9 +123,6 @@ export function VerificationFieldPending({
             重新提交
           </button>
         ) : null}
-        <p className="text-xs text-muted-foreground">
-          按 <span className="font-medium text-foreground">Esc</span> 返回
-        </p>
       </div>
     </PageTransition>
   )
