@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import {
-  buildGuideSteps,
   getChallengeRemainingSeconds,
   getGuidedRecordingState,
 } from './verification-helpers'
@@ -33,10 +32,8 @@ export function VerificationVideoRecord({
     () => getGuidedRecordingState({ challenge: liveChallenge, recordingTime }),
     [liveChallenge, recordingTime],
   )
-  const guideSteps = useMemo(() => buildGuideSteps(liveChallenge), [liveChallenge])
   const remainingSeconds = getChallengeRemainingSeconds(liveChallenge?.expires_at, nowMs)
   const isChallengeExpired = remainingSeconds !== null && remainingSeconds <= 0
-  const previousStep = isRecording && guideState.currentIndex > 0 ? guideSteps[guideState.currentIndex - 1] : null
   const recordTitle = isChallengeExpired
     ? '认证已超时，请重新开始'
     : isRecording
@@ -45,9 +42,7 @@ export function VerificationVideoRecord({
   const recordHint = isChallengeExpired
     ? '请返回重新开始'
     : isRecording
-      ? guideState.nextStep
-        ? `下一步：${guideState.nextStep.instruction}`
-        : '保持正脸'
+      ? '保持正脸'
       : '请将面部放入取景框'
 
   useEffect(() => {
@@ -106,23 +101,6 @@ export function VerificationVideoRecord({
               style={{ width: `${isRecording ? guideState.progress : 0}%` }}
             />
           </div>
-          {isRecording ? (
-            <div className="grid gap-2 text-left max-w-xs mx-auto mb-4 w-full">
-              {previousStep ? (
-                <div className="rounded-2xl bg-emerald-400/80 px-3 py-2 text-sm text-foreground">
-                  已完成：{previousStep.instruction}
-                </div>
-              ) : null}
-              <div className="rounded-2xl bg-white px-3 py-3 text-sm text-foreground">
-                当前动作：{guideState.currentStep?.instruction || '请按提示完成'}
-              </div>
-              {guideState.nextStep ? (
-                <div className="rounded-2xl bg-white/10 px-3 py-2 text-sm text-white/70">
-                  下一步：{guideState.nextStep.instruction}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
         </div>
         <button
           onClick={() => void onRecordVideo()}
