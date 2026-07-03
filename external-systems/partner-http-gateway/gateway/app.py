@@ -20,7 +20,8 @@ def _load_repo_root_dotenv() -> None:
         if (p / "match_domain").is_dir() and (p / "pyproject.toml").is_file():
             env_path = p / ".env"
             if env_path.is_file():
-                load_dotenv(env_path, override=True)
+                # Preserve explicitly injected runtime env (for Docker/Compose).
+                load_dotenv(env_path, override=False)
             return
 
 
