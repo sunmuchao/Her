@@ -99,7 +99,6 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     console.log('[VerificationFlowContent] 渲染 video-review')
     return (
       <VerificationVideoReview
-        liveChallenge={liveChallenge}
         recordedVideo={recordedVideo}
         isSubmittingVideo={isSubmittingVideo}
         onBack={() => setStep('video-record')}

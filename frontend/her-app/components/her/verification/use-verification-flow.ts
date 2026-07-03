@@ -31,6 +31,7 @@ import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getSSEServerUrl } from '@/lib/sse'
 import { useVerificationCacheInvalidation } from '@/lib/hooks/use-verification-cache-invalidation'
+import { getRecordingDurationSeconds } from './verification-helpers'
 
 // SSE服务器URL
 const SSE_SERVER_URL = getSSEServerUrl()
@@ -323,13 +324,16 @@ export function useVerificationFlow(onBack: () => void) {
   }
 
   const handleRecordVideo = async () => {
+    const recordingDurationSeconds = getRecordingDurationSeconds(liveChallenge)
+    const recordingDurationMs = recordingDurationSeconds * 1000
+
     setIsRecording(true)
     setRecordingTime(0)
     const timer = window.setInterval(() => setRecordingTime((prev) => prev + 1), 1000)
     try {
       const video = previewStream
-        ? await recordVideoFromStream(previewStream, 6000, false)
-        : await recordVideoFromCamera(6000)
+        ? await recordVideoFromStream(previewStream, recordingDurationMs, false)
+        : await recordVideoFromCamera(recordingDurationMs)
       setRecordedVideo(video)
       stopMediaStream(previewStream)
       setPreviewStream(null)
@@ -366,7 +370,7 @@ export function useVerificationFlow(onBack: () => void) {
         videoBlob: recordedVideo?.blob,
         fileName: 'verification-recording.webm',
         contentType: recordedVideo?.mimeType,
-        recordingDurationMs: 6000,
+        recordingDurationMs: getRecordingDurationSeconds(liveChallenge) * 1000,
       })
       notifySuccess('身份认证视频已提交，等待审核')
 

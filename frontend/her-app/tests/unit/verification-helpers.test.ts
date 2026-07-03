@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { buildGuideSteps, getGuidedRecordingState } from '../../components/her/verification/verification-helpers'
+import { buildGuideSteps, getGuidedRecordingState, getRecordingDurationSeconds } from '../../components/her/verification/verification-helpers'
 
 describe('verification helpers', () => {
   const challenge = {
@@ -19,9 +19,10 @@ describe('verification helpers', () => {
   })
 
   test('录制中只推进当前步骤和下一步骤', () => {
-    const start = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 0, totalDurationSeconds: 6 })
-    const middle = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 2, totalDurationSeconds: 6 })
-    const final = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 5, totalDurationSeconds: 6 })
+    const duration = getRecordingDurationSeconds(challenge as never)
+    const start = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 0, totalDurationSeconds: duration })
+    const middle = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 3, totalDurationSeconds: duration })
+    const final = getGuidedRecordingState({ challenge: challenge as never, recordingTime: 9, totalDurationSeconds: duration })
 
     expect(start.currentStep?.instruction).toBe('请抬头')
     expect(start.nextStep?.instruction).toBe('请向左转头')
@@ -31,5 +32,10 @@ describe('verification helpers', () => {
 
     expect(final.currentStep?.instruction).toBe('请大声读出数字 43')
     expect(final.nextStep).toBeNull()
+  })
+
+  test('根据动作和口令动态计算录制时长', () => {
+    expect(getRecordingDurationSeconds(challenge as never)).toBe(10)
+    expect(getRecordingDurationSeconds({ required_actions: ['nod_up'] } as never)).toBe(6)
   })
 })

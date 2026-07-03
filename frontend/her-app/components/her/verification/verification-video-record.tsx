@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import {
   getChallengeRemainingSeconds,
+  getRecordingDurationSeconds,
   getGuidedRecordingState,
 } from './verification-helpers'
 
@@ -27,10 +28,11 @@ export function VerificationVideoRecord({
 }: VerificationVideoRecordProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [nowMs, setNowMs] = useState(Date.now())
+  const recordingDurationSeconds = useMemo(() => getRecordingDurationSeconds(liveChallenge), [liveChallenge])
 
   const guideState = useMemo(
-    () => getGuidedRecordingState({ challenge: liveChallenge, recordingTime }),
-    [liveChallenge, recordingTime],
+    () => getGuidedRecordingState({ challenge: liveChallenge, recordingTime, totalDurationSeconds: recordingDurationSeconds }),
+    [liveChallenge, recordingTime, recordingDurationSeconds],
   )
   const remainingSeconds = getChallengeRemainingSeconds(liveChallenge?.expires_at, nowMs)
   const isChallengeExpired = remainingSeconds !== null && remainingSeconds <= 0

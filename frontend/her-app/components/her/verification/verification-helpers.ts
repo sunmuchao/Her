@@ -6,6 +6,9 @@ import {
 } from '@/lib/api/endpoints/verification'
 
 export const VIDEO_RECORDING_SECONDS = 6
+const ACTION_STEP_SECONDS = 2
+const SPOKEN_STEP_SECONDS = 3
+const RECORDING_BUFFER_SECONDS = 1
 
 const ACTION_LABELS: Record<string, string> = {
   blink: '眨眼',
@@ -88,6 +91,17 @@ export function buildGuideSteps(challenge: LiveVideoChallenge | null) {
     : []
 
   return [...requiredActionSteps, ...spokenSteps]
+}
+
+export function getRecordingDurationSeconds(challenge: LiveVideoChallenge | null) {
+  const steps = buildGuideSteps(challenge)
+  if (steps.length === 0) return VIDEO_RECORDING_SECONDS
+
+  const weightedSeconds = steps.reduce((total, step) => {
+    return total + (step.kind === 'spoken_code' ? SPOKEN_STEP_SECONDS : ACTION_STEP_SECONDS)
+  }, 0)
+
+  return Math.max(VIDEO_RECORDING_SECONDS, weightedSeconds + RECORDING_BUFFER_SECONDS)
 }
 
 export function getGuidedRecordingState(params: {
