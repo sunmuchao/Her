@@ -1,11 +1,37 @@
 'use client'
 
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { FaceLandmarker, FilesetResolver, type FaceLandmarkerResult } from '@mediapipe/tasks-vision'
 
 const FACE_LANDMARKER_WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
 const FACE_LANDMARKER_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+
+type FaceLandmarkerClass = {
+  createFromOptions: (fileset: unknown, options: Record<string, unknown>) => Promise<FaceLandmarkerInstance>
+}
+
+type FaceLandmarkerInstance = {
+  detectForVideo: (videoFrame: HTMLVideoElement, timestamp: number) => FaceLandmarkerResult
+}
+
+type FilesetResolverClass = {
+  forVisionTasks: (wasmPath: string) => Promise<unknown>
+}
+
+type FaceLandmarkerResult = {
+  faceLandmarks: Array<Array<{ x: number; y: number; z?: number }>>
+  faceBlendshapes?: Array<{
+    categories?: Array<{
+      categoryName: string
+      score: number
+    }>
+  }>
+}
+
+type MediaPipeVisionModule = {
+  FaceLandmarker: FaceLandmarkerClass
+  FilesetResolver: FilesetResolverClass
+}
 
 type SupportedAction = 'blink' | 'open_mouth' | 'turn_left' | 'turn_right' | 'nod_up'
 
@@ -26,11 +52,19 @@ type UseLiveFaceChallengeResult = {
   statusText: string
 }
 
-let faceLandmarkerPromise: Promise<FaceLandmarker> | null = null
+let faceLandmarkerPromise: Promise<FaceLandmarkerInstance> | null = null
+
+async function loadMediaPipeVisionModule(): Promise<MediaPipeVisionModule> {
+  return import(
+    /* webpackIgnore: true */
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs'
+  ) as Promise<MediaPipeVisionModule>
+}
 
 async function getFaceLandmarker() {
   if (!faceLandmarkerPromise) {
     faceLandmarkerPromise = (async () => {
+      const { FaceLandmarker, FilesetResolver } = await loadMediaPipeVisionModule()
       const fileset = await FilesetResolver.forVisionTasks(FACE_LANDMARKER_WASM_URL)
       return FaceLandmarker.createFromOptions(fileset, {
         baseOptions: {
