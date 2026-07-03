@@ -1,6 +1,12 @@
-tree 23c9b2824cc0701320e89d0e0c8df311f5d4fa00
-parent 83a2d16d3a96d71a94d01ef2529990b817a71ea5
-author Sun.Sun-孙木超 <Sun.Sun@fanruan.com> 1777705726 +0800
-committer Sun.Sun-孙木超 <Sun.Sun@fanruan.com> 1777705726 +0800
+tree 3fbf44e47750c93136b6626425fdef99a70ecd1b
+parent 45e54c41398ab1e6396160f175a9d5464ecb9825
+author v0agent <it+v0agent@vercel.com> 1780380263 +0000
+committer v0agent <it+v0agent@vercel.com> 1780380263 +0000
+gpgsig -----BEGIN SSH SIGNATURE-----
+ U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgfKoNPsGNA/EmAValKZkvqIEcx1
+ z/FLmfJ83LOS7D+3kAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5
+ AAAAQITyHA+rNI3szRJihL0L/FBijcBpkPp853Y5/lMCSY/+aEpZe+7ekrjT8zNy+DPd6C
+ sOwVaMch7DxoTBQxAhTQ0=
+ -----END SSH SIGNATURE-----
 
-codex: auto-commit 2026-05-02 15:08:46
+feat: add immersive assessment animations and utility classes
