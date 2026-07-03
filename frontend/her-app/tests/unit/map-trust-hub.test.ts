@@ -20,24 +20,30 @@ describe('map-trust-hub', () => {
       { title: '职业认证', status: 'approved' },
     ])
     expect(items).toEqual([
-      { name: '学历认证', status: 'pending', description: '审核中' },
-      { name: '职业认证', status: 'verified', description: '等待进一步处理' },
+      { name: '学历认证', status: 'pending', statusText: '审核中', description: '审核中', detail: undefined },
+      { name: '职业认证', status: 'verified', statusText: '已认证', description: '等待进一步处理', detail: undefined },
     ])
   })
 
   it('maps rejected verification items to action required', () => {
     const items = mapTrustHubVerificationItems([
-      { title: '学历认证', status: 'rejected', status_label: '已驳回' },
+      { title: '学历认证', status: 'rejected', status_label: '已驳回', failure_reason: '证书信息与填写不一致' },
     ])
     expect(items).toEqual([
-      { name: '学历认证', status: 'action_required', description: '已驳回' },
+      {
+        name: '学历认证',
+        status: 'action_required',
+        statusText: '已驳回',
+        description: '已驳回',
+        detail: '证书信息与填写不一致',
+      },
     ])
   })
 
   it('computes verification progress', () => {
     const progress = trustVerificationProgress([
-      { name: 'a', status: 'verified', description: '' },
-      { name: 'b', status: 'pending', description: '' },
+      { name: 'a', status: 'verified', statusText: '已认证', description: '' },
+      { name: 'b', status: 'pending', statusText: '审核中', description: '' },
     ])
     expect(progress).toEqual({ verifiedCount: 1, total: 2, progress: 50 })
   })

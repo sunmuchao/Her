@@ -78,7 +78,7 @@ def _status_label(status: str) -> str:
         SUBMISSION_STATUS_AWAITING_SUBMISSION: "待补件",
         SUBMISSION_STATUS_SUBMITTED: "审核中",
         SUBMISSION_STATUS_UNDER_REVIEW: "审核中",
-        SUBMISSION_STATUS_RESUBMISSION_REQUIRED: "需重提",
+        SUBMISSION_STATUS_RESUBMISSION_REQUIRED: "需补材料",
         SUBMISSION_STATUS_REJECTED: "已驳回",
         SUBMISSION_STATUS_APPROVED: "已通过",
         SUBMISSION_STATUS_FROZEN: "已冻结",
@@ -87,7 +87,7 @@ def _status_label(status: str) -> str:
         FIELD_SUBMISSION_STATUS_UNDER_REVIEW: "审核中",
         FIELD_SUBMISSION_STATUS_APPROVED: "已核验",
         FIELD_SUBMISSION_STATUS_REJECTED: "已驳回",
-        FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED: "需重提",
+        FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED: "需补材料",
         FIELD_SUBMISSION_STATUS_EXPIRED: "已过期",
         "disputed": "申诉复核中",
         PROFILE_REVIEW_STATUS_OPEN: "待处理",
@@ -109,7 +109,7 @@ def _status_label(status: str) -> str:
         "unverified": "未认证",
         "verified": "已认证",
         "pending": "审核中",
-        "action_required": "需重提",
+        "action_required": "待处理",
     }
     return labels.get(status, status)
 
@@ -534,13 +534,16 @@ def _build_verification_items(
 
         if field_key == "live_video":
             # 身份认证（照片核验）
+            latest_review = (latest_request.get("reviews") or [{}])[-1] if latest_request.get("reviews") else {}
             items.append({
                 "item_id": f"verification-{user_id}-{field_key}",
                 "item_type": "verification_item",
                 "title": name,
                 "status": photo_request_status,
-                "status_label": _status_label(photo_request_status),
+                "status_label": _status_label(photo_status) if photo_status else _status_label(photo_request_status),
                 "description": photo_request_description,
+                "failure_reason": _as_text((latest_review or {}).get("review_note")),
+                "support_hint": "请按审核意见重新录制，确保画面清晰、正脸、无遮挡。",
                 "field_key": field_key,
             })
         else:
@@ -551,6 +554,10 @@ def _build_verification_items(
                 # 有提交记录，基于实际状态
                 submission_status = _as_text(submission.get("status"))
                 status = normalize_field_submission_status(submission_status)
+                latest_review = (submission.get("reviews") or [{}])[-1] if submission.get("reviews") else {}
+                failure_reason = _as_text(
+                    submission.get("dispute_reason") or (latest_review or {}).get("review_note")
+                )
 
                 # 根据状态选择描述
                 if status == "verified":
@@ -573,6 +580,16 @@ def _build_verification_items(
                     "status": status,
                     "status_label": _status_label(submission_status),
                     "description": description,
+                    "failure_reason": failure_reason,
+                    "support_hint": (
+                        "请根据审核意见补充更清晰、更完整的证明材料。"
+                        if submission_status in {
+                            FIELD_SUBMISSION_STATUS_REJECTED,
+                            FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED,
+                            FIELD_SUBMISSION_STATUS_EXPIRED,
+                        }
+                        else None
+                    ),
                     "field_key": field_key,
                 })
             else:

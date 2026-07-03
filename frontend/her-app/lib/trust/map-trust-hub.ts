@@ -1,7 +1,9 @@
 export type VerificationItemView = {
   name: string
   status: 'verified' | 'pending' | 'action_required' | 'unverified'
+  statusText: string
   description: string
+  detail?: string
 }
 
 export type TrustHubVerificationItem = {
@@ -11,6 +13,7 @@ export type TrustHubVerificationItem = {
   status_label?: string
   review_eta?: string
   support_hint?: string
+  failure_reason?: string
 }
 
 export type TrustHubPayload = {
@@ -42,11 +45,24 @@ export function normalizeTrustVerificationStatus(status?: string): VerificationI
 export function mapTrustHubVerificationItems(
   items: TrustHubVerificationItem[] | undefined,
 ): VerificationItemView[] {
-  return (items || []).map((item) => ({
-    name: item.title || '待认证项目',
-    status: normalizeTrustVerificationStatus(item.status),
-    description: item.status_label || item.review_eta || item.support_hint || '等待进一步处理',
-  }))
+  return (items || []).map((item) => {
+    const normalizedStatus = normalizeTrustVerificationStatus(item.status)
+    return {
+      name: item.title || '待认证项目',
+      status: normalizedStatus,
+      statusText:
+        item.status_label ||
+        (normalizedStatus === 'verified'
+          ? '已认证'
+          : normalizedStatus === 'pending'
+            ? '审核中'
+            : normalizedStatus === 'action_required'
+              ? '待处理'
+              : '未认证'),
+      description: item.status_label || item.review_eta || item.support_hint || '等待进一步处理',
+      detail: item.failure_reason || item.support_hint,
+    }
+  })
 }
 
 export function trustVerificationProgress(items: VerificationItemView[]) {
