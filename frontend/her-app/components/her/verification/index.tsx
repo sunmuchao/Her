@@ -24,6 +24,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     selectedField,
     isRecording,
     recordingTime,
+    currentGuideStepIndex,
     liveChallenge,
     latestVideoSubmission,
     latestVerificationNotification,
@@ -39,6 +40,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     handleDirectBack,
     startVideoVerification,
     handleRecordVideo,
+    completeVideoGuideStep,
     finishVideoSubmission,
     handleSubmitField,
   } = useVerificationFlow(onBack)
@@ -87,10 +89,12 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
       <VerificationVideoRecord
         isRecording={isRecording}
         recordingTime={recordingTime}
+        currentGuideStepIndex={currentGuideStepIndex}
         liveChallenge={liveChallenge}
         previewStream={previewStream}
         onBack={() => setStep('video-intro')}
         onRecordVideo={handleRecordVideo}
+        onCompleteGuideStep={completeVideoGuideStep}
       />
     )
   }

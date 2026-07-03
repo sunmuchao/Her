@@ -5,6 +5,11 @@ export type RecordedVideo = {
   mimeType: string
 }
 
+export type VideoRecordingSession = {
+  result: Promise<RecordedVideo>
+  stop: () => void
+}
+
 export async function startUserFacingCamera(): Promise<MediaStream> {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('当前环境不支持摄像头录制')
@@ -37,11 +42,11 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
-export async function recordVideoFromStream(
+export function startVideoRecordingSession(
   stream: MediaStream,
   maxDurationMs = 6000,
   stopStreamAfterRecord = false,
-): Promise<RecordedVideo> {
+): VideoRecordingSession {
   if (!stream) {
     throw new Error('缺少摄像头流')
   }
@@ -68,28 +73,49 @@ export async function recordVideoFromStream(
 
   recorder.start(250)
 
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, maxDurationMs)
+  const timeoutId = window.setTimeout(() => {
+    if (recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+  }, maxDurationMs)
+
+  const stop = () => {
+    window.clearTimeout(timeoutId)
+    if (recorder.state !== 'inactive') {
+      recorder.stop()
+    }
+  }
+
+  const result = recorded.then(async (blob) => {
+    window.clearTimeout(timeoutId)
+
+    if (stopStreamAfterRecord) {
+      stopMediaStream(stream)
+    }
+
+    const base64 = await blobToBase64(blob)
+    const blobUrl = URL.createObjectURL(blob)
+
+    return {
+      blob,
+      blobUrl,
+      base64,
+      mimeType: blob.type || 'video/webm',
+    }
   })
 
-  if (recorder.state !== 'inactive') {
-    recorder.stop()
-  }
-
-  if (stopStreamAfterRecord) {
-    stopMediaStream(stream)
-  }
-
-  const blob = await recorded
-  const base64 = await blobToBase64(blob)
-  const blobUrl = URL.createObjectURL(blob)
-
   return {
-    blob,
-    blobUrl,
-    base64,
-    mimeType: blob.type || 'video/webm',
+    result,
+    stop,
   }
+}
+
+export async function recordVideoFromStream(
+  stream: MediaStream,
+  maxDurationMs = 6000,
+  stopStreamAfterRecord = false,
+): Promise<RecordedVideo> {
+  return startVideoRecordingSession(stream, maxDurationMs, stopStreamAfterRecord).result
 }
 
 export async function recordVideoFromCamera(maxDurationMs = 6000): Promise<RecordedVideo> {

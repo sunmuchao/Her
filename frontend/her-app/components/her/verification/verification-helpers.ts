@@ -56,6 +56,8 @@ export function buildGuideSteps(challenge: LiveVideoChallenge | null) {
   const promptSteps =
     challenge?.prompt_steps?.map((step) => ({
       key: step.action_key || step.spoken_code || `step-${step.step_index}`,
+      actionKey: step.action_key || undefined,
+      spokenCode: step.spoken_code || challenge?.spoken_code || undefined,
       title:
         step.label ||
         (step.kind === 'spoken_code' ? `读出数字 ${step.spoken_code || challenge?.spoken_code || ''}` : getActionLabel(step.action_key)),
@@ -74,6 +76,8 @@ export function buildGuideSteps(challenge: LiveVideoChallenge | null) {
   const requiredActionSteps =
     challenge?.required_actions?.map((action, index) => ({
       key: action || `action-${index + 1}`,
+      actionKey: action || undefined,
+      spokenCode: undefined,
       title: getActionLabel(action),
       instruction: `请${getActionLabel(action)}`,
       kind: 'action' as const,
@@ -83,6 +87,8 @@ export function buildGuideSteps(challenge: LiveVideoChallenge | null) {
     ? [
         {
           key: 'spoken-code',
+          actionKey: undefined,
+          spokenCode: challenge.spoken_code,
           title: `读出数字 ${challenge.spoken_code}`,
           instruction: `请大声读出数字 ${challenge.spoken_code}`,
           kind: 'spoken_code' as const,

@@ -564,7 +564,9 @@ export default function ProfilePage({
                             ? 'bg-primary/10'
                             : item.status === 'pending'
                               ? 'bg-gold/10'
-                              : 'bg-secondary',
+                              : item.status === 'action_required'
+                                ? 'bg-destructive/10'
+                                : 'bg-secondary',
                         )}>
                           <Icon className={cn(
                             'w-5 h-5',
@@ -572,7 +574,9 @@ export default function ProfilePage({
                               ? 'text-primary'
                               : item.status === 'pending'
                                 ? 'text-gold'
-                                : 'text-muted-foreground',
+                                : item.status === 'action_required'
+                                  ? 'text-destructive'
+                                  : 'text-muted-foreground',
                           )} />
                         </div>
                         
@@ -588,9 +592,17 @@ export default function ProfilePage({
                             ? 'text-primary'
                             : item.status === 'pending'
                               ? 'text-gold'
-                              : 'text-muted-foreground',
+                              : item.status === 'action_required'
+                                ? 'text-destructive'
+                                : 'text-muted-foreground',
                         )}>
-                          {item.status === 'verified' ? '已认证' : item.status === 'pending' ? '审核中' : '未认证'}
+                          {item.status === 'verified'
+                            ? '已认证'
+                            : item.status === 'pending'
+                              ? '审核中'
+                              : item.status === 'action_required'
+                                ? '需重提'
+                                : '未认证'}
                         </span>
                       </button>
                     )

@@ -1,6 +1,6 @@
 export type VerificationItemView = {
   name: string
-  status: 'verified' | 'pending' | 'unverified'
+  status: 'verified' | 'pending' | 'action_required' | 'unverified'
   description: string
 }
 
@@ -32,6 +32,9 @@ export function normalizeTrustVerificationStatus(status?: string): VerificationI
   }
   if (['submitted', 'in_progress', 'pending', 'under_review'].includes(text)) {
     return 'pending'
+  }
+  if (['action_required', 'rejected', 'resubmission_required', 'expired', 'awaiting_submission'].includes(text)) {
+    return 'action_required'
   }
   return 'unverified'
 }

@@ -10,6 +10,7 @@ describe('map-trust-hub', () => {
   it('normalizes verification statuses', () => {
     expect(normalizeTrustVerificationStatus('approved')).toBe('verified')
     expect(normalizeTrustVerificationStatus('under_review')).toBe('pending')
+    expect(normalizeTrustVerificationStatus('rejected')).toBe('action_required')
     expect(normalizeTrustVerificationStatus('unknown')).toBe('unverified')
   })
 
@@ -21,6 +22,15 @@ describe('map-trust-hub', () => {
     expect(items).toEqual([
       { name: '学历认证', status: 'pending', description: '审核中' },
       { name: '职业认证', status: 'verified', description: '等待进一步处理' },
+    ])
+  })
+
+  it('maps rejected verification items to action required', () => {
+    const items = mapTrustHubVerificationItems([
+      { title: '学历认证', status: 'rejected', status_label: '已驳回' },
+    ])
+    expect(items).toEqual([
+      { name: '学历认证', status: 'action_required', description: '已驳回' },
     ])
   })
 

@@ -460,13 +460,16 @@ def normalize_field_submission_status(status: str) -> str:
 
     标准认证状态（前端约定）：
     - verified: 已认证
-    - pending: 审核中/需重提（前端只有三种状态，action_required 映射为 pending）
+    - pending: 审核中
+    - action_required: 已驳回/需重提/已过期
     - unverified: 未认证
     """
     if status in {FIELD_SUBMISSION_STATUS_APPROVED}:
         return "verified"
-    if status in {FIELD_SUBMISSION_STATUS_SUBMITTED, FIELD_SUBMISSION_STATUS_UNDER_REVIEW, FIELD_SUBMISSION_STATUS_REJECTED, FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED, FIELD_SUBMISSION_STATUS_EXPIRED}:
-        return "pending"  # 审核中或需重提，前端统一显示为待处理状态
+    if status in {FIELD_SUBMISSION_STATUS_SUBMITTED, FIELD_SUBMISSION_STATUS_UNDER_REVIEW}:
+        return "pending"
+    if status in {FIELD_SUBMISSION_STATUS_REJECTED, FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED, FIELD_SUBMISSION_STATUS_EXPIRED}:
+        return "action_required"
     return "unverified"
 
 
@@ -517,12 +520,12 @@ def _build_verification_items(
         if photo_status in {SUBMISSION_STATUS_APPROVED}:
             photo_request_status = "verified"
             photo_request_description = "已完成真人核验"
-        elif photo_status in {SUBMISSION_STATUS_SUBMITTED, SUBMISSION_STATUS_UNDER_REVIEW, SUBMISSION_STATUS_RESUBMISSION_REQUIRED, SUBMISSION_STATUS_REJECTED}:
-            photo_request_status = "pending"  # 审核中或需重提，前端统一显示为待处理状态
-            if photo_status in {SUBMISSION_STATUS_RESUBMISSION_REQUIRED, SUBMISSION_STATUS_REJECTED}:
-                photo_request_description = "需重新提交"
-            else:
-                photo_request_description = "审核中"
+        elif photo_status in {SUBMISSION_STATUS_SUBMITTED, SUBMISSION_STATUS_UNDER_REVIEW}:
+            photo_request_status = "pending"
+            photo_request_description = "审核中"
+        elif photo_status in {SUBMISSION_STATUS_RESUBMISSION_REQUIRED, SUBMISSION_STATUS_REJECTED}:
+            photo_request_status = "action_required"
+            photo_request_description = "需重新提交"
 
     # 遍历标准认证项配置，构建完整的认证项列表
     for standard_item in STANDARD_VERIFICATION_ITEMS:
@@ -554,6 +557,12 @@ def _build_verification_items(
                     description = standard_item["description_verified"]
                 elif status == "pending":
                     description = standard_item["description_pending"]
+                elif submission_status == FIELD_SUBMISSION_STATUS_REJECTED:
+                    description = "已驳回"
+                elif submission_status == FIELD_SUBMISSION_STATUS_RESUBMISSION_REQUIRED:
+                    description = "需重新提交"
+                elif submission_status == FIELD_SUBMISSION_STATUS_EXPIRED:
+                    description = "认证已过期"
                 else:
                     description = standard_item["description_unverified"]
 

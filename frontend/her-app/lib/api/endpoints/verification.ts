@@ -86,15 +86,34 @@ function buildRealtimeChallengeMetadata(params: {
   challengePhrase?: string
   requiredActions?: string[]
   recordingDurationMs?: number
+  actionEvents?: Array<{
+    action: string
+    step_index: number
+    detected_at_ms: number
+    score: number
+  }>
+  speechChallengeResult?: {
+    provider: string
+    transcript_text: string
+    matched: boolean
+  }
 }) {
   const requiredActions = (params.requiredActions ?? []).filter(Boolean)
-  const actionEvents = requiredActions.map((action, index) => ({
-    action,
-    step_index: index + 1,
-    detected_at_ms: 800 * (index + 1),
-    score: 95,
-  }))
-  const actionScores = Object.fromEntries(requiredActions.map((action) => [action, 95]))
+  const actionEvents =
+    params.actionEvents?.map((event) => ({
+      action: event.action,
+      step_index: event.step_index,
+      detected_at_ms: event.detected_at_ms,
+      score: event.score,
+    })) ||
+    requiredActions.map((action, index) => ({
+      action,
+      step_index: index + 1,
+      detected_at_ms: 800 * (index + 1),
+      score: 95,
+    }))
+  const actionScores = Object.fromEntries(actionEvents.map((event) => [event.action, event.score]))
+  const completedActions = actionEvents.map((event) => event.action)
   const spokenPromptRequired = hasSpokenCodePrompt(params.challengePhrase)
   const recordingDurationMs = Math.max(
     params.recordingDurationMs ?? 0,
@@ -104,7 +123,7 @@ function buildRealtimeChallengeMetadata(params: {
   return {
     action_result: {
       capture_mode: 'realtime_challenge',
-      completed_actions: requiredActions,
+      completed_actions: completedActions,
       action_events: actionEvents,
       action_scores: actionScores,
       face_count_max: 1,
@@ -115,8 +134,9 @@ function buildRealtimeChallengeMetadata(params: {
       recording_started_at_ms: 0,
       recording_duration_ms: recordingDurationMs,
       video_recorded: true,
-      challenge_passed: requiredActions.length > 0,
+      challenge_passed: completedActions.length >= requiredActions.length,
     },
+    speech_challenge_result: params.speechChallengeResult,
     source: 'her-app',
   }
 }
@@ -185,6 +205,17 @@ export async function submitLiveVideoVerification(params: {
   fileName?: string
   contentType?: string
   recordingDurationMs?: number
+  actionEvents?: Array<{
+    action: string
+    step_index: number
+    detected_at_ms: number
+    score: number
+  }>
+  speechChallengeResult?: {
+    provider: string
+    transcript_text: string
+    matched: boolean
+  }
 }) {
   // ✅ 关键修复：校验 challenge_token 是否与锁定状态一致
   if (!validateChallengeToken(params.challengeToken)) {
@@ -215,6 +246,8 @@ export async function submitLiveVideoVerification(params: {
       challengePhrase: params.challengePhrase,
       requiredActions: params.requiredActions,
       recordingDurationMs: params.recordingDurationMs,
+      actionEvents: params.actionEvents,
+      speechChallengeResult: params.speechChallengeResult,
     })
 
     if (useFormData) {

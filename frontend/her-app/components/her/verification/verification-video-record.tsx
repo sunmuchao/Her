@@ -1,51 +1,67 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import {
+  buildGuideSteps,
   getChallengeRemainingSeconds,
   getRecordingDurationSeconds,
-  getGuidedRecordingState,
 } from './verification-helpers'
+import { useLiveFaceChallenge } from './use-live-face-challenge'
 
 interface VerificationVideoRecordProps {
   isRecording: boolean
   recordingTime: number
+  currentGuideStepIndex: number
   liveChallenge: LiveVideoChallenge | null
   previewStream: MediaStream | null
   onBack: () => void
   onRecordVideo: () => void
+  onCompleteGuideStep: (params?: { score?: number; transcript?: string; provider?: string }) => void
 }
 
 export function VerificationVideoRecord({
   isRecording,
   recordingTime,
+  currentGuideStepIndex,
   liveChallenge,
   previewStream,
   onBack,
   onRecordVideo,
+  onCompleteGuideStep,
 }: VerificationVideoRecordProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [nowMs, setNowMs] = useState(Date.now())
   const recordingDurationSeconds = useMemo(() => getRecordingDurationSeconds(liveChallenge), [liveChallenge])
-
-  const guideState = useMemo(
-    () => getGuidedRecordingState({ challenge: liveChallenge, recordingTime, totalDurationSeconds: recordingDurationSeconds }),
-    [liveChallenge, recordingTime, recordingDurationSeconds],
-  )
+  const guideSteps = useMemo(() => buildGuideSteps(liveChallenge), [liveChallenge])
+  const currentStep = guideSteps[currentGuideStepIndex] || null
   const remainingSeconds = getChallengeRemainingSeconds(liveChallenge?.expires_at, nowMs)
   const isChallengeExpired = remainingSeconds !== null && remainingSeconds <= 0
   const recordTitle = isChallengeExpired
     ? '认证已超时，请重新开始'
     : isRecording
-      ? guideState.currentStep?.instruction || liveChallenge?.challenge_phrase || '请按提示完成动作'
+      ? currentStep?.instruction || liveChallenge?.challenge_phrase || '请按提示完成动作'
       : '请正对镜头'
   const recordHint = isChallengeExpired
     ? '请返回重新开始'
     : isRecording
-      ? '保持正脸'
+      ? currentStep?.kind === 'spoken_code'
+        ? '请大声读出数字'
+        : '识别中...'
       : ''
+  const progress = guideSteps.length > 0 ? Math.min(100, Math.round((currentGuideStepIndex / guideSteps.length) * 100)) : 0
+  const spokenAutoAdvanceRef = useRef<number | null>(null)
+  const handleActionDetected = useCallback((score: number) => {
+    onCompleteGuideStep({ score })
+  }, [onCompleteGuideStep])
+
+  const { statusText: detectionStatus } = useLiveFaceChallenge({
+    videoRef,
+    enabled: isRecording && currentStep?.kind === 'action',
+    expectedAction: currentStep?.actionKey,
+    onActionDetected: handleActionDetected,
+  })
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -65,6 +81,80 @@ export function VerificationVideoRecord({
       }
     }
   }, [previewStream])
+
+  useEffect(() => {
+    if (!isRecording || currentStep?.kind !== 'spoken_code') {
+      if (spokenAutoAdvanceRef.current !== null) {
+        window.clearTimeout(spokenAutoAdvanceRef.current)
+        spokenAutoAdvanceRef.current = null
+      }
+      return
+    }
+
+    const SpeechRecognitionCtor =
+      typeof window !== 'undefined' ? window.SpeechRecognition || window.webkitSpeechRecognition : undefined
+
+    const normalizeDigits = (input: string) =>
+      input
+        .replace(/[零〇]/g, '0')
+        .replace(/一/g, '1')
+        .replace(/二|两/g, '2')
+        .replace(/三/g, '3')
+        .replace(/四/g, '4')
+        .replace(/五/g, '5')
+        .replace(/六/g, '6')
+        .replace(/七/g, '7')
+        .replace(/八/g, '8')
+        .replace(/九/g, '9')
+        .replace(/\D/g, '')
+
+    if (!SpeechRecognitionCtor) {
+      spokenAutoAdvanceRef.current = window.setTimeout(() => {
+        onCompleteGuideStep({
+          transcript: String(currentStep.spokenCode || ''),
+          provider: 'timed_audio_fallback',
+        })
+      }, 2500)
+
+      return () => {
+        if (spokenAutoAdvanceRef.current !== null) {
+          window.clearTimeout(spokenAutoAdvanceRef.current)
+          spokenAutoAdvanceRef.current = null
+        }
+      }
+    }
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.lang = 'zh-CN'
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    recognition.onresult = (event) => {
+      let transcript = ''
+      for (let index = 0; index < event.results.length; index += 1) {
+        transcript += event.results[index]?.[0]?.transcript || ''
+      }
+      const normalizedTranscript = normalizeDigits(transcript)
+      const normalizedCode = normalizeDigits(String(currentStep.spokenCode || ''))
+
+      if (normalizedCode && normalizedTranscript.includes(normalizedCode)) {
+        onCompleteGuideStep({
+          transcript: normalizedTranscript,
+          provider: 'browser_speech_recognition',
+        })
+      }
+    }
+
+    recognition.start()
+
+    return () => {
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      recognition.abort()
+    }
+  }, [currentStep, isRecording, onCompleteGuideStep])
 
   return (
     <div className="h-full bg-foreground flex flex-col relative">
@@ -96,11 +186,14 @@ export function VerificationVideoRecord({
           <div className="mb-5 rounded-3xl bg-black/35 px-4 py-4 backdrop-blur-sm">
             <h3 className="text-xl font-medium text-white">{recordTitle}</h3>
             {recordHint ? <p className="mt-2 text-sm text-white/70">{recordHint}</p> : null}
+            {isRecording && currentStep?.kind === 'action' && detectionStatus ? (
+              <p className="mt-2 text-xs text-white/55">{detectionStatus}</p>
+            ) : null}
           </div>
           <div className="mb-4 h-2 w-full max-w-xs rounded-full bg-white/20 overflow-hidden mx-auto">
             <div
               className="h-full rounded-full bg-white transition-all"
-              style={{ width: `${isRecording ? guideState.progress : 0}%` }}
+              style={{ width: `${isRecording ? progress : 0}%` }}
             />
           </div>
         </div>

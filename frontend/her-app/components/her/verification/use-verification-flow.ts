@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import {
   createLiveVideoChallenge,
@@ -20,18 +20,18 @@ import {
 } from '@/lib/api/endpoints/field-verification'
 import { fetchProfileFacts } from '@/lib/api/endpoints/collected'
 import {
-  recordVideoFromCamera,
-  recordVideoFromStream,
+  startVideoRecordingSession,
   startUserFacingCamera,
   stopMediaStream,
   type RecordedVideo,
+  type VideoRecordingSession,
 } from '@/lib/media/video-recorder'
 import { notifyError, notifySuccess } from '@/lib/notify'
 import { getUserId, getProfileId } from '@/lib/auth/session'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getSSEServerUrl } from '@/lib/sse'
 import { useVerificationCacheInvalidation } from '@/lib/hooks/use-verification-cache-invalidation'
-import { getRecordingDurationSeconds } from './verification-helpers'
+import { buildGuideSteps, getRecordingDurationSeconds } from './verification-helpers'
 
 // SSE服务器URL
 const SSE_SERVER_URL = getSSEServerUrl()
@@ -106,6 +106,11 @@ export function useVerificationFlow(onBack: () => void) {
   const [recordingTime, setRecordingTime] = useState(0)
   const [liveChallenge, setLiveChallenge] = useState<LiveVideoChallenge | null>(null)
   const [recordedVideo, setRecordedVideo] = useState<RecordedVideo | null>(null)
+  const [currentGuideStepIndex, setCurrentGuideStepIndex] = useState(0)
+  const [detectedActionEvents, setDetectedActionEvents] = useState<
+    Array<{ action: string; step_index: number; detected_at_ms: number; score: number }>
+  >([])
+  const [spokenTranscript, setSpokenTranscript] = useState('')
   const [isSubmittingVideo, setIsSubmittingVideo] = useState(false)
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -116,6 +121,10 @@ export function useVerificationFlow(onBack: () => void) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sseEventSourceRef = useRef<EventSource | null>(null)
   const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingSessionRef = useRef<VideoRecordingSession | null>(null)
+  const recordingTimerRef = useRef<number | null>(null)
+  const recordingStartAtRef = useRef(0)
+  const recordingCompletedRef = useRef(false)
 
   function syncVerificationState(params: {
     submissions: VerificationSubmission[]
@@ -235,6 +244,10 @@ export function useVerificationFlow(onBack: () => void) {
   useEffect(() => {
     return () => {
       stopMediaStream(previewStream)
+      recordingSessionRef.current?.stop()
+      if (recordingTimerRef.current !== null) {
+        window.clearInterval(recordingTimerRef.current)
+      }
     }
   }, [previewStream])
 
@@ -315,6 +328,9 @@ export function useVerificationFlow(onBack: () => void) {
       setLiveChallenge(challenge)
       setLatestVideoSubmission(null)
       setLatestVerificationNotification(null)
+      setCurrentGuideStepIndex(0)
+      setDetectedActionEvents([])
+      setSpokenTranscript('')
       setStep('video-record')
     } catch (error) {
       notifyError(error, '无法创建认证挑战')
@@ -329,11 +345,33 @@ export function useVerificationFlow(onBack: () => void) {
 
     setIsRecording(true)
     setRecordingTime(0)
-    const timer = window.setInterval(() => setRecordingTime((prev) => prev + 1), 1000)
+    setCurrentGuideStepIndex(0)
+    setDetectedActionEvents([])
+    setSpokenTranscript('')
+    recordingCompletedRef.current = false
+    recordingStartAtRef.current = Date.now()
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingTime(Math.floor((Date.now() - recordingStartAtRef.current) / 1000))
+    }, 200)
+
     try {
-      const video = previewStream
-        ? await recordVideoFromStream(previewStream, recordingDurationMs, false)
-        : await recordVideoFromCamera(recordingDurationMs)
+      const session = previewStream
+        ? startVideoRecordingSession(previewStream, recordingDurationMs, false)
+        : startVideoRecordingSession(await startUserFacingCamera(), recordingDurationMs, true)
+
+      recordingSessionRef.current = session
+      const video = await session.result
+      recordingSessionRef.current = null
+
+      if (!recordingCompletedRef.current) {
+        URL.revokeObjectURL(video.blobUrl)
+        setCurrentGuideStepIndex(0)
+        setDetectedActionEvents([])
+        setSpokenTranscript('')
+        notifyError(new Error('未完成全部动作，请重新录制'))
+        return
+      }
+
       setRecordedVideo(video)
       stopMediaStream(previewStream)
       setPreviewStream(null)
@@ -341,10 +379,45 @@ export function useVerificationFlow(onBack: () => void) {
     } catch (error) {
       notifyError(error, '录制失败')
     } finally {
-      window.clearInterval(timer)
+      if (recordingTimerRef.current !== null) {
+        window.clearInterval(recordingTimerRef.current)
+        recordingTimerRef.current = null
+      }
       setIsRecording(false)
     }
   }
+
+  const completeVideoGuideStep = useCallback((params?: { score?: number; transcript?: string }) => {
+    const builtSteps = buildGuideSteps(liveChallenge)
+    const currentStep = builtSteps[currentGuideStepIndex]
+    if (!currentStep) return
+
+    if (currentStep.kind === 'action' && currentStep.actionKey) {
+      const detectedAtMs = Math.max(0, Date.now() - recordingStartAtRef.current)
+      setDetectedActionEvents((prev) => [
+        ...prev,
+        {
+          action: currentStep.actionKey!,
+          step_index: currentGuideStepIndex + 1,
+          detected_at_ms: detectedAtMs,
+          score: Math.round((params?.score ?? 1) * 100),
+        },
+      ])
+    }
+
+    if (currentStep.kind === 'spoken_code' && params?.transcript) {
+      setSpokenTranscript(params.transcript)
+    }
+
+      const nextIndex = currentGuideStepIndex + 1
+    if (nextIndex >= builtSteps.length) {
+      recordingCompletedRef.current = true
+      recordingSessionRef.current?.stop()
+      return
+    }
+
+    setCurrentGuideStepIndex(nextIndex)
+  }, [currentGuideStepIndex, liveChallenge])
 
   const finishVideoSubmission = async () => {
     const token = liveChallenge?.challenge_token
@@ -371,6 +444,14 @@ export function useVerificationFlow(onBack: () => void) {
         fileName: 'verification-recording.webm',
         contentType: recordedVideo?.mimeType,
         recordingDurationMs: getRecordingDurationSeconds(liveChallenge) * 1000,
+        actionEvents: detectedActionEvents,
+        speechChallengeResult: spokenTranscript
+          ? {
+              provider: 'browser_speech_recognition',
+              transcript_text: spokenTranscript,
+              matched: spokenTranscript.includes(String(liveChallenge?.spoken_code || '')),
+            }
+          : undefined,
       })
       notifySuccess('身份认证视频已提交，等待审核')
 
@@ -442,6 +523,7 @@ export function useVerificationFlow(onBack: () => void) {
     latestVerificationNotification,
     latestFieldSubmission,
     recordedVideo,
+    currentGuideStepIndex,
     previewStream,
     setRecordedVideo,
     isSubmittingVideo,
@@ -452,6 +534,7 @@ export function useVerificationFlow(onBack: () => void) {
     handleDirectBack: onBack,
     startVideoVerification,
     handleRecordVideo,
+    completeVideoGuideStep,
     finishVideoSubmission,
     handleSubmitField,
   }
