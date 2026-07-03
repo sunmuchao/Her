@@ -5,8 +5,6 @@ import { X } from 'lucide-react'
 import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import {
   buildGuideSteps,
-  formatChallengeDeadline,
-  formatRemainingTime,
   getChallengeRemainingSeconds,
   getGuidedRecordingState,
 } from './verification-helpers'
@@ -45,12 +43,12 @@ export function VerificationVideoRecord({
       ? guideState.currentStep?.instruction || liveChallenge?.challenge_phrase || '请按提示完成动作'
       : '请正对镜头'
   const recordHint = isChallengeExpired
-    ? '请返回上一页重新发起认证，避免提交时超时。'
+    ? '请返回重新开始'
     : isRecording
       ? guideState.nextStep
         ? `下一步：${guideState.nextStep.instruction}`
-        : '保持正脸，系统即将完成本次录制'
-      : '请将面部放入取景框，开始后按屏幕提示完成动作'
+        : '保持正脸'
+      : '请将面部放入取景框'
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
@@ -99,11 +97,8 @@ export function VerificationVideoRecord({
         </div>
         <div className="text-center mb-8">
           <div className="mb-5 rounded-3xl bg-black/35 px-4 py-4 backdrop-blur-sm">
-            <p className="mb-2 text-xs text-white/60">
-              {isRecording ? `动作 ${guideState.currentIndex + 1}/${Math.max(guideSteps.length, 1)}` : '身份核验'}
-            </p>
-            <h3 className="mb-2 text-xl font-medium text-white">{recordTitle}</h3>
-            <p className="text-sm text-white/70">{recordHint}</p>
+            <h3 className="text-xl font-medium text-white">{recordTitle}</h3>
+            {recordHint ? <p className="mt-2 text-sm text-white/70">{recordHint}</p> : null}
           </div>
           <div className="mb-4 h-2 w-full max-w-xs rounded-full bg-white/20 overflow-hidden mx-auto">
             <div
@@ -128,13 +123,6 @@ export function VerificationVideoRecord({
               ) : null}
             </div>
           ) : null}
-          <p className="text-white/60 text-sm">
-            {isRecording
-              ? `录制中 ${recordingTime}s / 6s`
-              : isChallengeExpired
-                ? '请返回后重新发起认证'
-                : `剩余 ${formatRemainingTime(remainingSeconds)} · 有效期至 ${formatChallengeDeadline(liveChallenge?.expires_at)}`}
-          </p>
         </div>
         <button
           onClick={() => void onRecordVideo()}
@@ -145,7 +133,6 @@ export function VerificationVideoRecord({
         >
           {isRecording ? <div className="w-8 h-8 rounded-md bg-white" /> : <div className="w-16 h-16 rounded-full bg-primary" />}
         </button>
-        {!isRecording ? <p className="mt-4 text-sm text-white/70">{isChallengeExpired ? '返回重试' : '点击开始'}</p> : null}
       </div>
     </div>
   )
