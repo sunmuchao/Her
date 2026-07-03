@@ -72,6 +72,14 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
 
   console.log('[VerificationFlowContent] 当前 step:', step)
 
+  if (step === 'loading') {
+    return (
+      <div className="h-full bg-background flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">加载认证状态...</div>
+      </div>
+    )
+  }
+
   if (step === 'video-intro') {
     console.log('[VerificationFlowContent] 渲染 video-intro')
     return (
@@ -153,6 +161,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
         latestSubmission={latestFieldSubmission}
         selectedField={selectedField}
         onBack={onBack}
+        onResubmit={() => setStep('field-upload')}
       />
     )
   }

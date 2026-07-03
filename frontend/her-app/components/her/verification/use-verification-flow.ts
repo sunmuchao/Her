@@ -13,10 +13,12 @@ import {
   type VerificationSubmission,
 } from '@/lib/api/endpoints/verification'
 import {
+  fetchVerificationDetail,
   listFieldVerifications,
   resolveDeclaredValueFromProfile,
   submitFieldVerification,
   type FieldVerificationSubmission,
+  type VerificationSubmissionDetail,
 } from '@/lib/api/endpoints/field-verification'
 import { fetchProfileFacts } from '@/lib/api/endpoints/collected'
 import {
@@ -36,7 +38,7 @@ import { buildGuideSteps, getRecordingDurationSeconds } from './verification-hel
 // SSE服务器URL
 const SSE_SERVER_URL = getSSEServerUrl()
 
-export type VerificationStep = 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
+export type VerificationStep = 'loading' | 'video-intro' | 'video-record' | 'video-review' | 'video-pending' | 'field-upload' | 'field-pending'
 
 export type FieldItem = {
   id: string
@@ -75,7 +77,7 @@ function mapApiFieldToUi(fieldKey?: string): string | undefined {
 }
 
 function resolveInitialStep(target: string | null): VerificationStep {
-  if (target === 'education' || target === 'occupation' || target === 'income') return 'field-upload'
+  if (target === 'education' || target === 'occupation' || target === 'income' || target === 'video') return 'loading'
   return 'video-intro'
 }
 
@@ -131,7 +133,7 @@ export function useVerificationFlow(onBack: () => void) {
   const [isSubmittingField, setIsSubmittingField] = useState(false)
   const [latestVideoSubmission, setLatestVideoSubmission] = useState<VerificationSubmission | null>(null)
   const [latestVerificationNotification, setLatestVerificationNotification] = useState<VerificationNotification | null>(null)
-  const [latestFieldSubmission, setLatestFieldSubmission] = useState<FieldVerificationSubmission | null>(null)
+  const [latestFieldSubmission, setLatestFieldSubmission] = useState<VerificationSubmissionDetail | FieldVerificationSubmission | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sseEventSourceRef = useRef<EventSource | null>(null)
   const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -243,6 +245,31 @@ export function useVerificationFlow(onBack: () => void) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    const submissionId = latestFieldSubmission?.submission_id
+    const status = String(latestFieldSubmission?.status || '').toLowerCase()
+    if (!submissionId || !hasViewableVerificationStatus(status) || 'reviews' in (latestFieldSubmission || {})) {
+      return
+    }
+
+    let cancelled = false
+    async function loadDetail() {
+      try {
+        const detail = await fetchVerificationDetail(submissionId)
+        if (!cancelled) {
+          setLatestFieldSubmission(detail)
+        }
+      } catch (error) {
+        console.error('[useVerificationFlow] 加载字段认证详情失败:', error)
+      }
+    }
+
+    void loadDetail()
+    return () => {
+      cancelled = true
+    }
+  }, [latestFieldSubmission])
 
   useEffect(() => {
     let cancelled = false

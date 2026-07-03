@@ -2,12 +2,13 @@
 
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 import { PageTransition } from '@/components/her/ui/animations'
-import type { FieldVerificationSubmission } from '@/lib/api/endpoints/field-verification'
+import type { FieldVerificationSubmission, VerificationSubmissionDetail } from '@/lib/api/endpoints/field-verification'
 
 interface VerificationFieldPendingProps {
-  latestSubmission?: FieldVerificationSubmission | null
+  latestSubmission?: VerificationSubmissionDetail | FieldVerificationSubmission | null
   selectedField?: string | null
   onBack: () => void
+  onResubmit: () => void
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -31,46 +32,54 @@ export function VerificationFieldPending({
   latestSubmission,
   selectedField,
   onBack,
+  onResubmit,
 }: VerificationFieldPendingProps) {
   const status = String(latestSubmission?.status || 'submitted').toLowerCase()
   const fieldKey = String(latestSubmission?.field_key || selectedField || '').toLowerCase()
   const fieldName = FIELD_LABELS[fieldKey] || FIELD_LABELS[selectedField || ''] || '材料认证'
   const statusLabel = FIELD_STATUS_LABELS[status] || (latestSubmission?.status || '已提交')
+  const latestReview =
+    Array.isArray((latestSubmission as VerificationSubmissionDetail | undefined)?.reviews) &&
+    (latestSubmission as VerificationSubmissionDetail).reviews!.length > 0
+      ? (latestSubmission as VerificationSubmissionDetail).reviews![(latestSubmission as VerificationSubmissionDetail).reviews!.length - 1]
+      : null
+  const failureReason = latestReview?.review_note?.trim()
+  const showResubmit = ['rejected', 'resubmission_required', 'expired', 'awaiting_submission'].includes(status)
 
   const tone =
     status === 'approved'
       ? {
           title: '审核通过',
-          description: `${fieldName}已通过审核，资料页会自动刷新认证状态。`,
+          description: '认证结果已更新到资料页。',
           icon: <CheckCircle className="w-8 h-8 text-primary" />,
         }
       : status === 'rejected'
         ? {
             title: '认证未通过',
-            description: `${fieldName}已被驳回，请根据审核意见补充材料后重新提交。`,
+            description: failureReason || '请根据审核意见补充材料后重新提交。',
             icon: <AlertTriangle className="w-8 h-8 text-destructive" />,
           }
         : status === 'resubmission_required'
           ? {
               title: '需要补件',
-              description: `${fieldName}当前需要补件，请根据审核意见补充材料后重新提交。`,
+              description: failureReason || '请根据审核意见补充材料后重新提交。',
               icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
             }
           : status === 'expired'
             ? {
                 title: '认证已过期',
-                description: `${fieldName}认证已过期，请重新提交最新材料。`,
+                description: '请重新提交最新材料。',
                 icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
               }
             : status === 'awaiting_submission'
               ? {
-                  title: '等待提交材料',
-                  description: `${fieldName}尚未提交，请按要求上传对应材料。`,
+                  title: '等待提交',
+                  description: '请按要求上传对应材料。',
                   icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
                 }
               : {
-                  title: '材料已提交',
-                  description: `${fieldName}已进入审核流程，系统会先完成机器预审，再视情况转人工复核。`,
+                  title: '审核中',
+                  description: '材料已进入审核流程。',
                   icon: <Clock className="w-8 h-8 text-primary" />,
                 }
 
@@ -78,7 +87,7 @@ export function VerificationFieldPending({
     <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
         <div className="px-4 py-3">
-          <h1 className="font-medium text-foreground">提交成功</h1>
+          <h1 className="font-medium text-foreground">{fieldName}</h1>
         </div>
       </header>
       <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
@@ -86,16 +95,27 @@ export function VerificationFieldPending({
           {tone.icon}
         </div>
         <h2 className="font-serif text-xl text-foreground mb-3">{tone.title}</h2>
-        <p className="text-sm text-muted-foreground mb-2">{tone.description}</p>
-        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left mt-4 mb-8">
-          <p className="text-sm font-medium text-foreground mb-2">当前回执</p>
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <p>认证项目：{fieldName}</p>
-            <p>状态：{statusLabel}</p>
-            {latestSubmission?.field_key ? <p>认证类型：{fieldName}</p> : null}
+        <p className="text-sm text-muted-foreground mb-3">{tone.description}</p>
+        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left mt-2 mb-8">
+          <div className="space-y-2 text-sm">
+            <p className="text-foreground">当前状态：{statusLabel}</p>
+            {failureReason ? (
+              <div>
+                <p className="mb-1 text-foreground">审核意见</p>
+                <p className="text-muted-foreground">{failureReason}</p>
+              </div>
+            ) : null}
           </div>
         </div>
-        <button onClick={onBack} className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium">
+        {showResubmit ? (
+          <button onClick={onResubmit} className="w-full py-4 mb-3 bg-primary rounded-2xl text-primary-foreground font-medium">
+            重新提交
+          </button>
+        ) : null}
+        <button
+          onClick={onBack}
+          className={`w-full py-4 rounded-2xl font-medium ${showResubmit ? 'bg-secondary text-foreground' : 'bg-primary text-primary-foreground'}`}
+        >
           返回
         </button>
       </div>
