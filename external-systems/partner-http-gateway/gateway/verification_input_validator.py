@@ -9,6 +9,7 @@ including:
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -35,6 +36,8 @@ ALLOWED_VIDEO_CONTENT_TYPES = {
     'video/quicktime',
     'video/x-msvideo',
 }
+
+_JSON_FORM_FIELDS = frozenset({'metadata'})
 
 
 def validate_submission_id(submission_id: str | None) -> str:
@@ -199,7 +202,7 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
             keep_blank_values=True
         )
 
-        fields: dict[str, str] = {}
+        fields: dict[str, Any] = {}
         file_field = None
         if fs.list:
             for item in fs.list:
@@ -207,7 +210,18 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
                     file_field = item
                     continue
                 if not item.filename:
-                    fields[item.name] = item.value
+                    value: Any = item.value
+                    if item.name in _JSON_FORM_FIELDS and isinstance(value, str):
+                        stripped = value.strip()
+                        if stripped:
+                            try:
+                                value = json.loads(stripped)
+                            except json.JSONDecodeError as exc:
+                                raise InputValidationError(
+                                    item.name,
+                                    f"{item.name} must be valid JSON: {exc}"
+                                ) from exc
+                    fields[item.name] = value
 
         if file_field is None:
             for key in fs.keys():
@@ -239,6 +253,8 @@ def parse_multipart_file(environ: dict[str, Any]) -> dict[str, Any]:
             "fields": fields,
         }
 
+    except InputValidationError:
+        raise
     except Exception as e:
         raise InputValidationError("file", f"Failed to parse multipart data: {e}")
 

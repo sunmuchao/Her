@@ -1588,7 +1588,46 @@ class GatewayWsgiTests(unittest.TestCase):
         self.assertEqual(with_chat.call_args.kwargs["profile_id"], 123)
         self.assertEqual(with_chat.call_args.kwargs["challenge_token"], "challenge-123")
         self.assertEqual(with_chat.call_args.kwargs["challenge_phrase"], "请眨眼并点头")
-        self.assertEqual(with_chat.call_args.kwargs["metadata"], '{"source":"her-app"}')
+        self.assertEqual(with_chat.call_args.kwargs["metadata"], {"source": "her-app"})
+
+    def test_live_video_submission_rejects_invalid_multipart_metadata_json(self) -> None:
+        tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
+        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+        multipart_body = (
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="video"; filename="verification-recording.webm"\r\n'
+            "Content-Type: video/webm\r\n\r\n"
+            "fake-video-bytes\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="user_id"\r\n\r\n'
+            "user-a\r\n"
+            f"--{boundary}\r\n"
+            'Content-Disposition: form-data; name="metadata"\r\n\r\n'
+            "{invalid-json}\r\n"
+            f"--{boundary}--\r\n"
+        ).encode("utf-8")
+
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            env = _wsgi_env(
+                "POST",
+                "/v1/verifications/live-video-submissions",
+                multipart_body,
+                extra={
+                    **_auth_headers("token-user-a"),
+                    "CONTENT_TYPE": f"multipart/form-data; boundary={boundary}",
+                },
+            )
+            status, payload = self._run_with_gateway(gw, env)
+
+        self.assertIn("400", status)
+        self.assertEqual(payload["error"]["code"], "validation_error")
+        self.assertEqual(payload["error"]["field"], "metadata")
 
     def test_matchmaking_reply_defaults_member_to_current_actor(self) -> None:
         tokens = json.dumps({"token-user-a": {"actor_id": "user-a", "roles": ["end_user"]}})
