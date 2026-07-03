@@ -16,6 +16,7 @@ PHOTO_PLAN_OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profile_phot
 ROW_COUNT = 10_000
 SEED = 20260428
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+DEFAULT_PHOTO_PROVIDER = "cdn_stub"
 
 DEFAULT_MYSQL = {
     "host": "127.0.0.1",
@@ -492,6 +493,37 @@ def choose_photo_assets(rng, profile_id, verified_level, source_channel):
     return avatar_url, photo_urls
 
 
+def _choose_public_test_index(profile_id: int, offset: int, age: int) -> int:
+    # RandomUser portrait ids are stable enough for test systems. We split the
+    # id space into rough age bands so older profiles do not always map to the
+    # youngest-looking portraits.
+    if age <= 27:
+        start, width = 1, 33
+    elif age <= 32:
+        start, width = 34, 33
+    else:
+        start, width = 67, 33
+    return start + ((profile_id * 7 + offset * 13) % width)
+
+
+def choose_public_test_photo_assets(profile_id, gender, age, verified_level, source_channel):
+    avatar_url, gallery_urls = choose_photo_assets(
+        random.Random(f"stub-{profile_id}"),
+        profile_id,
+        verified_level,
+        source_channel,
+    )
+    photo_count = len(gallery_urls)
+    segment = "women" if gender == "女" else "men"
+    avatar_index = _choose_public_test_index(profile_id, 0, age)
+    avatar_url = f"https://randomuser.me/api/portraits/{segment}/{avatar_index}.jpg"
+    photo_urls = [
+        f"https://randomuser.me/api/portraits/{segment}/{_choose_public_test_index(profile_id, idx, age)}.jpg"
+        for idx in range(1, photo_count + 1)
+    ]
+    return avatar_url, photo_urls
+
+
 def infer_appearance_keywords(record):
     keywords = []
     gender = record.get("gender")
@@ -920,7 +952,7 @@ def build_notes(rng, city, hobbies, relationship_goal, settlement_city):
     return rng.choice(templates)
 
 
-def make_record(rng, profile_id):
+def make_record(rng, profile_id, *, photo_provider=DEFAULT_PHOTO_PROVIDER):
     gender = choose_gender(rng)
     sexual_orientation = choose_sexual_orientation(rng, gender)  # ✅ 新增：生成性取向
     age = choose_age(rng)
@@ -937,7 +969,16 @@ def make_record(rng, profile_id):
     profile_status = choose_profile_status(rng, relationship_goal)
     verified_level = choose_verified_level(rng, source_channel, profile_status)
     created_at, updated_at, last_active_at = choose_timestamps(rng, profile_status)
-    avatar_url, photo_urls_list = choose_photo_assets(rng, profile_id, verified_level, source_channel)
+    if photo_provider == "public_test_web":
+        avatar_url, photo_urls_list = choose_public_test_photo_assets(
+            profile_id,
+            gender,
+            age,
+            verified_level,
+            source_channel,
+        )
+    else:
+        avatar_url, photo_urls_list = choose_photo_assets(rng, profile_id, verified_level, source_channel)
     photo_count = len(photo_urls_list)
 
     personality = choose_traits(rng, PERSONALITY_POOL, 3)
@@ -1029,13 +1070,13 @@ def make_record(rng, profile_id):
     return record, photo_urls_list
 
 
-def generate_records(row_count, seed):
+def generate_records(row_count, seed, *, photo_provider=DEFAULT_PHOTO_PROVIDER):
     rng = random.Random(seed)
     records = []
     photo_records = []
     photo_plan_records = []
     for profile_id in range(1, row_count + 1):
-        record, photo_urls_list = make_record(rng, profile_id)
+        record, photo_urls_list = make_record(rng, profile_id, photo_provider=photo_provider)
         records.append(record)
         profile_photo_records = build_photo_records(
             profile_id=record["id"],
@@ -1305,6 +1346,12 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Generate complete simulated dating profiles.")
     parser.add_argument("--rows", type=int, default=ROW_COUNT, help="Number of rows to generate.")
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed.")
+    parser.add_argument(
+        "--photo-provider",
+        choices=("cdn_stub", "public_test_web"),
+        default=DEFAULT_PHOTO_PROVIDER,
+        help="Photo URL provider: local cdn stub or public test web portraits.",
+    )
     parser.add_argument("--output", default=str(OUTPUT_PATH), help="CSV output path.")
     parser.add_argument("--photos-output", default=str(PHOTOS_OUTPUT_PATH), help="Photo CSV output path.")
     parser.add_argument(
@@ -1334,7 +1381,11 @@ def parse_args():
 
 def main():
     args = parse_args()
-    records, photo_records, photo_plan_records = generate_records(args.rows, args.seed)
+    records, photo_records, photo_plan_records = generate_records(
+        args.rows,
+        args.seed,
+        photo_provider=args.photo_provider,
+    )
     output_path = Path(args.output)
     photos_output_path = Path(args.photos_output)
     photo_plan_output_path = Path(args.photo_plan_output)

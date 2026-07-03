@@ -15,6 +15,7 @@ const nextConfig = {
     ],
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
+      { protocol: 'https', hostname: 'randomuser.me' },
       { protocol: 'https', hostname: 'example.com' },
       // 本地资料库头像（virtual_profile_photos / partner-search seed）
       { protocol: 'https', hostname: 'cdn.her.local' },
