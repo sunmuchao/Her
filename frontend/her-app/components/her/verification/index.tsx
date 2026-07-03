@@ -75,7 +75,6 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     return (
       <VerificationVideoIntro
         isSubmittingVideo={isSubmittingVideo}
-        liveChallenge={liveChallenge}
         onBack={handleDirectBack}
         onStartVideoVerification={() => void startVideoVerification()}
       />
