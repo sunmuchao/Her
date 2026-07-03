@@ -144,7 +144,11 @@ def _record_appearance_feedback_from_recommendation(
             refresh_profile_photo_features,
         )
 
-        source_dsn = str(subscription.get("source") or "").strip()
+        source_dsn = str(
+            os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
+            or subscription.get("source")
+            or ""
+        ).strip()
         user_key = str(subscription.get("requester_id") or recommendation.get("requester_id") or "").strip()
         profile_id = int(subscription.get("self_id") or 0) or None
         candidate_id = int(recommendation.get("candidate_id") or 0)
@@ -152,6 +156,7 @@ def _record_appearance_feedback_from_recommendation(
             return
         refresh_profile_photo_features(
             source_dsn=source_dsn,
+            profile_source_dsn=str(subscription.get("source") or "").strip() or None,
             profile_id=candidate_id,
         )
         record_feedback_event(

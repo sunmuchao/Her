@@ -282,6 +282,7 @@ def refresh_profile_photo_features(
     *,
     source_dsn: str | None,
     profile_id: int,
+    profile_source_dsn: str | None = None,
     source_table_name: str | None = None,
     photos_table_name: str | None = None,
     table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
@@ -290,22 +291,23 @@ def refresh_profile_photo_features(
     normalized_profile_id = int(profile_id or 0)
     if not source_dsn or normalized_profile_id <= 0:
         return {"saved": False, "error": "source_or_profile_missing"}
-    resolved_source, resolved_table = resolve_profile_source(source_dsn, source_table_name)
-    if not resolved_source or not resolved_table:
+    profile_source = str(profile_source_dsn or source_dsn or "").strip()
+    resolved_profile_source, resolved_table = resolve_profile_source(profile_source, source_table_name)
+    if not resolved_profile_source or not resolved_table:
         return {"saved": False, "error": "profile_source_unresolved"}
     profile_row = get_profile(
-        source_dsn=resolved_source,
+        source_dsn=resolved_profile_source,
         source_table_name=resolved_table,
         profile_id=normalized_profile_id,
     )
     photo_entries = list_profile_photos(
-        source_dsn=resolved_source,
+        source_dsn=resolved_profile_source,
         source_table_name=resolved_table,
         profile_id=normalized_profile_id,
         photos_table_name=photos_table_name,
     )
     existing_feature_row = load_candidate_photo_features(
-        source_dsn=resolved_source,
+        source_dsn=source_dsn,
         profile_ids=[normalized_profile_id],
         table_name=table_name,
     ).get(normalized_profile_id)
@@ -315,7 +317,7 @@ def refresh_profile_photo_features(
         existing_feature_row=existing_feature_row,
     )
     saved = upsert_profile_photo_features(
-        source_dsn=resolved_source,
+        source_dsn=source_dsn,
         profile_id=normalized_profile_id,
         patch=patch,
         table_name=table_name,
@@ -329,7 +331,7 @@ def refresh_profile_photo_features(
             )
         except Exception as exc:
             saved = upsert_profile_photo_features(
-                source_dsn=resolved_source,
+                source_dsn=source_dsn,
                 profile_id=normalized_profile_id,
                 table_name=table_name,
                 patch={
@@ -340,7 +342,7 @@ def refresh_profile_photo_features(
             )
         else:
             saved = upsert_profile_photo_features(
-                source_dsn=resolved_source,
+                source_dsn=source_dsn,
                 profile_id=normalized_profile_id,
                 table_name=table_name,
                 patch={
@@ -349,6 +351,72 @@ def refresh_profile_photo_features(
                     "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
                 },
             )
+    return saved
+
+
+def refresh_profile_photo_features_from_record(
+    *,
+    source_dsn: str | None,
+    record: dict[str, Any] | None,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+    sync_embedding: bool = False,
+) -> dict[str, Any]:
+    normalized_record = dict(record or {})
+    normalized_profile_id = int(normalized_record.get("id") or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return {"saved": False, "error": "source_or_profile_missing"}
+    photo_entries: list[dict[str, Any]] = []
+    for value in list(normalized_record.get("photo_preview") or []):
+        photo_url = str(value or "").strip()
+        if photo_url:
+            photo_entries.append({"photo_source": photo_url})
+    avatar_url = str(normalized_record.get("avatar_url") or "").strip()
+    if avatar_url and avatar_url not in {item["photo_source"] for item in photo_entries}:
+        photo_entries.insert(0, {"photo_source": avatar_url})
+    existing_feature_row = load_candidate_photo_features(
+        source_dsn=source_dsn,
+        profile_ids=[normalized_profile_id],
+        table_name=table_name,
+    ).get(normalized_profile_id)
+    patch = build_photo_feature_patch(
+        profile_row=normalized_record,
+        photo_entries=photo_entries,
+        existing_feature_row=existing_feature_row,
+    )
+    saved = upsert_profile_photo_features(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        patch=patch,
+        table_name=table_name,
+    )
+    if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
+        try:
+            embedding_out = _save_text_embedding(
+                subject_id=normalized_profile_id,
+                vector_type=APPEARANCE_PROFILE_VECTOR_TYPE,
+                text=str(saved.get("appearance_summary") or "").strip(),
+            )
+        except Exception as exc:
+            return upsert_profile_photo_features(
+                source_dsn=source_dsn,
+                profile_id=normalized_profile_id,
+                table_name=table_name,
+                patch={
+                    "embedding_status": "failed",
+                    "embedding_model": "text-embedding-v3",
+                    "last_error": f"appearance_profile_embedding_failed:{str(exc)[:180]}",
+                },
+            )
+        return upsert_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            table_name=table_name,
+            patch={
+                "embedding_status": "done" if embedding_out.get("saved") else "failed",
+                "embedding_model": "text-embedding-v3",
+                "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
+            },
+        )
     return saved
 
 
@@ -652,5 +720,6 @@ __all__ = [
     "rebuild_user_preference_from_events",
     "rebuild_user_preference_from_history",
     "refresh_profile_photo_features",
+    "refresh_profile_photo_features_from_record",
     "sync_user_appearance_preference_embedding",
 ]

@@ -757,6 +757,38 @@ class RecommendationSystemTests(unittest.TestCase):
             0,
         )
 
+    def test_recommendation_actions_forward_to_appearance_feedback_loop(self):
+        subscription = self.create_active_subscription(daily_notification_cap=5)
+        refresh_subscription(
+            self.conn,
+            subscription["subscription_id"],
+            now=datetime(2026, 4, 30, 9, 0, 0),
+            search_runner=lambda **_: {"results": [build_result(318, "反馈对象", 68)]},
+        )
+        record_user_review(
+            self.conn,
+            subscription_id=subscription["subscription_id"],
+            candidate_id=318,
+            review_type="direct_greet",
+            now=datetime(2026, 4, 30, 9, 30, 0),
+        )
+        deliver_in_app_recommendations(self.conn, now=datetime(2026, 4, 30, 10, 0, 0))
+
+        with patch(
+            "recommendation_system.recommendation_rows._record_appearance_feedback_from_recommendation"
+        ) as feedback_mock:
+            record_recommendation_action(
+                self.conn,
+                subscription_id=subscription["subscription_id"],
+                candidate_id=318,
+                action_type="skip",
+                now=datetime(2026, 4, 30, 11, 0, 0),
+            )
+
+        feedback_mock.assert_called_once()
+        self.assertEqual(feedback_mock.call_args.kwargs["event_type"], "skip")
+        self.assertEqual(feedback_mock.call_args.kwargs["scene"], "recommendation_action")
+
     def test_daily_notification_cap_defers_extra_cards(self):
         subscription = self.create_active_subscription(daily_notification_cap=1)
         refresh_subscription(

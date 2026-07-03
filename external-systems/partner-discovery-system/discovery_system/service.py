@@ -2382,7 +2382,7 @@ class DiscoveryService:
             from match_domain.appearance_features import (
                 record_feedback_event,
                 rebuild_user_preference_from_history,
-                refresh_profile_photo_features,
+                refresh_profile_photo_features_from_record,
             )
 
             persona_source = self._persona_memory_source()
@@ -2407,9 +2407,9 @@ class DiscoveryService:
             )
             candidate_feature = dict(candidate.get("photo_features") or {})
             if not candidate_feature:
-                refreshed = refresh_profile_photo_features(
+                refreshed = refresh_profile_photo_features_from_record(
                     source_dsn=persona_source,
-                    profile_id=candidate_profile_id,
+                    record=candidate,
                 )
                 candidate_feature = dict(refreshed or {})
             if candidate_feature:

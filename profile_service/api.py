@@ -1349,7 +1349,8 @@ def apply_profile_updates(
                 from match_domain.appearance_features import refresh_profile_photo_features
 
                 out["photo_feature_refresh"] = refresh_profile_photo_features(
-                    source_dsn=source_dsn,
+                    source_dsn=os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn,
+                    profile_source_dsn=source_dsn,
                     source_table_name=source_table_name,
                     profile_id=int(profile_id),
                 )
