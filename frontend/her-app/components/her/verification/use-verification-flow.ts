@@ -79,6 +79,19 @@ function resolveInitialStep(target: string | null): VerificationStep {
   return 'video-intro'
 }
 
+function hasViewableVerificationStatus(status?: string): boolean {
+  const text = String(status || '').toLowerCase()
+  return [
+    'submitted',
+    'under_review',
+    'approved',
+    'rejected',
+    'resubmission_required',
+    'expired',
+    'awaiting_submission',
+  ].includes(text)
+}
+
 export function useVerificationFlow(onBack: () => void) {
   console.log('[useVerificationFlow] 开始初始化')
 
@@ -126,6 +139,7 @@ export function useVerificationFlow(onBack: () => void) {
   const recordingTimerRef = useRef<number | null>(null)
   const recordingStartAtRef = useRef(0)
   const recordingCompletedRef = useRef(false)
+  const hasResolvedInitialRouteRef = useRef(false)
 
   function syncVerificationState(params: {
     submissions: VerificationSubmission[]
@@ -142,6 +156,11 @@ export function useVerificationFlow(onBack: () => void) {
       '按提示完成身份认证'
 
     const fieldStatusByUi = new Map<string, FieldItem['status']>()
+    const latestFieldSubmissionForSelected =
+      selectedField
+        ? params.fieldSubmissions.find((submission) => mapApiFieldToUi(submission.field_key) === selectedField) || null
+        : params.fieldSubmissions[0] || null
+
     for (const submission of params.fieldSubmissions) {
       const uiField = mapApiFieldToUi(submission.field_key)
       if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
@@ -149,7 +168,7 @@ export function useVerificationFlow(onBack: () => void) {
 
     setLatestVideoSubmission(latest)
     setLatestVerificationNotification(latestNotification)
-    setLatestFieldSubmission(params.fieldSubmissions[0] || null)
+    setLatestFieldSubmission(latestFieldSubmissionForSelected)
     setFieldVerificationTypes(
       DEFAULT_FIELDS.map((item) => {
         if (item.id === 'video') {
@@ -168,6 +187,15 @@ export function useVerificationFlow(onBack: () => void) {
         return fieldStatus ? { ...item, status: fieldStatus } : item
       }),
     )
+
+    if (!hasResolvedInitialRouteRef.current && initialTarget) {
+      if (initialTarget === 'video') {
+        setStep(hasViewableVerificationStatus(latest?.status) ? 'video-pending' : 'video-intro')
+      } else if (selectedField) {
+        setStep(hasViewableVerificationStatus(latestFieldSubmissionForSelected?.status) ? 'field-pending' : 'field-upload')
+      }
+      hasResolvedInitialRouteRef.current = true
+    }
   }
 
   useEffect(() => {
