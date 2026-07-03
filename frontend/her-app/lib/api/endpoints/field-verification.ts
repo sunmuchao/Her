@@ -8,6 +8,7 @@ export type FieldVerificationSubmission = {
   field_key?: string
   status?: string
   profile_id?: number
+  review_note?: string
 }
 
 // 审核相关类型
@@ -44,6 +45,7 @@ export type VerificationSubmissionDetail = {
   field_key: 'education' | 'job' | 'income'
   declared_value: string
   status: 'submitted' | 'under_review' | 'approved' | 'rejected' | 'resubmission_required'
+  review_note?: string
   evidence?: VerificationEvidence | VerificationEvidence[] | Record<string, unknown> | null
   source_dsn?: string
   source_table_name?: string

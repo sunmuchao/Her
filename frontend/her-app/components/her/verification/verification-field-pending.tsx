@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 import { PageTransition } from '@/components/her/ui/animations'
 import type { FieldVerificationSubmission, VerificationSubmissionDetail } from '@/lib/api/endpoints/field-verification'
@@ -43,8 +44,25 @@ export function VerificationFieldPending({
     (latestSubmission as VerificationSubmissionDetail).reviews!.length > 0
       ? (latestSubmission as VerificationSubmissionDetail).reviews![(latestSubmission as VerificationSubmissionDetail).reviews!.length - 1]
       : null
-  const failureReason = latestReview?.review_note?.trim()
+  const failureReason =
+    latestReview?.review_note?.trim() ||
+    (latestSubmission as VerificationSubmissionDetail | FieldVerificationSubmission | undefined)?.review_note?.trim() ||
+    ''
   const showResubmit = ['rejected', 'resubmission_required', 'expired', 'awaiting_submission'].includes(status)
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' || (event.metaKey && event.key === '[')) {
+        event.preventDefault()
+        onBack()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onBack])
 
   const tone =
     status === 'approved'
@@ -112,12 +130,9 @@ export function VerificationFieldPending({
             重新提交
           </button>
         ) : null}
-        <button
-          onClick={onBack}
-          className={`w-full py-4 rounded-2xl font-medium ${showResubmit ? 'bg-secondary text-foreground' : 'bg-primary text-primary-foreground'}`}
-        >
-          返回
-        </button>
+        <p className="text-xs text-muted-foreground">
+          按 <span className="font-medium text-foreground">Esc</span> 返回
+        </p>
       </div>
     </PageTransition>
   )
