@@ -93,6 +93,17 @@ function getBlendshapeScore(result: FaceLandmarkerResult, name: string) {
   return hit?.score || 0
 }
 
+function canProcessVideoFrame(video: HTMLVideoElement) {
+  return (
+    video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+    video.videoWidth > 0 &&
+    video.videoHeight > 0 &&
+    Number.isFinite(video.currentTime) &&
+    !video.paused &&
+    !video.ended
+  )
+}
+
 function detectAction(result: FaceLandmarkerResult, expectedAction: SupportedAction): DetectionHit {
   const landmarks = result.faceLandmarks?.[0]
   if (!landmarks || landmarks.length < 400) {
@@ -187,34 +198,46 @@ export function useLiveFaceChallenge({
         const landmarker = await getFaceLandmarker()
         if (cancelled) return
 
-        setIsReady(true)
-        setStatusText('识别中...')
+        const scheduleNextLoop = () => {
+          frameRef.current = window.setTimeout(loop, 120) as unknown as number
+        }
 
         const loop = () => {
           if (cancelled) return
           const node = videoRef.current
-          if (!node || node.readyState < 2) {
+          if (!node || !canProcessVideoFrame(node)) {
             frameRef.current = window.requestAnimationFrame(loop)
             return
           }
 
-          const result = landmarker.detectForVideo(node, performance.now())
-          const hit = detectAction(result, supportedAction)
+          try {
+            const result = landmarker.detectForVideo(node, performance.now())
+            const hit = detectAction(result, supportedAction)
 
-          if (hit.detected) {
-            stableCountRef.current += 1
-          } else {
+            setIsReady(true)
+            setStatusText('识别中...')
+
+            if (hit.detected) {
+              stableCountRef.current += 1
+            } else {
+              stableCountRef.current = 0
+            }
+
+            const requiredStableFrames = supportedAction === 'blink' ? 1 : 2
+            if (stableCountRef.current >= requiredStableFrames) {
+              stableCountRef.current = 0
+              onActionDetectedRef.current(hit.score)
+              return
+            }
+          } catch (error) {
             stableCountRef.current = 0
+            if (!cancelled) {
+              console.warn('[useLiveFaceChallenge] detectForVideo failed, retrying', error)
+              setStatusText('正在调整识别...')
+            }
           }
 
-          const requiredStableFrames = supportedAction === 'blink' ? 1 : 2
-          if (stableCountRef.current >= requiredStableFrames) {
-            stableCountRef.current = 0
-            onActionDetectedRef.current(hit.score)
-            return
-          }
-
-          frameRef.current = window.setTimeout(loop, 120) as unknown as number
+          scheduleNextLoop()
         }
 
         loop()
