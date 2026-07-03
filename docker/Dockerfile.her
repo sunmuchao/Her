@@ -35,7 +35,7 @@ COPY external-systems ./external-systems
 COPY scripts ./scripts
 COPY config ./config
 
-RUN pip install --no-cache-dir --no-build-isolation -e ".[dev]" faster-whisper
+RUN pip install --no-cache-dir --no-build-isolation -e ".[dev,opencv]" faster-whisper
 
 ENV PYTHONUNBUFFERED=1
 ENV PARTNER_GATEWAY_DB_POOL_MAX=16
