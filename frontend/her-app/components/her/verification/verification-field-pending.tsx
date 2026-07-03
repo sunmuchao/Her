@@ -17,6 +17,16 @@ const FIELD_LABELS: Record<string, string> = {
   income: '收入认证',
 }
 
+const FIELD_STATUS_LABELS: Record<string, string> = {
+  submitted: '已提交',
+  under_review: '审核中',
+  approved: '已通过',
+  rejected: '已驳回',
+  resubmission_required: '需重新提交',
+  expired: '已过期',
+  awaiting_submission: '待提交',
+}
+
 export function VerificationFieldPending({
   latestSubmission,
   selectedField,
@@ -24,6 +34,7 @@ export function VerificationFieldPending({
 }: VerificationFieldPendingProps) {
   const status = String(latestSubmission?.status || 'submitted').toLowerCase()
   const fieldName = FIELD_LABELS[selectedField || ''] || '材料认证'
+  const statusLabel = FIELD_STATUS_LABELS[status] || (latestSubmission?.status || '已提交')
 
   const tone =
     status === 'approved'
@@ -79,7 +90,7 @@ export function VerificationFieldPending({
           <p className="text-sm font-medium text-foreground mb-2">当前回执</p>
           <div className="space-y-2 text-sm text-muted-foreground">
             <p>认证项目：{fieldName}</p>
-            <p>状态：{latestSubmission?.status || 'submitted'}</p>
+            <p>状态：{statusLabel}</p>
             {latestSubmission?.field_key ? <p>字段键：{latestSubmission.field_key}</p> : null}
           </div>
         </div>

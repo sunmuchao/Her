@@ -5,6 +5,14 @@ import { PageTransition } from '@/components/her/ui/animations'
 import type { VerificationNotification, VerificationSubmission } from '@/lib/api/endpoints/verification'
 import { getConfidenceLabel, getVideoStatusPresentation } from './verification-helpers'
 
+const VIDEO_STATUS_LABELS: Record<string, string> = {
+  submitted: '已提交',
+  under_review: '审核中',
+  approved: '已通过',
+  rejected: '已驳回',
+  resubmission_required: '需重新提交',
+}
+
 interface VerificationVideoPendingProps {
   submission?: VerificationSubmission | null
   latestNotification?: VerificationNotification | null
@@ -23,6 +31,8 @@ export function VerificationVideoPending({
     notification: latestNotification,
   })
   const confidenceLabel = getConfidenceLabel(submission?.confidence_band)
+  const statusText = String(submission?.status || 'submitted').toLowerCase()
+  const statusLabel = VIDEO_STATUS_LABELS[statusText] || submission?.status || '已提交'
 
   const icon =
     presentation.tone === 'success' ? (
@@ -51,7 +61,7 @@ export function VerificationVideoPending({
         <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left mt-4 mb-8">
           <p className="text-sm font-medium text-foreground mb-2">当前回执</p>
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>状态：{submission?.status || 'submitted'}</p>
+            <p>状态：{statusLabel}</p>
             {submission?.recommended_decision ? <p>机器建议：{submission.recommended_decision}</p> : null}
             {confidenceLabel ? <p>置信度：{confidenceLabel}</p> : null}
             {submission?.recommended_next_step ? <p>下一步：{submission.recommended_next_step}</p> : null}

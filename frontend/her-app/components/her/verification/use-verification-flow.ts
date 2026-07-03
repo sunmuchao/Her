@@ -485,6 +485,7 @@ export function useVerificationFlow(onBack: () => void) {
 
   const handleSubmitField = async () => {
     if (!selectedField) return
+    const fieldKey = selectedField as 'education' | 'occupation' | 'income'
     if (!selectedFile) {
       notifyError(new Error('请先选择要上传的文件'))
       return
@@ -494,11 +495,11 @@ export function useVerificationFlow(onBack: () => void) {
       const profileFactsResponse = await fetchProfileFacts()
       const declaredValue = resolveDeclaredValueFromProfile(
         profileFactsResponse.profile_facts || {},
-        selectedField,
+        fieldKey,
       )
 
       const result = await submitFieldVerification({
-        fieldId: selectedField,
+        fieldId: fieldKey,
         file: selectedFile,
         declaredValue,
       })
