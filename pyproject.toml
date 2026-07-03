@@ -34,6 +34,11 @@ opencv = [
   "opencv-python-headless>=4.8.0",
   "numpy>=1.26.0",
 ]
+local_oss = [
+  "opencv-python-headless>=4.8.0",
+  "numpy>=1.26.0",
+  "torch>=2.1.0",
+]
 
 [project.scripts]
 partner-search = "partner_search.search_candidates:main"
