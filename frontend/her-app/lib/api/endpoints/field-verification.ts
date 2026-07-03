@@ -94,10 +94,40 @@ export type ReviewResult = {
   review_id?: string
 }
 
+type DeclaredValueFieldKey = 'education' | 'occupation' | 'job' | 'income'
+
 const FIELD_KEY_MAP: Record<string, string> = {
   education: 'education',
   occupation: 'job',
   income: 'income',
+}
+
+function formatDeclaredIncomeRange(value: unknown): string {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (text.includes('_to_')) return text.replace(/_to_/g, '-')
+  return text
+}
+
+export function resolveDeclaredValueFromProfile(
+  profile: Record<string, unknown> | null | undefined,
+  fieldId: DeclaredValueFieldKey,
+): string | undefined {
+  if (!profile) return undefined
+
+  if (fieldId === 'education') {
+    return String(profile.public_education ?? profile.education ?? '').trim() || undefined
+  }
+
+  if (fieldId === 'occupation' || fieldId === 'job') {
+    return String(profile.public_job ?? profile.job ?? '').trim() || undefined
+  }
+
+  if (fieldId === 'income') {
+    return formatDeclaredIncomeRange(profile.income_range) || undefined
+  }
+
+  return undefined
 }
 
 function mapUiFieldToApiKey(fieldId: string): string {

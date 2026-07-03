@@ -11,8 +11,10 @@ import {
 } from '@/lib/api/endpoints/verification'
 import {
   listFieldVerifications,
+  resolveDeclaredValueFromProfile,
   submitFieldVerification,
 } from '@/lib/api/endpoints/field-verification'
+import { fetchProfileFacts } from '@/lib/api/endpoints/collected'
 import {
   recordVideoFromCamera,
   recordVideoFromStream,
@@ -387,7 +389,17 @@ export function useVerificationFlow(onBack: () => void) {
     }
     setIsSubmittingField(true)
     try {
-      await submitFieldVerification({ fieldId: selectedField, file: selectedFile })
+      const profileFactsResponse = await fetchProfileFacts()
+      const declaredValue = resolveDeclaredValueFromProfile(
+        profileFactsResponse.profile_facts || {},
+        selectedField,
+      )
+
+      await submitFieldVerification({
+        fieldId: selectedField,
+        file: selectedFile,
+        declaredValue,
+      })
       notifySuccess('材料已提交，等待审核')
 
       // ✅ 失效认证相关缓存，触发 profile 页面自动刷新

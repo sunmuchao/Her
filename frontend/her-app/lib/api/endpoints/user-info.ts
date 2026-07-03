@@ -7,6 +7,10 @@ export type UserInfo = {
   avatar_url?: string
   nickname?: string
   education?: string
+  public_education?: string
+  job?: string
+  public_job?: string
+  income_range?: string
 }
 
 /**

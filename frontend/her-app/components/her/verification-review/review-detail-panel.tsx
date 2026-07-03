@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle, FileText, Image, Send, XCircle, AlertTriangle, 
 import { ImageCarousel } from '@/components/her/ui/image-carousel'
 import ReviewHistoryList from './review-history-list'
 import { useUserInfo } from '@/hooks/use-user-info'
+import { resolveDeclaredValueFromProfile } from '@/lib/api/endpoints/field-verification'
 import type { VerificationEvidence, VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
 
 // 动态导入 PDFPreview，避免 SSR 时加载 pdfjs-dist
@@ -153,7 +154,7 @@ export default function ReviewDetailPanel({
   const fieldLabel = FIELD_LABEL_MAP[submission.field_key] || '资料'
   const requestedDocumentOptions = REQUESTED_DOCUMENTS_OPTIONS_MAP[submission.field_key] || REQUESTED_DOCUMENTS_OPTIONS_MAP.education
   const normalizedDeclaredValue = submission.declared_value?.trim()
-  const fallbackDeclaredValue = submission.field_key === 'education' ? userInfo?.education : undefined
+  const fallbackDeclaredValue = resolveDeclaredValueFromProfile(userInfo || {}, submission.field_key)
   const declaredValue = normalizedDeclaredValue && normalizedDeclaredValue !== '未知'
     ? normalizedDeclaredValue
     : (fallbackDeclaredValue || '未知')
