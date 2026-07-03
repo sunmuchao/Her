@@ -43,7 +43,7 @@ export function VerificationVideoRecord({
     ? '请返回重新开始'
     : isRecording
       ? '保持正脸'
-      : '请将面部放入取景框'
+      : ''
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
