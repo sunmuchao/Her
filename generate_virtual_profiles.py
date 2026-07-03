@@ -18,6 +18,30 @@ SEED = 20260428
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_PHOTO_PROVIDER = "cdn_stub"
 
+PUBLIC_CN_WOMEN_PEXELS_IDS = [
+    25471921,
+    18976826,
+    16763214,
+    20348581,
+    19059641,
+    33481910,
+    34643405,
+    36652512,
+]
+
+PUBLIC_CN_MEN_PEXELS_IDS = [
+    18285574,
+    18285584,
+    18285576,
+    18285573,
+    31630003,
+    8460426,
+    18285581,
+    18285588,
+    15059594,
+    34152753,
+]
+
 DEFAULT_MYSQL = {
     "host": "127.0.0.1",
     "port": 3307,
@@ -524,6 +548,28 @@ def choose_public_test_photo_assets(profile_id, gender, age, verified_level, sou
     return avatar_url, photo_urls
 
 
+def _pexels_photo_url(photo_id: int) -> str:
+    return f"https://images.pexels.com/photos/{photo_id}/pexels-photo-{photo_id}.jpeg"
+
+
+def choose_public_cn_test_photo_assets(profile_id, gender, verified_level, source_channel):
+    avatar_url, gallery_urls = choose_photo_assets(
+        random.Random(f"stub-{profile_id}"),
+        profile_id,
+        verified_level,
+        source_channel,
+    )
+    photo_count = len(gallery_urls)
+    pool = PUBLIC_CN_WOMEN_PEXELS_IDS if gender == "女" else PUBLIC_CN_MEN_PEXELS_IDS
+    avatar_index = profile_id % len(pool)
+    avatar_url = _pexels_photo_url(pool[avatar_index])
+    photo_urls = [
+        _pexels_photo_url(pool[(avatar_index + idx) % len(pool)])
+        for idx in range(1, photo_count + 1)
+    ]
+    return avatar_url, photo_urls
+
+
 def infer_appearance_keywords(record):
     keywords = []
     gender = record.get("gender")
@@ -969,7 +1015,14 @@ def make_record(rng, profile_id, *, photo_provider=DEFAULT_PHOTO_PROVIDER):
     profile_status = choose_profile_status(rng, relationship_goal)
     verified_level = choose_verified_level(rng, source_channel, profile_status)
     created_at, updated_at, last_active_at = choose_timestamps(rng, profile_status)
-    if photo_provider == "public_test_web":
+    if photo_provider == "public_cn_test_web":
+        avatar_url, photo_urls_list = choose_public_cn_test_photo_assets(
+            profile_id,
+            gender,
+            verified_level,
+            source_channel,
+        )
+    elif photo_provider == "public_test_web":
         avatar_url, photo_urls_list = choose_public_test_photo_assets(
             profile_id,
             gender,
@@ -1348,7 +1401,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed.")
     parser.add_argument(
         "--photo-provider",
-        choices=("cdn_stub", "public_test_web"),
+        choices=("cdn_stub", "public_test_web", "public_cn_test_web"),
         default=DEFAULT_PHOTO_PROVIDER,
         help="Photo URL provider: local cdn stub or public test web portraits.",
     )
