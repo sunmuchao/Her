@@ -217,6 +217,22 @@ export async function submitLiveVideoVerification(params: {
       headers['Content-Type'] = 'application/json'
     }
 
+    console.info('[verification] submitLiveVideoVerification request', {
+      uploadMode: useFormData ? 'multipart' : 'base64',
+      userId,
+      profileId,
+      challengeTokenPresent: Boolean(params.challengeToken),
+      challengePhrasePresent: Boolean(params.challengePhrase),
+      requiredActions: params.requiredActions ?? [],
+      metadataKeys: Object.keys(metadata),
+      actionResultKeys: Object.keys((metadata as { action_result?: Record<string, unknown> }).action_result ?? {}),
+      fileName: params.fileName || 'verification-recording.webm',
+      contentType: params.contentType || 'video/webm',
+      videoBlobSize: params.videoBlob?.size ?? null,
+      videoBase64Length: params.videoBase64?.length ?? null,
+      recordingDurationMs: params.recordingDurationMs ?? null,
+    })
+
     const result = await gatewayJson<{ submission?: VerificationSubmission }>(
       '/v1/verifications/live-video-submissions',
       {
@@ -231,6 +247,18 @@ export async function submitLiveVideoVerification(params: {
 
     return result
   } catch (error) {
+    console.error('[verification] submitLiveVideoVerification failed', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      uploadMode: useFormData ? 'multipart' : 'base64',
+      userId,
+      profileId,
+      challengeTokenPresent: Boolean(params.challengeToken),
+      fileName: params.fileName || 'verification-recording.webm',
+      contentType: params.contentType || 'video/webm',
+      videoBlobSize: params.videoBlob?.size ?? null,
+      videoBase64Length: params.videoBase64?.length ?? null,
+    })
     // 如果验证失败，也清理锁定状态（允许用户重新开始）
     clearVerificationState()
     throw error

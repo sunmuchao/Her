@@ -15,6 +15,10 @@ const HOP_BY_HOP_HEADERS = new Set([
   'upgrade',
 ])
 
+function shouldLogVerificationProxy(upstreamPath: string) {
+  return upstreamPath.startsWith('/v1/verifications/')
+}
+
 function upstreamUnavailableResponse(baseUrl: string, error: unknown) {
   const detail =
     error instanceof Error && error.message.trim()
@@ -65,6 +69,7 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   const baseUrl = (process.env.PARTNER_GATEWAY_BASE_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '')
   const upstreamPath = `/${pathSegments.join('/')}`
   const upstreamUrl = `${baseUrl}${upstreamPath}${request.nextUrl.search}`
+  const logVerificationProxy = shouldLogVerificationProxy(upstreamPath)
 
   const headers = new Headers()
   request.headers.forEach((value, key) => {
@@ -96,6 +101,20 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
     }
   }
 
+  if (logVerificationProxy) {
+    console.info('[gateway-proxy] outgoing verification request', {
+      method: request.method,
+      upstreamUrl,
+      contentType: request.headers.get('content-type'),
+      contentLength: request.headers.get('content-length'),
+      bodyKind:
+        body instanceof ArrayBuffer ? 'arrayBuffer' : typeof body === 'string' ? 'text' : 'empty',
+      bodyLength:
+        body instanceof ArrayBuffer ? body.byteLength : typeof body === 'string' ? body.length : 0,
+      hasAuthorization: headers.has('Authorization'),
+    })
+  }
+
   let upstream: Response
   try {
     upstream = await fetch(upstreamUrl, {
@@ -106,6 +125,13 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
       redirect: 'manual',
     })
   } catch (error) {
+    if (logVerificationProxy) {
+      console.error('[gateway-proxy] verification upstream fetch failed', {
+        upstreamUrl,
+        error,
+        message: error instanceof Error ? error.message : String(error),
+      })
+    }
     return upstreamUnavailableResponse(baseUrl, error)
   }
 
@@ -117,6 +143,18 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   })
 
   const responseBuffer = await upstream.arrayBuffer()
+  if (logVerificationProxy) {
+    const responseText =
+      responseBuffer.byteLength > 0 ? new TextDecoder().decode(responseBuffer.slice(0, 4096)) : ''
+    console.info('[gateway-proxy] verification upstream response', {
+      upstreamUrl,
+      status: upstream.status,
+      statusText: upstream.statusText,
+      contentType: upstream.headers.get('content-type'),
+      responseBytes: responseBuffer.byteLength,
+      responsePreview: responseText,
+    })
+  }
   if (upstream.status === 404) {
     const contentType = upstream.headers.get('content-type')
     const payloadText = new TextDecoder().decode(responseBuffer)

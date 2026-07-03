@@ -18,6 +18,7 @@ Key Changes:
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from datetime import datetime
 from typing import Any, Protocol
@@ -56,6 +57,8 @@ from .verification_input_validator import (
     parse_multipart_file,
     InputValidationError,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class VerificationGateway(Protocol):
@@ -234,6 +237,10 @@ def rest_verification_submit_live_video(
 
     # Check content type to determine upload method
     content_type_header = environ.get("CONTENT_TYPE", "")
+    request_path = str(environ.get("PATH_INFO") or "")
+    request_method = str(environ.get("REQUEST_METHOD") or "")
+    request_content_length = environ.get("CONTENT_LENGTH")
+    raw_body_keys = sorted(body.keys()) if isinstance(body, dict) else []
 
     if content_type_header.startswith("multipart/form-data"):
         # Multipart/form-data upload (more efficient)
@@ -246,6 +253,25 @@ def rest_verification_submit_live_video(
             if isinstance(multipart_fields, dict):
                 body = {**multipart_fields, **body}
 
+            LOGGER.info(
+                "verification submit multipart request path=%s method=%s content_type=%s content_length=%s "
+                "file_name=%s file_content_type=%s file_size_bytes=%s body_keys=%s multipart_field_keys=%s "
+                "metadata_type=%s challenge_token_present=%s profile_id=%s user_id=%s",
+                request_path,
+                request_method,
+                content_type_header,
+                request_content_length,
+                file_name,
+                content_type,
+                file_data["file_size_bytes"],
+                sorted(body.keys()) if isinstance(body, dict) else [],
+                sorted(multipart_fields.keys()) if isinstance(multipart_fields, dict) else [],
+                type(body.get("metadata")).__name__ if isinstance(body, dict) and body.get("metadata") is not None else "none",
+                bool(body.get("challenge_token")) if isinstance(body, dict) else False,
+                body.get("profile_id") if isinstance(body, dict) else None,
+                body.get("user_id") if isinstance(body, dict) else None,
+            )
+
             # Validate file size
             validate_file_size(file_data["file_size_bytes"])
 
@@ -253,6 +279,14 @@ def rest_verification_submit_live_video(
             validate_content_type(content_type)
 
         except InputValidationError as e:
+            LOGGER.exception(
+                "verification submit multipart validation failed path=%s method=%s content_type=%s body_keys=%s raw_body_keys=%s",
+                request_path,
+                request_method,
+                content_type_header,
+                sorted(body.keys()) if isinstance(body, dict) else [],
+                raw_body_keys,
+            )
             return 400, {
                 "error": {
                     "code": "validation_error",
@@ -263,6 +297,20 @@ def rest_verification_submit_live_video(
     else:
         # Base64 upload (legacy support)
         video_base64_raw = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
+        LOGGER.info(
+            "verification submit base64 request path=%s method=%s content_type=%s content_length=%s body_keys=%s "
+            "video_base64_length=%s metadata_type=%s challenge_token_present=%s profile_id=%s user_id=%s",
+            request_path,
+            request_method,
+            content_type_header,
+            request_content_length,
+            sorted(body.keys()) if isinstance(body, dict) else [],
+            len(video_base64_raw),
+            type(body.get("metadata")).__name__ if isinstance(body, dict) and body.get("metadata") is not None else "none",
+            bool(body.get("challenge_token")) if isinstance(body, dict) else False,
+            body.get("profile_id") if isinstance(body, dict) else None,
+            body.get("user_id") if isinstance(body, dict) else None,
+        )
         if not video_base64_raw:
             return 400, {
                 "error": {
@@ -322,21 +370,38 @@ def rest_verification_submit_live_video(
         # Base64 upload: use normalized Base64 string directly
         video_base64_for_submit = video_base64
 
-    submission = gateway._with_chat(
-        submit_live_video_verification,
-        user_id=user_id,
-        video_base64=video_base64_for_submit,
-        file_name=file_name,
-        submission_id=submission_id,
-        content_type=content_type,
-        profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
-        source_dsn=body.get("source_dsn") or body.get("source"),
-        source_table_name=body.get("source_table_name") or body.get("table_name"),
-        challenge_token=body.get("challenge_token"),
-        challenge_phrase=body.get("challenge_phrase"),
-        metadata=body.get("metadata"),
-        now=now,
-    )
+    try:
+        submission = gateway._with_chat(
+            submit_live_video_verification,
+            user_id=user_id,
+            video_base64=video_base64_for_submit,
+            file_name=file_name,
+            submission_id=submission_id,
+            content_type=content_type,
+            profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
+            source_dsn=body.get("source_dsn") or body.get("source"),
+            source_table_name=body.get("source_table_name") or body.get("table_name"),
+            challenge_token=body.get("challenge_token"),
+            challenge_phrase=body.get("challenge_phrase"),
+            metadata=body.get("metadata"),
+            now=now,
+        )
+    except Exception:
+        LOGGER.exception(
+            "verification submit downstream failed path=%s method=%s upload_mode=%s file_name=%s content_type=%s "
+            "body_keys=%s metadata_type=%s challenge_token_present=%s profile_id=%s user_id=%s",
+            request_path,
+            request_method,
+            "multipart" if content_type_header.startswith("multipart/form-data") else "base64",
+            file_name,
+            content_type,
+            sorted(body.keys()) if isinstance(body, dict) else [],
+            type(body.get("metadata")).__name__ if isinstance(body, dict) and body.get("metadata") is not None else "none",
+            bool(body.get("challenge_token")) if isinstance(body, dict) else False,
+            body.get("profile_id") if isinstance(body, dict) else None,
+            user_id,
+        )
+        raise
 
     return 201, {"submission": _json_safe(submission)}
 
