@@ -12,6 +12,7 @@ from persona_memory_sync.synthetic_personality_traits import build_synthetic_per
 
 OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profiles_10000.csv"
 PHOTOS_OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profile_photos_10000.csv"
+PHOTO_PLAN_OUTPUT_PATH = Path(__file__).resolve().parent / "virtual_profile_photo_plans_10000.csv"
 ROW_COUNT = 10_000
 SEED = 20260428
 DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -89,6 +90,27 @@ PHOTO_FIELDNAMES = [
     "is_primary",
     "created_at",
     "updated_at",
+]
+
+PHOTO_PLAN_FIELDNAMES = [
+    "profile_id",
+    "photo_url",
+    "photo_type",
+    "sort_order",
+    "is_primary",
+    "gender",
+    "age",
+    "city",
+    "job",
+    "education",
+    "verified_level",
+    "source_channel",
+    "appearance_keywords",
+    "style_keywords",
+    "scene_keywords",
+    "outfit_keywords",
+    "shot_brief",
+    "generation_prompt",
 ]
 
 PROFILE_DB_COLUMNS = [
@@ -296,6 +318,58 @@ HOBBIES_POOL = [
     "旅行", "电影", "桌游", "画画", "猫狗", "手工", "咖啡", "看展",
 ]
 
+AVATAR_SCENES = [
+    "自然光半身头像，室外街区或园区背景虚化",
+    "干净室内窗边头像，真实社交平台风格",
+    "通勤感头像，简洁背景，微笑看镜头",
+]
+
+GALLERY_SCENE_OPTIONS = [
+    "咖啡馆日常照",
+    "城市街拍生活照",
+    "周末散步户外照",
+    "办公室或园区通勤照",
+    "展览馆或书店随拍",
+    "运动后轻松抓拍",
+    "居家做饭生活照",
+    "宠物互动随手照",
+]
+
+JOB_STYLE_HINTS = {
+    "医生": ["专业", "干净", "可信赖"],
+    "教师": ["温和", "知性", "亲和"],
+    "公务员": ["端正", "稳重", "清爽"],
+    "产品经理": ["利落", "都市感", "有沟通感"],
+    "产品运营": ["亲和", "利落", "生活感"],
+    "后端工程师": ["理性", "干净", "低调"],
+    "前端工程师": ["清爽", "年轻感", "低调时尚"],
+    "软件测试": ["朴素", "清爽", "稳定感"],
+    "银行职员": ["稳重", "得体", "精致"],
+    "护士": ["亲和", "干净", "自然"],
+    "品牌策划": ["时髦", "审美在线", "都市感"],
+    "新媒体运营": ["镜头感", "松弛", "时尚"],
+    "翻译": ["知性", "温柔", "文艺"],
+}
+
+HOBBY_SCENE_HINTS = {
+    "阅读": "书店或家中阅读角",
+    "旅行": "城市地标或短途出游随拍",
+    "电影": "影院外或商场轻松随拍",
+    "猫狗": "与宠物自然互动",
+    "桌游": "桌游店朋友聚会氛围",
+    "手工": "手作台或工作坊体验",
+    "羽毛球": "运动场边休息抓拍",
+    "游泳": "运动馆外休闲照，不出现泳池暴露画面",
+    "摄影": "背相机的城市散步照",
+    "瑜伽": "瑜伽馆外或居家拉伸前后日常照",
+    "散步": "公园或街区慢走抓拍",
+    "画画": "画室或手账绘画场景",
+    "看展": "展馆或美术馆轻松随拍",
+    "咖啡": "咖啡馆自然生活照",
+    "烘焙": "厨房或烘焙台日常照",
+    "徒步": "郊野步道轻松抓拍",
+}
+
 FAMILY_BACKGROUND_POOL = [
     "家庭关系简单",
     "父母在本地工作生活",
@@ -416,6 +490,147 @@ def choose_photo_assets(rng, profile_id, verified_level, source_channel):
     avatar_url = f"{base}/avatar.jpg"
     photo_urls = [f"{base}/photo_{index}.jpg" for index in range(1, photo_count + 1)]
     return avatar_url, photo_urls
+
+
+def infer_appearance_keywords(record):
+    keywords = []
+    gender = record.get("gender")
+    age = int(record.get("age") or 0)
+    job = str(record.get("job") or "")
+    personality = split_items(record.get("personality"))
+    lifestyle = split_items(record.get("lifestyle"))
+    hobbies = split_items(record.get("hobbies"))
+
+    if gender == "男":
+        keywords.extend(["东亚男性", "真实素人", "自然五官"])
+    elif gender == "女":
+        keywords.extend(["东亚女性", "真实素人", "自然五官"])
+    else:
+        keywords.extend(["东亚人像", "真实素人", "自然五官"])
+
+    if age <= 25:
+        keywords.append("年轻感")
+    elif age <= 30:
+        keywords.append("轻熟感")
+    else:
+        keywords.append("成熟稳重感")
+
+    keywords.extend(JOB_STYLE_HINTS.get(job, ["干净", "自然", "生活化"]))
+
+    if "开朗" in personality or "乐观" in personality or "爱笑" in personality:
+        keywords.append("笑容自然")
+    if "温和" in personality or "细腻" in personality or "好相处" in personality:
+        keywords.append("亲和")
+    if "有主见" in personality or "独立" in personality or "理性" in personality:
+        keywords.append("利落")
+    if "情绪稳定" in personality or "安静" in personality or "慢热" in personality:
+        keywords.append("松弛")
+
+    if "规律作息" in lifestyle or "养生" in lifestyle or "干净整洁" in lifestyle:
+        keywords.append("清爽")
+    if "爱运动" in lifestyle:
+        keywords.append("健康状态好")
+    if "喜欢做饭" in lifestyle:
+        keywords.append("居家感")
+    if "喜欢咖啡馆" in lifestyle:
+        keywords.append("都市生活感")
+    if "偏宅" in lifestyle:
+        keywords.append("低饱和自然感")
+
+    for hobby in hobbies:
+        scene = HOBBY_SCENE_HINTS.get(hobby)
+        if scene:
+            keywords.append(scene)
+            break
+
+    deduped = []
+    for keyword in keywords:
+        if keyword not in deduped:
+            deduped.append(keyword)
+    return deduped[:8]
+
+
+def choose_outfit_keywords(record, photo_type, sort_order):
+    gender = record.get("gender")
+    job = str(record.get("job") or "")
+    personality = split_items(record.get("personality"))
+    outfits = []
+    if photo_type == "avatar":
+        outfits.extend(["纯色上衣", "干净整洁", "不过度配饰"])
+    else:
+        outfits.extend(["日常穿搭", "简洁真实", "生活化"])
+
+    if job in {"银行职员", "公务员", "教师", "医生"}:
+        outfits.append("得体通勤风")
+    elif job in {"品牌策划", "新媒体运营", "产品经理", "产品运营"}:
+        outfits.append("都市休闲风")
+    else:
+        outfits.append("简约休闲风")
+
+    if "开朗" in personality or "乐观" in personality:
+        outfits.append("浅色系")
+    if "理性" in personality or "安静" in personality:
+        outfits.append("低饱和配色")
+    if gender == "女" and sort_order % 2 == 0:
+        outfits.append("淡妆")
+    if gender == "男":
+        outfits.append("发型利落")
+    return outfits[:5]
+
+
+def choose_photo_scene(record, photo_type, sort_order):
+    seeded_rng = random.Random(f"{record['id']}-{sort_order}-{photo_type}")
+    if photo_type == "avatar":
+        return seeded_rng.choice(AVATAR_SCENES)
+
+    hobbies = split_items(record.get("hobbies"))
+    if hobbies:
+        preferred_scene = HOBBY_SCENE_HINTS.get(hobbies[(sort_order - 1) % len(hobbies)])
+        if preferred_scene:
+            return preferred_scene
+    return seeded_rng.choice(GALLERY_SCENE_OPTIONS)
+
+
+def build_photo_generation_prompt(record, photo_url, photo_type, sort_order):
+    appearance_keywords = infer_appearance_keywords(record)
+    scene = choose_photo_scene(record, photo_type, sort_order)
+    outfit_keywords = choose_outfit_keywords(record, photo_type, sort_order)
+    style_keywords = ["真实征友照片", "手机或轻单反拍摄感", "自然光", "不过度修图", "东亚年轻人"]
+    shot_brief = (
+        "正脸半身头像，清晰看见五官，背景虚化，适合作为交友软件头像"
+        if photo_type == "avatar"
+        else f"生活化场景照，第{sort_order}张画面，人物为主体，场景辅助表达个人状态"
+    )
+    prompt = (
+        f"为交友平台虚拟用户生成一张{'头像照' if photo_type == 'avatar' else '生活照'}。"
+        f"人物设定：{record['gender']}，{record['age']}岁，{record['city']}，{record['job']}，{record['education']}。"
+        f"整体气质：{'、'.join(appearance_keywords)}。"
+        f"穿搭：{'、'.join(outfit_keywords)}。"
+        f"场景：{scene}。"
+        f"拍摄要求：{'、'.join(style_keywords)}。"
+        f"构图要求：{shot_brief}。"
+        "必须符合真实中文相亲/交友资料照风格，人物年龄与职业气质一致，禁止网红脸、过度磨皮、夸张妆造、影楼写真感。"
+    )
+    return {
+        "profile_id": record["id"],
+        "photo_url": photo_url,
+        "photo_type": photo_type,
+        "sort_order": sort_order,
+        "is_primary": 1 if photo_type == "avatar" else 0,
+        "gender": record["gender"],
+        "age": record["age"],
+        "city": record["city"],
+        "job": record["job"],
+        "education": record["education"],
+        "verified_level": record["verified_level"],
+        "source_channel": record["source_channel"],
+        "appearance_keywords": " | ".join(appearance_keywords),
+        "style_keywords": " | ".join(style_keywords),
+        "scene_keywords": scene,
+        "outfit_keywords": " | ".join(outfit_keywords),
+        "shot_brief": shot_brief,
+        "generation_prompt": prompt,
+    }
 
 
 def build_photo_records(profile_id, avatar_url, photo_urls, created_at, updated_at):
@@ -818,19 +1033,28 @@ def generate_records(row_count, seed):
     rng = random.Random(seed)
     records = []
     photo_records = []
+    photo_plan_records = []
     for profile_id in range(1, row_count + 1):
         record, photo_urls_list = make_record(rng, profile_id)
         records.append(record)
-        photo_records.extend(
-            build_photo_records(
-                profile_id=record["id"],
-                avatar_url=record["avatar_url"],
-                photo_urls=photo_urls_list,
-                created_at=record["created_at"],
-                updated_at=record["updated_at"],
-            )
+        profile_photo_records = build_photo_records(
+            profile_id=record["id"],
+            avatar_url=record["avatar_url"],
+            photo_urls=photo_urls_list,
+            created_at=record["created_at"],
+            updated_at=record["updated_at"],
         )
-    return records, photo_records
+        photo_records.extend(profile_photo_records)
+        for photo in profile_photo_records:
+            photo_plan_records.append(
+                build_photo_generation_prompt(
+                    record,
+                    photo_url=photo["photo_url"],
+                    photo_type=str(photo["photo_type"]),
+                    sort_order=int(photo["sort_order"]),
+                )
+            )
+    return records, photo_records, photo_plan_records
 
 
 def write_csv(path, fieldnames, records):
@@ -1084,6 +1308,11 @@ def parse_args():
     parser.add_argument("--output", default=str(OUTPUT_PATH), help="CSV output path.")
     parser.add_argument("--photos-output", default=str(PHOTOS_OUTPUT_PATH), help="Photo CSV output path.")
     parser.add_argument(
+        "--photo-plan-output",
+        default=str(PHOTO_PLAN_OUTPUT_PATH),
+        help="Photo plan CSV output path with persona-aligned generation prompts.",
+    )
+    parser.add_argument(
         "--load-mysql",
         action="store_true",
         help="Truncate persona/profile tables in `her`, optionally other DBs, then load generated rows.",
@@ -1105,13 +1334,16 @@ def parse_args():
 
 def main():
     args = parse_args()
-    records, photo_records = generate_records(args.rows, args.seed)
+    records, photo_records, photo_plan_records = generate_records(args.rows, args.seed)
     output_path = Path(args.output)
     photos_output_path = Path(args.photos_output)
+    photo_plan_output_path = Path(args.photo_plan_output)
     write_csv(output_path, FIELDNAMES, records)
     write_csv(photos_output_path, PHOTO_FIELDNAMES, photo_records)
+    write_csv(photo_plan_output_path, PHOTO_PLAN_FIELDNAMES, photo_plan_records)
     print(f"Wrote {len(records)} records to {output_path}")
     print(f"Wrote {len(photo_records)} photo rows to {photos_output_path}")
+    print(f"Wrote {len(photo_plan_records)} photo plan rows to {photo_plan_output_path}")
 
     if args.load_mysql:
         mysql_config = {
