@@ -69,7 +69,7 @@ export type LiveVideoChallenge = {
   expires_at?: string
 }
 
-function parseGatewayUtcTimestamp(rawValue?: string | null) {
+export function parseGatewayUtcTimestamp(rawValue?: string | null) {
   const value = String(rawValue || '').trim()
   if (!value) return Number.NaN
   if (/z$/i.test(value) || /[+-]\d{2}:\d{2}$/.test(value)) {

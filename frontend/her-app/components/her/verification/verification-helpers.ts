@@ -1,4 +1,9 @@
-import type { LiveVideoChallenge, VerificationNotification, VerificationSubmission } from '@/lib/api/endpoints/verification'
+import {
+  parseGatewayUtcTimestamp,
+  type LiveVideoChallenge,
+  type VerificationNotification,
+  type VerificationSubmission,
+} from '@/lib/api/endpoints/verification'
 
 export const VIDEO_RECORDING_SECONDS = 6
 
@@ -18,7 +23,8 @@ export function getActionLabel(action?: string) {
 export function formatChallengeDeadline(expiresAt?: string) {
   if (!expiresAt) return '本次 challenge 未返回有效期'
 
-  const date = new Date(expiresAt.replace(' ', 'T'))
+  const expiresAtMs = parseGatewayUtcTimestamp(expiresAt)
+  const date = new Date(expiresAtMs)
   if (Number.isNaN(date.getTime())) return 'challenge 有效期解析失败'
 
   return date.toLocaleString('zh-CN', {
@@ -31,7 +37,7 @@ export function formatChallengeDeadline(expiresAt?: string) {
 
 export function getChallengeRemainingSeconds(expiresAt?: string, nowMs = Date.now()) {
   if (!expiresAt) return null
-  const expiresAtMs = new Date(expiresAt.replace(' ', 'T')).getTime()
+  const expiresAtMs = parseGatewayUtcTimestamp(expiresAt)
   if (Number.isNaN(expiresAtMs)) return null
   return Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000))
 }
