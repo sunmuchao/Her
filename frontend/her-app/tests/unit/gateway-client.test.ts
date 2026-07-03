@@ -36,6 +36,29 @@ describe('gatewayJson', () => {
     })
   })
 
+  it('does not force application/json for FormData bodies', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ ok: true }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const formData = new FormData()
+    formData.append('video', new Blob(['demo'], { type: 'video/webm' }), 'demo.webm')
+
+    await expect(
+      gatewayJson('/v1/verifications/live-video-submissions', {
+        method: 'POST',
+        body: formData,
+      }),
+    ).resolves.toMatchObject({ ok: true })
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined
+    const headers = new Headers(init?.headers)
+    expect(headers.has('Content-Type')).toBe(false)
+  })
+
   it('returns a structured 502 when upstream gateway is unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:8765')))
 

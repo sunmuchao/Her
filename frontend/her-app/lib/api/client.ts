@@ -33,9 +33,18 @@ function shouldAttachGatewayAuth(init?: GatewayRequestInit): boolean {
   return Boolean(getAccessToken())
 }
 
+function shouldDefaultJsonContentType(body: BodyInit | null | undefined) {
+  if (!body) return false
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return false
+  if (typeof Blob !== 'undefined' && body instanceof Blob) return false
+  if (typeof ArrayBuffer !== 'undefined' && body instanceof ArrayBuffer) return false
+  if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) return false
+  return true
+}
+
 function buildGatewayHeaders(init?: GatewayRequestInit) {
   const headers = new Headers(init?.headers || {})
-  if (!headers.has('Content-Type') && init?.body) {
+  if (!headers.has('Content-Type') && shouldDefaultJsonContentType(init?.body)) {
     headers.set('Content-Type', 'application/json')
   }
   const shouldAttachAuth = shouldAttachGatewayAuth(init)
