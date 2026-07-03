@@ -11,6 +11,7 @@ from .api import (
     list_profile_photo_sources,
     list_comparison_profile_photos,
     list_profile_photo_features,
+    list_appearance_feedback_events,
     list_profile_photo_previews,
     list_profile_photos,
     load_user_appearance_preference,
@@ -18,6 +19,7 @@ from .api import (
     list_profiles,
     iter_profile_batches,
     resolve_profile_source,
+    upsert_profile_photo_features,
     upsert_user_appearance_preference,
     upsert_profile_for_onboarding,
 )
@@ -35,6 +37,7 @@ __all__ = [
     "list_profile_photo_sources",
     "list_comparison_profile_photos",
     "list_profile_photo_features",
+    "list_appearance_feedback_events",
     "list_profile_photo_previews",
     "list_profile_photos",
     "load_user_appearance_preference",
@@ -43,6 +46,7 @@ __all__ = [
     "iter_profile_batches",
     "render_public_profile",
     "resolve_profile_source",
+    "upsert_profile_photo_features",
     "upsert_user_appearance_preference",
     "upsert_profile_for_onboarding",
 ]

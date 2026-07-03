@@ -814,6 +814,78 @@ def list_profile_photo_features(
         release_profile_connection(source_dsn, profile_conn)
 
 
+def upsert_profile_photo_features(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    patch: Mapping[str, Any],
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        existing = dict(row) if row else None
+        payload = dict(patch or {})
+        writable_columns = [
+            str(column)
+            for column, value in payload.items()
+            if value is not None and _column_exists(profile_conn, table_name, str(column))
+        ]
+        if not writable_columns and existing is not None:
+            return existing
+        if existing is not None:
+            assignments = [f"{schema.quote_mysql_ident(column)} = ?" for column in writable_columns]
+            values = [payload.get(column) for column in writable_columns]
+            if _column_exists(profile_conn, table_name, "updated_at"):
+                assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
+                values.append(current_time())
+            profile_conn.execute(
+                f"""
+                UPDATE {schema.quote_mysql_ident(table_name)}
+                SET {", ".join(assignments)}
+                WHERE {schema.quote_mysql_ident('profile_id')} = ?
+                """,
+                tuple(values + [normalized_profile_id]),
+            )
+        else:
+            insert_columns = ["profile_id"] + writable_columns
+            placeholders = ", ".join(["?"] * len(insert_columns))
+            profile_conn.execute(
+                f"""
+                INSERT INTO {schema.quote_mysql_ident(table_name)}
+                ({", ".join(schema.quote_mysql_ident(column) for column in insert_columns)})
+                VALUES ({placeholders})
+                """,
+                tuple([normalized_profile_id] + [payload.get(column) for column in writable_columns]),
+            )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        return dict(refreshed) if refreshed else {}
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
 def load_user_appearance_preference(
     *,
     source_dsn: str,
@@ -962,6 +1034,57 @@ def record_appearance_feedback_event(
         )
         profile_conn.commit()
         return {"recorded": True}
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def list_appearance_feedback_events(
+    *,
+    source_dsn: str,
+    user_key: str,
+    profile_id: int | None = None,
+    scene: str | None = None,
+    limit: int = 200,
+    table_name: str = DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_user_key = str(user_key or "").strip()
+    if not normalized_user_key:
+        return []
+    normalized_limit = max(1, min(int(limit or 200), 1000))
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return []
+        where_clauses = [f"{schema.quote_mysql_ident('user_key')} = ?"]
+        params: list[Any] = [normalized_user_key]
+        if profile_id is not None and int(profile_id) > 0 and _column_exists(profile_conn, table_name, "profile_id"):
+            where_clauses.append(f"{schema.quote_mysql_ident('profile_id')} = ?")
+            params.append(int(profile_id))
+        normalized_scene = str(scene or "").strip()
+        if normalized_scene:
+            where_clauses.append(f"{schema.quote_mysql_ident('scene')} = ?")
+            params.append(normalized_scene)
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY {schema.quote_mysql_ident('created_at')} DESC, {schema.quote_mysql_ident('id')} DESC
+            LIMIT ?
+            """,
+            tuple(params + [normalized_limit]),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            metadata_raw = payload.get("metadata_json")
+            if isinstance(metadata_raw, str) and metadata_raw.strip():
+                try:
+                    payload["metadata_json"] = json.loads(metadata_raw)
+                except json.JSONDecodeError:
+                    pass
+            out.append(payload)
+        return out
     finally:
         release_profile_connection(source_dsn, profile_conn)
 
