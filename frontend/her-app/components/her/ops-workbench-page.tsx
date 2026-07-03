@@ -595,7 +595,9 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
               接入说明
             </div>
             <p>读侧：GET /v1/ops/workbench/summary（聚合 async-jobs dashboard + ledger 预览）</p>
-            <p className="mt-1">任务详情：按 job 自带 `poll_path` 直连 `/v1/{target}/jobs/{job_id}`</p>
+            <p className="mt-1">
+              任务详情：按 job 自带 <code>poll_path</code> 直连 <code>/v1/{"{target}"}/jobs/{"{job_id}"}</code>
+            </p>
             <p className="mt-1">风控后台：`/v1/chat/risk-*`、`/v1/chat/reports`、`/v1/chat/fraud-networks`</p>
             <p className="mt-1 flex items-center gap-1">
               <Layers className="h-3.5 w-3.5" />
