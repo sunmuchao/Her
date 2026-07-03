@@ -4,11 +4,9 @@ const nextConfig = {
   // (e.g. opening http://127.0.0.1:3000 while the server advertises localhost).
   allowedDevOrigins: ['127.0.0.1', 'localhost'],
 
-  transpilePackages: ['@mediapipe/tasks-vision'],
-
   // 明确指定 Turbopack 根目录，避免多个 lockfiles 导致的推断错误
   turbopack: {
-    root: '.',
+    root: process.cwd(),
   },
 
   images: {
