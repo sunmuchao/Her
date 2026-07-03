@@ -42,7 +42,7 @@ export type FieldItem = {
   id: string
   name: string
   description: string
-  status: 'verified' | 'pending' | 'unverified'
+  status: 'verified' | 'pending' | 'action_required' | 'unverified'
 }
 
 const DEFAULT_FIELDS: FieldItem[] = [
@@ -55,7 +55,8 @@ const DEFAULT_FIELDS: FieldItem[] = [
 function mapSubmissionStatus(status?: string): FieldItem['status'] {
   const text = (status || '').toLowerCase()
   if (['approved', 'verified', 'completed'].includes(text)) return 'verified'
-  if (['submitted', 'under_review', 'awaiting_submission', 'resubmission_required'].includes(text)) return 'pending'
+  if (['submitted', 'under_review'].includes(text)) return 'pending'
+  if (['awaiting_submission', 'resubmission_required', 'rejected', 'expired'].includes(text)) return 'action_required'
   return 'unverified'
 }
 
@@ -155,7 +156,12 @@ export function useVerificationFlow(onBack: () => void) {
           return {
             ...item,
             status: videoStatus,
-            description: videoStatus === 'pending' ? pendingHint : item.description,
+            description:
+              videoStatus === 'pending'
+                ? pendingHint
+                : videoStatus === 'action_required'
+                  ? pendingHint || '认证未通过，请根据提示重新提交材料'
+                  : item.description,
           }
         }
         const fieldStatus = fieldStatusByUi.get(item.id)

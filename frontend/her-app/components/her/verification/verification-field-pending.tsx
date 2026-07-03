@@ -13,6 +13,7 @@ interface VerificationFieldPendingProps {
 const FIELD_LABELS: Record<string, string> = {
   education: '学历认证',
   occupation: '职业认证',
+  job: '职业认证',
   income: '收入认证',
 }
 
@@ -31,17 +32,35 @@ export function VerificationFieldPending({
           description: `${fieldName}已通过审核，资料页会自动刷新认证状态。`,
           icon: <CheckCircle className="w-8 h-8 text-primary" />,
         }
-      : status === 'resubmission_required' || status === 'rejected'
+      : status === 'rejected'
         ? {
-            title: '需要补充材料',
-            description: `${fieldName}当前需要补件，请根据审核意见重新提交。`,
-            icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
+            title: '认证未通过',
+            description: `${fieldName}已被驳回，请根据审核意见补充材料后重新提交。`,
+            icon: <AlertTriangle className="w-8 h-8 text-destructive" />,
           }
-        : {
-            title: '材料已提交',
-            description: `${fieldName}已进入审核流程，系统会先完成机器预审，再视情况转人工复核。`,
-            icon: <Clock className="w-8 h-8 text-primary" />,
-          }
+        : status === 'resubmission_required'
+          ? {
+              title: '需要补充材料',
+              description: `${fieldName}当前需要补件，请根据审核意见重新提交。`,
+              icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
+            }
+          : status === 'expired'
+            ? {
+                title: '认证已过期',
+                description: `${fieldName}认证已过期，请重新提交最新材料。`,
+                icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
+              }
+            : status === 'awaiting_submission'
+              ? {
+                  title: '等待提交材料',
+                  description: `${fieldName}尚未提交，请按要求上传对应材料。`,
+                  icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
+                }
+              : {
+                  title: '材料已提交',
+                  description: `${fieldName}已进入审核流程，系统会先完成机器预审，再视情况转人工复核。`,
+                  icon: <Clock className="w-8 h-8 text-primary" />,
+                }
 
   return (
     <PageTransition className="h-full bg-background flex flex-col">
