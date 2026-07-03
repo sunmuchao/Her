@@ -1338,11 +1338,23 @@ def apply_profile_updates(
                 raise ValueError(f"profile {profile_id} was not found in table {source_table_name}")
         profile_conn.commit()
         _clear_partner_search_cache()
-        return {
+        out = {
             "status": "synced",
             "profile_id": int(profile_id),
             "table_name": source_table_name,
             "updated_fields": updated_fields,
         }
+        if any(field in {"avatar_url", "photo_url", "cover_url"} for field in updated_fields):
+            try:
+                from match_domain.appearance_features import refresh_profile_photo_features
+
+                out["photo_feature_refresh"] = refresh_profile_photo_features(
+                    source_dsn=source_dsn,
+                    source_table_name=source_table_name,
+                    profile_id=int(profile_id),
+                )
+            except Exception as exc:
+                out["photo_feature_refresh"] = {"saved": False, "error": str(exc)[:200]}
+        return out
     finally:
         release_profile_connection(source_dsn, profile_conn)

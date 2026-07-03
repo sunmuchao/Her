@@ -42,6 +42,8 @@ DEFAULT_VECTOR_TYPES = [
     "partner_relationship_pacing",
     "partner_lifestyle_preference",
     "emotional_needs",
+    "appearance_profile",
+    "appearance_preference",
 ]
 
 

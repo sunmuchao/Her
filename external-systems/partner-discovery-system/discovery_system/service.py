@@ -2381,7 +2381,8 @@ class DiscoveryService:
         try:
             from match_domain.appearance_features import (
                 record_feedback_event,
-                rebuild_user_preference_from_events,
+                rebuild_user_preference_from_history,
+                refresh_profile_photo_features,
             )
 
             persona_source = self._persona_memory_source()
@@ -2405,14 +2406,18 @@ class DiscoveryService:
                 },
             )
             candidate_feature = dict(candidate.get("photo_features") or {})
+            if not candidate_feature:
+                refreshed = refresh_profile_photo_features(
+                    source_dsn=persona_source,
+                    profile_id=candidate_profile_id,
+                )
+                candidate_feature = dict(refreshed or {})
             if candidate_feature:
-                rebuild_user_preference_from_events(
+                rebuild_user_preference_from_history(
                     source_dsn=persona_source,
                     user_key=str(session.requester_id),
                     profile_id=int(session.profile_id or 0) or None,
-                    candidate_feature_rows=[candidate_feature],
-                    positive_sample_count=1,
-                    negative_sample_count=0,
+                    scene="discovery",
                 )
         except Exception:
             return

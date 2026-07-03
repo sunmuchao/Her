@@ -122,6 +122,22 @@ VECTOR_TYPES_CONFIG = {
         "cleanup_days": 7,  # ← 新增：超过7天的旧版本清理（波动大）
         "description": "情感需求：波动较大，保留最近15个版本，清理超过7天的旧版本（如需要理解和支持）",
     },
+    "appearance_profile": {
+        "decay_days": 180,
+        "decay_curve": "linear",
+        "min_factor": 0.8,
+        "max_version_count": 5,
+        "cleanup_days": 60,
+        "description": "候选人照片风格语义：用于成熟、清爽、温柔、阳光等外观语义检索。",
+    },
+    "appearance_preference": {
+        "decay_days": 120,
+        "decay_curve": "exponential",
+        "min_factor": 0.6,
+        "max_version_count": 8,
+        "cleanup_days": 45,
+        "description": "用户照片审美偏好：由历史正负反馈聚合而成。",
+    },
 }
 
 

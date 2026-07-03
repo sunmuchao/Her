@@ -128,6 +128,55 @@ _PROFILE_RECOMMENDATION_COLUMNS = (
     "rule_provenance_json",
 )
 
+
+def _record_appearance_feedback_from_recommendation(
+    *,
+    subscription: dict[str, Any],
+    recommendation: dict[str, Any],
+    event_type: str,
+    event_weight: float,
+    scene: str,
+) -> None:
+    try:
+        from match_domain.appearance_features import (
+            rebuild_user_preference_from_history,
+            record_feedback_event,
+            refresh_profile_photo_features,
+        )
+
+        source_dsn = str(subscription.get("source") or "").strip()
+        user_key = str(subscription.get("requester_id") or recommendation.get("requester_id") or "").strip()
+        profile_id = int(subscription.get("self_id") or 0) or None
+        candidate_id = int(recommendation.get("candidate_id") or 0)
+        if not source_dsn or not user_key or candidate_id <= 0:
+            return
+        refresh_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=candidate_id,
+        )
+        record_feedback_event(
+            source_dsn=source_dsn,
+            user_key=user_key,
+            profile_id=int(profile_id or 0),
+            candidate_profile_id=candidate_id,
+            event_type=event_type,
+            event_weight=event_weight,
+            scene=scene,
+            metadata={
+                "source": scene,
+                "subscription_id": subscription.get("subscription_id"),
+                "recommendation_id": recommendation.get("recommendation_id"),
+            },
+        )
+        rebuild_user_preference_from_history(
+            source_dsn=source_dsn,
+            user_key=user_key,
+            profile_id=profile_id,
+            scene=scene,
+        )
+    except Exception:
+        return
+
 PROFILE_RECOMMENDATION_SELECT_SQL = ", ".join(_PROFILE_RECOMMENDATION_COLUMNS)
 
 
@@ -984,6 +1033,13 @@ def record_recommendation_action(
     if rec_row:
         append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
     commit_recommendation_transaction(conn)
+    _record_appearance_feedback_from_recommendation(
+        subscription=subscription,
+        recommendation=recommendation,
+        event_type=action_type,
+        event_weight={"skip": -2.0, "save": 2.5, "direct_greet": 4.0}.get(action_type, 0.0),
+        scene="recommendation_action",
+    )
     out = get_recommendation(conn, subscription_id, int(candidate_id))
     funnel_stage(
         system="recommendation",
@@ -1092,6 +1148,13 @@ def record_user_review(
     if rec_row:
         append_relation_state_revision_event(conn, subscription=subscription, recommendation_row=rec_row, now=now)
     commit_recommendation_transaction(conn)
+    _record_appearance_feedback_from_recommendation(
+        subscription=subscription,
+        recommendation=recommendation,
+        event_type=f"review_{review_type}",
+        event_weight={"skip": -2.5, "save": 2.5, "direct_greet": 4.0}.get(review_type, 0.0),
+        scene="recommendation_review",
+    )
     out = get_recommendation(conn, subscription_id, int(candidate_id))
     if review_type == "direct_greet":
         funnel_stage(

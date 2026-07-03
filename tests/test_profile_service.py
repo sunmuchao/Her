@@ -276,6 +276,71 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertEqual(result["user_key"], "user-1")
         self.assertEqual(result["preferred_mature_score"], 80)
 
+    def test_upsert_profile_photo_features_inserts_row(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "profile_id": 12,
+                        "appearance_score_global": 82,
+                        "analysis_status": "done",
+                    }
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.upsert_profile_photo_features(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                patch={
+                    "appearance_score_global": 82,
+                    "analysis_status": "done",
+                },
+            )
+
+        self.assertEqual(result["profile_id"], 12)
+        self.assertEqual(result["analysis_status"], "done")
+
+    def test_list_appearance_feedback_events_decodes_metadata(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(
+                    fetchall_result=[
+                        {
+                            "user_key": "user-1",
+                            "candidate_profile_id": 18,
+                            "event_type": "skip",
+                            "event_weight": -2,
+                            "metadata_json": '{"source":"recommendation"}',
+                        }
+                    ]
+                )
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.list_appearance_feedback_events(
+                source_dsn="mysql://persona",
+                user_key="user-1",
+                limit=20,
+            )
+
+        self.assertEqual(result[0]["event_type"], "skip")
+        self.assertEqual(result[0]["metadata_json"]["source"], "recommendation")
+
     def test_get_public_profile_loads_single_view_row(self):
         fake_conn = _FakeConnection(
             responses=[_FakeResult(fetchone_result={"id": 12, "name": "用户0012", "job": "产品经理"})]
