@@ -14,6 +14,9 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Bug,
+  Shield,
+  BarChart3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
@@ -21,7 +24,16 @@ import { ErrorState } from '@/components/her/ui/error-state'
 import { FadeIn } from '@/components/her/ui/animations'
 import UnifiedReviewWorkbench from '@/components/her/verification-review/unified-review-workbench'
 import TaskDetailDrawer from '@/components/her/ops-workbench/task-detail-drawer'
-import { useOpsWorkbenchSummary } from '@/hooks/use-ops-workbench'
+import {
+  useConversionViews,
+  useFraudNetworks,
+  useOpsAsyncJobDashboard,
+  useOpsWorkbenchSummary,
+  useRiskAppeals,
+  useRiskCases,
+  useRiskDashboard,
+  useRiskReports,
+} from '@/hooks/use-ops-workbench'
 import { usePageVisibility } from '@/hooks/use-page-visibility'
 
 type OpsWorkbenchPageProps = {
@@ -29,6 +41,11 @@ type OpsWorkbenchPageProps = {
 }
 
 type WorkbenchTab = 'ops' | 'review'
+
+type TaskSelection = {
+  taskId: string
+  pollPath?: string | null
+}
 
 type StatCardProps = {
   label: string
@@ -71,11 +88,20 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const [activeTab, setActiveTab] = useState<WorkbenchTab>('ops')
   const [expandedSystems, setExpandedSystems] = useState<Record<string, boolean>>({})
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true)
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedTask, setSelectedTask] = useState<TaskSelection | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [conversionInput, setConversionInput] = useState('')
+  const [conversionTarget, setConversionTarget] = useState('')
 
   // 页面可见性检测
   const isVisible = usePageVisibility()
+  const handleBack = () => {
+    if (onBack) {
+      onBack()
+      return
+    }
+    router.back()
+  }
 
   // Ops Workbench 数据获取（React Query）
   const {
@@ -88,22 +114,36 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
     refetchInterval: autoRefreshEnabled && activeTab === 'ops' && isVisible ? 30000 : false,
   })
 
-  const openTaskDrawer = (taskId: string) => {
-    setSelectedTaskId(taskId)
+  const { refetch: refetchAsyncDashboard } = useOpsAsyncJobDashboard({
+    enabled: autoRefreshEnabled && activeTab === 'ops' && isVisible,
+    refetchInterval: autoRefreshEnabled && activeTab === 'ops' && isVisible ? 30000 : false,
+  })
+
+  const { data: riskDashboard } = useRiskDashboard(7, activeTab === 'ops')
+  const { data: riskCasesData, refetch: refetchRiskCases } = useRiskCases(8, activeTab === 'ops')
+  const { data: riskReportsData, refetch: refetchRiskReports } = useRiskReports(8, activeTab === 'ops')
+  const { data: fraudNetworksData, refetch: refetchFraudNetworks } = useFraudNetworks(8, activeTab === 'ops')
+  const { data: riskAppealsData, refetch: refetchRiskAppeals } = useRiskAppeals(8, activeTab === 'ops')
+  const {
+    data: conversionViews,
+    error: conversionError,
+    isFetching: conversionLoading,
+  } = useConversionViews(conversionTarget, Boolean(conversionTarget))
+
+  const openTaskDrawer = (taskId: string, pollPath?: string | null) => {
+    setSelectedTask({ taskId, pollPath })
     setDrawerOpen(true)
   }
 
   const closeTaskDrawer = () => {
     setDrawerOpen(false)
-    setSelectedTaskId(null)
+    setSelectedTask(null)
   }
 
-  const retryTask = async (taskId: string) => {
-    // TODO: 调用实际API重试任务
-    console.log('重试任务:', taskId)
-    // 重试成功后关闭抽屉并刷新数据
+  const retryTask = async (_taskId: string) => {
     closeTaskDrawer()
     void loadSummary()
+    void refetchAsyncDashboard()
   }
 
   const toggleSystemExpanded = (system: string) => {
@@ -117,6 +157,11 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const totals = dashboard?.totals || {}
   const ledgerAvailable = dashboard?.ledger?.available === true
   const relations = summary?.relations_preview || []
+  const riskCases = riskCasesData?.risk_cases || []
+  const riskReports = riskReportsData?.reports || []
+  const fraudNetworks = fraudNetworksData?.fraud_networks || []
+  const riskAppeals = riskAppealsData?.appeals || []
+  const riskSummary = (riskDashboard?.dashboard || {}) as Record<string, unknown>
 
   // 计算失败和积压数量
   const failedCount = totals.failed ?? 0
@@ -131,6 +176,35 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   const hasFailedAlert = failedCount > 5
   const hasPendingWarning = pendingCount > 20
 
+  const riskCaseCount =
+    Number(riskSummary.open_case_count || riskSummary.case_count || riskCases.length || 0)
+  const reportCount = Number(riskSummary.report_count || riskReports.length || 0)
+  const fraudCount = Number(riskSummary.fraud_network_count || fraudNetworks.length || 0)
+  const appealCount = Number(riskSummary.appeal_count || riskAppeals.length || 0)
+
+  function renderCompactRows(
+    items: Array<Record<string, unknown>>,
+    fields: string[],
+    emptyText: string,
+  ) {
+    if (!items.length) {
+      return <p className="text-sm text-muted-foreground">{emptyText}</p>
+    }
+    return (
+      <div className="space-y-2">
+        {items.slice(0, 5).map((item, index) => (
+          <div key={String(item.id || item.risk_case_id || item.report_id || item.appeal_id || index)} className="rounded-xl border border-border/40 px-3 py-2 text-xs">
+            {fields.map((field) => (
+              <p key={field} className={field === fields[0] ? 'font-medium text-foreground' : 'text-muted-foreground'}>
+                {field}: {String(item[field] ?? '—')}
+              </p>
+            ))}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-muted-foreground">
@@ -142,7 +216,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
   if (loadError) {
     return (
       <div className="min-h-screen p-6">
-        <button type="button" onClick={() => router.back()} className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <button type="button" onClick={handleBack} className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground">
           <ArrowLeft className="h-4 w-4" />
           返回
         </button>
@@ -160,7 +234,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
       <div className="sticky top-0 z-20 border-b border-border/50 bg-background/90 backdrop-blur-md px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
-            <button type="button" onClick={() => router.back()} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <button type="button" onClick={handleBack} className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
               <ArrowLeft className="h-3.5 w-3.5" />
               返回
             </button>
@@ -332,7 +406,7 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
                               <button
                                 key={idx}
                                 type="button"
-                                onClick={() => openTaskDrawer(String(job.task_id || `task_${idx}`))}
+                                onClick={() => openTaskDrawer(String(job.job_id || job.task_id || `task_${idx}`), String(job.poll_path || ''))}
                                 className={cn(
                                   'w-full rounded-lg px-2 py-1 text-xs transition-all hover:shadow-sm',
                                   job.status === 'failed'
@@ -369,6 +443,125 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
         </FadeIn>
 
         <FadeIn delay={0.1}>
+          <div className="grid grid-cols-2 gap-3">
+            <StatCard
+              label="风险案件"
+              value={riskCaseCount}
+              warning={riskCaseCount > 0}
+              icon={<Shield className="h-4 w-4" />}
+            />
+            <StatCard
+              label="举报记录"
+              value={reportCount}
+              icon={<Flag className="h-4 w-4" />}
+            />
+            <StatCard
+              label="诈骗网络"
+              value={fraudCount}
+              alert={fraudCount > 0}
+              icon={<Bug className="h-4 w-4" />}
+            />
+            <StatCard
+              label="待处理申诉"
+              value={appealCount}
+              warning={appealCount > 0}
+              icon={<ShieldAlert className="h-4 w-4" />}
+            />
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={0.12}>
+          <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Shield className="h-4 w-4 text-primary" />
+                风控 / 举报 / 诈骗网络后台
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  void refetchRiskCases()
+                  void refetchRiskReports()
+                  void refetchFraudNetworks()
+                  void refetchRiskAppeals()
+                }}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                刷新
+              </button>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <p className="mb-2 text-xs font-medium text-foreground">风险案件</p>
+                {renderCompactRows(riskCases as Array<Record<string, unknown>>, ['risk_case_id', 'status', 'recommended_action'], '暂无风险案件')}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium text-foreground">举报记录</p>
+                {renderCompactRows(riskReports as Array<Record<string, unknown>>, ['report_id', 'report_type', 'reason_text'], '暂无举报记录')}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium text-foreground">诈骗网络</p>
+                {renderCompactRows(fraudNetworks as Array<Record<string, unknown>>, ['subject_user_id', 'review_status', 'network_score'], '暂无诈骗网络样本')}
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium text-foreground">风险申诉</p>
+                {renderCompactRows(riskAppeals as Array<Record<string, unknown>>, ['appeal_id', 'appeal_status', 'reason_text'], '暂无风险申诉')}
+              </div>
+            </div>
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={0.14}>
+          <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              订阅转化视图
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={conversionInput}
+                onChange={(event) => setConversionInput(event.target.value)}
+                placeholder="输入 subscription_id"
+                className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setConversionTarget(conversionInput.trim())}
+                className="rounded-xl bg-primary px-4 py-2 text-sm text-primary-foreground"
+              >
+                查询
+              </button>
+            </div>
+            <div className="mt-3">
+              {conversionLoading && <p className="text-sm text-muted-foreground">加载转化视图…</p>}
+              {!conversionLoading && conversionError && (
+                <p className="text-sm text-red-600">{getErrorMessage(conversionError)}</p>
+              )}
+              {!conversionLoading && !conversionError && conversionTarget && !(conversionViews?.length) && (
+                <p className="text-sm text-muted-foreground">该订阅暂无转化数据</p>
+              )}
+              {!conversionLoading && Boolean(conversionViews?.length) && (
+                <div className="space-y-2">
+                  {conversionViews?.slice(0, 6).map((view, index) => (
+                    <div key={`${view.recommendation_id || view.candidate_id || index}`} className="rounded-xl border border-border/40 px-3 py-2 text-xs">
+                      <p className="font-medium text-foreground">
+                        candidate #{String(view.candidate_id || '—')} · rec #{String(view.recommendation_id || '—')}
+                      </p>
+                      <p className="text-muted-foreground">
+                        stage: {String(view.conversion_stage || view.recommendation_phase || '—')}
+                      </p>
+                      <p className="text-muted-foreground">
+                        latest case: {String(view.latest_case_id || '—')} / {String(view.latest_case_status || '—')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </FadeIn>
+
+        <FadeIn delay={0.16}>
           <div className="rounded-2xl border border-border/60 bg-card/70 p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium">
               <Workflow className="h-4 w-4 text-primary" />
@@ -394,13 +587,15 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
           </div>
         </FadeIn>
 
-        <FadeIn delay={0.15}>
+        <FadeIn delay={0.18}>
           <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-xs text-muted-foreground">
             <div className="mb-2 flex items-center gap-2 font-medium text-foreground">
               <ShieldAlert className="h-4 w-4" />
               接入说明
             </div>
             <p>读侧：GET /v1/ops/workbench/summary（聚合 async-jobs dashboard + ledger 预览）</p>
+            <p className="mt-1">任务详情：按 job 自带 `poll_path` 直连 `/v1/{target}/jobs/{job_id}`</p>
+            <p className="mt-1">风控后台：`/v1/chat/risk-*`、`/v1/chat/reports`、`/v1/chat/fraud-networks`</p>
             <p className="mt-1 flex items-center gap-1">
               <Layers className="h-3.5 w-3.5" />
               Principal 由 Gateway 一次解析，避免各域重复 bind profile_id
@@ -413,7 +608,8 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
       {/* 任务详情抽屉 */}
       {drawerOpen && (
         <TaskDetailDrawer
-          taskId={selectedTaskId}
+          taskId={selectedTask?.taskId || null}
+          pollPath={selectedTask?.pollPath || null}
           onClose={closeTaskDrawer}
           onRetry={retryTask}
         />

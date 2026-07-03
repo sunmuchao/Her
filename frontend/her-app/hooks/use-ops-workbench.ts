@@ -1,7 +1,15 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { fetchOpsWorkbenchSummary } from '@/lib/api/endpoints/ops'
+import { fetchOpsAsyncJobDashboard, fetchOpsTaskDetail, fetchOpsWorkbenchSummary } from '@/lib/api/endpoints/ops'
+import { fetchConversionViewsForSubscription } from '@/lib/api/endpoints/recommendation'
+import {
+  fetchChatReports,
+  fetchFraudNetworks,
+  fetchRiskAppeals,
+  fetchRiskCases,
+  fetchRiskDashboard,
+} from '@/lib/api/endpoints/risk-ops'
 import { queryKeys } from '@/lib/query-keys'
 import type { GatewayRequestInit } from '@/lib/api/client'
 
@@ -58,5 +66,106 @@ export function useOpsWorkbenchSummary(options?: {
     enabled,
     refetchInterval, // 智能轮询（页面不可见时自动暂停）
     retry: 1, // 失败重试1次
+  })
+}
+
+export function useOpsAsyncJobDashboard(options?: {
+  enabled?: boolean
+  refetchInterval?: number | false
+  limit?: number
+}) {
+  const {
+    enabled = true,
+    refetchInterval = false,
+    limit = 5,
+  } = options || {}
+
+  return useQuery({
+    queryKey: queryKeys.opsAsyncJobDashboard(limit),
+    queryFn: ({ signal }) =>
+      fetchOpsAsyncJobDashboard(limit, {
+        signal,
+        includeAuth: true,
+      } as GatewayRequestInit),
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+    enabled,
+    refetchInterval,
+    retry: 1,
+  })
+}
+
+export function useOpsTaskDetail(pollPath: string | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.opsTaskDetail(pollPath || 'none'),
+    queryFn: ({ signal }) =>
+      fetchOpsTaskDetail(String(pollPath), {
+        signal,
+        includeAuth: true,
+      } as GatewayRequestInit),
+    enabled: Boolean(pollPath) && enabled,
+    staleTime: 10 * 1000,
+    retry: 1,
+  })
+}
+
+export function useRiskDashboard(days = 7, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.riskDashboard(days),
+    queryFn: () => fetchRiskDashboard(days),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  })
+}
+
+export function useRiskCases(limit = 20, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.riskCases(limit),
+    queryFn: () => fetchRiskCases(limit),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  })
+}
+
+export function useRiskReports(limit = 20, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.riskReports(limit),
+    queryFn: () => fetchChatReports(limit),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  })
+}
+
+export function useFraudNetworks(limit = 20, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.fraudNetworks(limit),
+    queryFn: () => fetchFraudNetworks(limit),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  })
+}
+
+export function useRiskAppeals(limit = 20, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.riskAppeals(limit),
+    queryFn: () => fetchRiskAppeals(limit),
+    enabled,
+    staleTime: 30 * 1000,
+    retry: 1,
+  })
+}
+
+export function useConversionViews(subscriptionId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.conversionViews(subscriptionId),
+    queryFn: () => fetchConversionViewsForSubscription(subscriptionId),
+    enabled: enabled && Boolean(subscriptionId),
+    staleTime: 30 * 1000,
+    retry: 1,
   })
 }

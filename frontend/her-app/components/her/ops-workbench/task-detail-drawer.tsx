@@ -1,25 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { X, RefreshCw, Clock, AlertTriangle, CheckCircle, Loader } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/lib/api/errors'
+import { useOpsTaskDetail } from '@/hooks/use-ops-workbench'
 
 type TaskDetail = {
   task_id: string
-  task_type: 'recommendation' | 'matchmaking' | 'chat'
-  status: 'pending' | 'processing' | 'succeeded' | 'failed'
-  parameters: Record<string, unknown>
+  job_id?: string
+  task_type?: 'recommendation' | 'matchmaking' | 'chat'
+  job_type?: string
+  status: 'pending' | 'processing' | 'retry_pending' | 'succeeded' | 'failed'
+  payload?: Record<string, unknown>
   created_at: string
   started_at?: string
   finished_at?: string
-  duration?: number
+  finished_reason?: string
   error_message?: string
-  error_stack?: string
-  retry_count: number
+  retry_count?: number
+  target?: string
 }
 
 type TaskDetailDrawerProps = {
   taskId: string | null
+  pollPath?: string | null
   onClose: () => void
   onRetry?: (taskId: string) => void
 }
@@ -37,6 +41,12 @@ const STATUS_CONFIG = {
     bgColor: 'bg-blue-100',
     icon: Loader,
   },
+  retry_pending: {
+    label: '等待重试',
+    color: 'text-amber-600',
+    bgColor: 'bg-amber-100',
+    icon: RefreshCw,
+  },
   succeeded: {
     label: '已完成',
     color: 'text-green-600',
@@ -51,50 +61,10 @@ const STATUS_CONFIG = {
   },
 }
 
-export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetailDrawerProps) {
-  const [task, setTask] = useState<TaskDetail | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!taskId) return
-
-    const fetchTaskDetail = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        // TODO: 调用实际API
-        // const response = await fetch(`/v1/ops/async-jobs/${taskId}`)
-        // const data = await response.json()
-        // setTask(data)
-
-        // 临时模拟数据
-        setTask({
-          task_id: taskId,
-          task_type: 'recommendation',
-          status: 'failed',
-          parameters: {
-            profile_id: 1001,
-            target_profile_id: 1002,
-            match_score: 85,
-          },
-          created_at: '2026-07-02T10:30:00Z',
-          started_at: '2026-07-02T10:30:05Z',
-          finished_at: '2026-07-02T10:30:10Z',
-          duration: 5,
-          error_message: '用户已配对，无法推荐',
-          error_stack: 'Error: User already matched\n  at RecommendationEngine.match...',
-          retry_count: 0,
-        })
-      } catch (err) {
-        setError(err instanceof Error ? err.message : '加载任务详情失败')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    void fetchTaskDetail()
-  }, [taskId])
+export default function TaskDetailDrawer({ taskId, pollPath, onClose, onRetry }: TaskDetailDrawerProps) {
+  const { data, isLoading, error } = useOpsTaskDetail(pollPath || null, Boolean(taskId))
+  const task = (data?.job || null) as TaskDetail | null
+  const resolvedTaskId = task?.job_id || task?.task_id || taskId
 
   if (!taskId) return null
 
@@ -134,7 +104,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
 
         {/* 内容 */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-          {loading && (
+          {isLoading && (
             <div className="flex items-center justify-center py-12">
               <Loader className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -143,11 +113,11 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
           {error && (
             <div className="rounded-lg bg-red-50 p-4 text-red-700">
               <p className="font-medium">加载失败</p>
-              <p className="text-sm mt-1">{error}</p>
+              <p className="text-sm mt-1">{getErrorMessage(error)}</p>
             </div>
           )}
 
-          {task && !loading && !error && (
+          {task && !isLoading && !error && (
             <>
               {/* 状态信息 */}
               <div className="flex items-center gap-3">
@@ -165,7 +135,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
                   </div>
                 )}
                 <p className="text-sm text-muted-foreground">
-                  重试次数: {task.retry_count}
+                  重试次数: {task.retry_count ?? 0}
                 </p>
               </div>
 
@@ -173,12 +143,12 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">任务类型</p>
-                  <p className="text-sm font-medium capitalize">{task.task_type}</p>
+                  <p className="text-sm font-medium capitalize">{task.job_type || task.task_type || task.target || 'unknown'}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">执行时长</p>
+                  <p className="text-xs text-muted-foreground">当前状态</p>
                   <p className="text-sm font-medium">
-                    {task.duration ? `${task.duration}秒` : '—'}
+                    {task.status}
                   </p>
                 </div>
                 <div>
@@ -199,9 +169,9 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
 
               {/* 任务参数 */}
               <div>
-                <p className="text-xs text-muted-foreground mb-2">任务参数</p>
+                <p className="text-xs text-muted-foreground mb-2">任务载荷</p>
                 <pre className="rounded-lg bg-muted p-3 text-xs overflow-auto max-h-48">
-                  {JSON.stringify(task.parameters, null, 2)}
+                  {JSON.stringify(task.payload || {}, null, 2)}
                 </pre>
               </div>
 
@@ -213,11 +183,6 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
                     <p className="font-medium text-red-700">错误信息</p>
                   </div>
                   <p className="text-sm text-red-700">{task.error_message}</p>
-                  {task.error_stack && (
-                    <pre className="mt-2 text-xs text-red-600 overflow-auto max-h-32">
-                      {task.error_stack}
-                    </pre>
-                  )}
                 </div>
               )}
             </>
@@ -225,12 +190,12 @@ export default function TaskDetailDrawer({ taskId, onClose, onRetry }: TaskDetai
         </div>
 
         {/* 底部操作按钮 */}
-        {task && !loading && !error && (
+        {task && !isLoading && !error && (
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
             {task.status === 'failed' && onRetry && (
               <button
                 type="button"
-                onClick={() => onRetry(task.task_id)}
+                onClick={() => onRetry(resolvedTaskId)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
               >
                 <RefreshCw className="h-4 w-4" />

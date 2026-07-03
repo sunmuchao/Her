@@ -15,6 +15,12 @@ import {
   type CaseTimelineResponse,
 } from '@/lib/api/endpoints/chat-timeline'
 import { getXiaoyaMessage, markXiaoyaMessageRead } from '@/lib/api/endpoints/assessment'  // 新增
+import {
+  createCallSession,
+  endCallSession,
+  listCallSessionsByCase,
+  updateCallSessionStatus,
+} from '@/lib/api/endpoints/call-sessions'
 import { getErrorMessage } from '@/lib/api/errors'
 import { getChatParticipantId, getAvatarUrl } from '@/lib/auth/session'
 import { canUseMockFallback } from '@/lib/mock'
@@ -122,6 +128,8 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
   const [showVideoCall, setShowVideoCall] = useState(false)
   const [videoCallType, setVideoCallType] = useState<'audio' | 'video'>('video')
   const [videoCallId, setVideoCallId] = useState<string | null>(null)
+  const [isCreatingCall, setIsCreatingCall] = useState(false)
+  const [callHistoryCount, setCallHistoryCount] = useState(0)
 
   // 图片预览模态框状态
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
@@ -246,6 +254,92 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
       setChatTitle(urlChatTitle)
     }
   }, [urlChatTitle])
+
+  useEffect(() => {
+    const requesterId = getChatParticipantId()
+    if (!resolvedCaseId || !requesterId) return
+
+    let cancelled = false
+    async function loadCallHistory() {
+      try {
+        const result = await listCallSessionsByCase(resolvedCaseId, requesterId, 10)
+        if (!cancelled) {
+          setCallHistoryCount(result.call_count || result.call_sessions?.length || 0)
+        }
+      } catch (error) {
+        console.warn('[ChatPage] 加载通话记录失败:', error)
+      }
+    }
+
+    void loadCallHistory()
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedCaseId])
+
+  async function handleStartCall(callType: CallType) {
+    const requesterId = getChatParticipantId()
+    if (!resolvedCaseId || !requesterId || !counterpartId) {
+      notifyError(new Error('缺少 case_id 或对方标识，暂时无法发起通话'), '通话暂不可用')
+      return
+    }
+
+    setIsCreatingCall(true)
+    try {
+      const response = await createCallSession({
+        caseId: resolvedCaseId,
+        callerId: requesterId,
+        calleeId: counterpartId,
+        callType,
+        conversationId: resolvedChatId,
+      })
+      const callSession = response.call_session
+      const callId = String(callSession.call_id || '').trim()
+      if (!callId) {
+        throw new Error('通话会话创建失败')
+      }
+      setVideoCallType(callType)
+      setVideoCallId(callId)
+      setShowVideoCall(true)
+      setShowActionMenu(false)
+      setCallHistoryCount((prev) => prev + 1)
+    } catch (error) {
+      notifyError(error, '发起通话失败')
+    } finally {
+      setIsCreatingCall(false)
+    }
+  }
+
+  async function handleCallStateChange(state: 'idle' | 'connecting' | 'ringing' | 'active' | 'ended') {
+    if (!videoCallId) return
+    if (state !== 'active') return
+    try {
+      await updateCallSessionStatus({
+        callId: videoCallId,
+        status: 'active',
+        startedAt: new Date().toISOString(),
+      })
+    } catch (error) {
+      console.warn('[ChatPage] 更新通话状态失败:', error)
+    }
+  }
+
+  async function handleCallEnded() {
+    const requesterId = getChatParticipantId()
+    if (videoCallId && requesterId) {
+      try {
+        await endCallSession({
+          callId: videoCallId,
+          requesterId,
+          endReason: 'hangup',
+        })
+      } catch (error) {
+        console.warn('[ChatPage] 结束通话会话失败:', error)
+      }
+    }
+    setShowVideoCall(false)
+    setVideoCallId(null)
+  }
 
   useEffect(() => {
     if (!resolvedChatId) return
@@ -1277,12 +1371,8 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               </button>
               {/* 视频通话 */}
               <button
-                onClick={() => {
-                  setVideoCallType('video')
-                  setVideoCallId(`call-${Date.now()}`)
-                  setShowVideoCall(true)
-                  setShowActionMenu(false)
-                }}
+                onClick={() => void handleStartCall('video')}
+                disabled={isCreatingCall}
                 className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
                 aria-label="视频通话"
               >
@@ -1293,12 +1383,8 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
               </button>
               {/* 语音通话 */}
               <button
-                onClick={() => {
-                  setVideoCallType('audio')
-                  setVideoCallId(`call-${Date.now()}`)
-                  setShowVideoCall(true)
-                  setShowActionMenu(false)
-                }}
+                onClick={() => void handleStartCall('audio')}
+                disabled={isCreatingCall}
                 className="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-secondary hover:bg-secondary/80 transition-colors"
                 aria-label="语音通话"
               >
@@ -1343,6 +1429,9 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
                 <span className="text-xs text-foreground">位置</span>
               </button>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              本案通话会话数：{callHistoryCount}
+            </p>
           </div>
         )}
 
@@ -1427,9 +1516,12 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
           isInitiator={true}
           userId={getChatParticipantId() || ''}
           signalingServerUrl={process.env.NEXT_PUBLIC_SIGNALING_SERVER_URL || 'ws://localhost:8080'}
+          onStateChange={handleCallStateChange}
+          onCallEnded={() => {
+            void handleCallEnded()
+          }}
           onClose={() => {
-            setShowVideoCall(false)
-            setVideoCallId(null)
+            void handleCallEnded()
           }}
         />
       )}

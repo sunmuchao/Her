@@ -174,7 +174,7 @@ export type AppealReviewParams = {
  */
 export async function fetchAppealReviewQueue(): Promise<{ appeals: AppealCase[] }> {
   const response = await gatewayJson<{ appeals?: AppealCase[] }>(
-    '/v1/profile-review/case-appeals',
+    '/v1/profile-review/appeals',
     { includeAuth: true },
   )
   return { appeals: response.appeals || [] }
@@ -185,7 +185,7 @@ export async function fetchAppealReviewQueue(): Promise<{ appeals: AppealCase[] 
  */
 export async function reviewAppealCase(params: AppealReviewParams): Promise<{ appeal: AppealCase }> {
   return gatewayJson<{ appeal: AppealCase }>(
-    `/v1/profile-review/case-appeals/${params.appealId}/review`,
+    `/v1/profile-review/appeals/${params.appealId}/review`,
     {
       method: 'POST',
       includeAuth: true,

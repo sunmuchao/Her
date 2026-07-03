@@ -25,29 +25,27 @@ export type SendNotificationParams = {
  * 发送审核结果通知
  */
 export async function sendVerificationNotification(params: SendNotificationParams): Promise<{ notification_id: string }> {
-  return gatewayJson<{ notification_id: string }>(
-    '/v1/notifications/verification-result',
-    {
-      method: 'POST',
-      includeAuth: true,
-      body: JSON.stringify({
-        user_id: params.userId,
-        profile_id: params.profileId,
-        submission_id: params.submissionId,
-        decision: params.decision,
-        message: params.message,
-        channels: params.channels || ['in_app'],
-      }),
-    },
-  )
+  // The backend now generates verification notifications as part of the review flow.
+  // Keep this function as a harmless compatibility wrapper so legacy callers do not fail.
+  return Promise.resolve({
+    notification_id: `backend-generated:${params.submissionId}`,
+  })
 }
 
 /**
  * 获取用户的审核通知列表
  */
-export async function fetchVerificationNotifications(userId: string): Promise<VerificationNotification[]> {
+export async function fetchVerificationNotifications(params?: {
+  userId?: string
+  submissionId?: string
+  limit?: number
+}): Promise<VerificationNotification[]> {
+  const query = new URLSearchParams()
+  if (params?.userId) query.set('user_id', params.userId)
+  if (params?.submissionId) query.set('submission_id', params.submissionId)
+  if (params?.limit) query.set('limit', String(params.limit))
   const response = await gatewayJson<{ notifications?: VerificationNotification[] }>(
-    `/v1/notifications/verification?user_id=${userId}`,
+    `/v1/verifications/notifications${query.size ? `?${query.toString()}` : ''}`,
     { includeAuth: true },
   )
 

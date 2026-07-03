@@ -24,6 +24,14 @@ export const queryKeys = {
 
   // 运营工作台
   opsWorkbenchSummary: ['ops', 'workbench', 'summary'] as const,
+  opsAsyncJobDashboard: (limit: number) => ['ops', 'async-jobs', 'dashboard', limit] as const,
+  opsTaskDetail: (pollPath: string) => ['ops', 'task-detail', pollPath] as const,
+  riskDashboard: (days: number) => ['risk', 'dashboard', days] as const,
+  riskCases: (limit: number) => ['risk', 'cases', limit] as const,
+  riskReports: (limit: number) => ['risk', 'reports', limit] as const,
+  fraudNetworks: (limit: number) => ['risk', 'fraud-networks', limit] as const,
+  riskAppeals: (limit: number) => ['risk', 'appeals', limit] as const,
+  conversionViews: (subscriptionId: string) => ['recommendation', 'conversion-views', subscriptionId] as const,
 
   // 审核队列
   reviewQueue: (params: { status?: string; field_key?: string; limit?: number }) =>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Clock, RefreshCw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getErrorMessage } from '@/lib/api/errors'
@@ -13,6 +14,7 @@ import {
   useAppealReviewQueue,
 } from '@/hooks/use-review-queues'
 import { fetchVerificationDetail } from '@/lib/api/endpoints/field-verification'
+import { fetchVerificationNotifications } from '@/lib/api/endpoints/verification-notification'
 import { ErrorState } from '@/components/her/ui/error-state'
 import ReviewDetailPanel from './review-detail-panel'
 import type { VerificationSubmissionDetail, ReviewActionParams } from '@/lib/api/endpoints/field-verification'
@@ -77,6 +79,12 @@ export default function UnifiedReviewWorkbench() {
 
   // 审核操作 mutation
   const reviewMutation = useFieldReviewMutation()
+
+  const { data: latestNotifications } = useQuery({
+    queryKey: ['review', 'verification-notifications'],
+    queryFn: () => fetchVerificationNotifications({ limit: 5 }),
+    staleTime: 30 * 1000,
+  })
 
   // 审核详情面板状态
   const [selectedSubmission, setSelectedSubmission] = useState<VerificationSubmissionDetail | null>(null)
@@ -280,6 +288,24 @@ export default function UnifiedReviewWorkbench() {
           <RefreshCw className="h-4 w-4" />
         </button>
       </div>
+
+      {!!latestNotifications?.length && (
+        <div className="px-4 mb-4">
+          <div className="rounded-xl border border-border/60 bg-card/70 p-3">
+            <p className="text-sm font-medium text-foreground mb-2">最新审核通知</p>
+            <div className="space-y-2">
+              {latestNotifications.map((item, index) => (
+                <div key={item.notification_id || index} className="rounded-lg bg-muted/30 px-3 py-2">
+                  <p className="text-xs text-foreground">{item.message || '审核状态已更新'}</p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {item.decision || item.notification_type || 'notification'} · {item.created_at || '—'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 队列列表 */}
       {fieldLoading || videoLoading || reportLoading || photoLoading || appealLoading ? (

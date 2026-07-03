@@ -25,6 +25,7 @@ export type VideoCallModalProps = {
   signalingServerUrl: string
   onClose: () => void
   onCallEnded?: () => void
+  onStateChange?: (state: 'idle' | 'connecting' | 'ringing' | 'active' | 'ended') => void
 }
 
 export function VideoCallModal({
@@ -41,6 +42,7 @@ export function VideoCallModal({
   signalingServerUrl,
   onClose,
   onCallEnded,
+  onStateChange,
 }: VideoCallModalProps) {
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null)
   const targetUserId = isInitiator ? calleeId : callerId
@@ -104,12 +106,15 @@ export function VideoCallModal({
     targetUserId,
     onCallEnded: () => {
       onCallEnded?.()
-      onClose()
     },
     onError: (error) => {
       console.error('[VideoCall] Error:', error)
     },
   })
+
+  useEffect(() => {
+    onStateChange?.(webRTC.callState)
+  }, [onStateChange, webRTC.callState])
 
   // 本地视频渲染
   const localVideoRef = useRef<HTMLVideoElement>(null)
