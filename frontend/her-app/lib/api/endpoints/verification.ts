@@ -54,6 +54,15 @@ export type LiveVideoChallenge = {
   expires_at?: string
 }
 
+function parseGatewayUtcTimestamp(rawValue?: string | null) {
+  const value = String(rawValue || '').trim()
+  if (!value) return Number.NaN
+  if (/z$/i.test(value) || /[+-]\d{2}:\d{2}$/.test(value)) {
+    return Date.parse(value)
+  }
+  return Date.parse(`${value.replace(' ', 'T')}Z`)
+}
+
 function hasSpokenCodePrompt(challengePhrase?: string): boolean {
   return /数字\s*\d+/u.test(String(challengePhrase || ''))
 }
@@ -145,7 +154,7 @@ export async function createLiveVideoChallenge(): Promise<LiveVideoChallenge> {
 export function isLiveVideoChallengeExpired(challenge?: Pick<LiveVideoChallenge, 'expires_at'> | null) {
   const expiresAt = String(challenge?.expires_at || '').trim()
   if (!expiresAt) return false
-  const expiresAtMs = Date.parse(expiresAt.replace(' ', 'T'))
+  const expiresAtMs = parseGatewayUtcTimestamp(expiresAt)
   if (!Number.isFinite(expiresAtMs)) return false
   return Date.now() > expiresAtMs
 }
