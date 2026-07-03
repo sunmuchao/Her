@@ -10,7 +10,7 @@ const VIDEO_STATUS_LABELS: Record<string, string> = {
   under_review: '审核中',
   approved: '已通过',
   rejected: '已驳回',
-  resubmission_required: '需重新提交',
+  resubmission_required: '需补件',
 }
 
 interface VerificationVideoPendingProps {

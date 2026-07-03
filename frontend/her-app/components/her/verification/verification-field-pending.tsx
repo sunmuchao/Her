@@ -22,7 +22,7 @@ const FIELD_STATUS_LABELS: Record<string, string> = {
   under_review: '审核中',
   approved: '已通过',
   rejected: '已驳回',
-  resubmission_required: '需重新提交',
+  resubmission_required: '需补件',
   expired: '已过期',
   awaiting_submission: '待提交',
 }
@@ -52,8 +52,8 @@ export function VerificationFieldPending({
           }
         : status === 'resubmission_required'
           ? {
-              title: '需要补充材料',
-              description: `${fieldName}当前需要补件，请根据审核意见重新提交。`,
+              title: '需要补件',
+              description: `${fieldName}当前需要补件，请根据审核意见补充材料后重新提交。`,
               icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
             }
           : status === 'expired'
