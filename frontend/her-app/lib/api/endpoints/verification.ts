@@ -15,6 +15,12 @@ export type VerificationSubmission = {
   profile_id?: string
   user_id?: string
   created_at?: string
+  updated_at?: string
+  challenge_phrase?: string
+  machine_review?: Record<string, unknown>
+  recommended_decision?: string
+  recommended_next_step?: string
+  confidence_band?: string
 }
 
 export type VerificationNotification = {
@@ -51,6 +57,15 @@ export type LiveVideoChallenge = {
   challenge_token?: string
   challenge_phrase?: string
   required_actions?: string[]
+  spoken_code?: string
+  prompt_steps?: Array<{
+    step_index?: number
+    kind?: 'action' | 'spoken_code' | string
+    action_key?: string
+    spoken_code?: string
+    label?: string
+    instruction?: string
+  }>
   expires_at?: string
 }
 
@@ -130,8 +145,8 @@ export async function createLiveVideoChallenge(): Promise<LiveVideoChallenge> {
       body: JSON.stringify({
         user_id: userId,
         profile_id: getProfileId(),
-        challenge_action_pool: ['nod', 'blink', 'smile'],
-        action_count: 2,
+        challenge_action_pool: ['blink', 'open_mouth', 'turn_left', 'turn_right', 'nod_up'],
+        action_count: 3,
       }),
     },
   )
@@ -147,6 +162,8 @@ export async function createLiveVideoChallenge(): Promise<LiveVideoChallenge> {
     challenge_token: challengeToken,
     challenge_phrase: response.challenge_phrase ?? response.challenge?.challenge_phrase,
     required_actions: response.required_actions ?? response.challenge?.required_actions,
+    spoken_code: response.spoken_code ?? response.challenge?.spoken_code,
+    prompt_steps: response.prompt_steps ?? response.challenge?.prompt_steps,
     expires_at: response.expires_at ?? response.challenge?.expires_at,
   }
 }

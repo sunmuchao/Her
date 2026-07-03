@@ -1,13 +1,48 @@
 'use client'
 
-import { CheckCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock } from 'lucide-react'
 import { PageTransition } from '@/components/her/ui/animations'
+import type { FieldVerificationSubmission } from '@/lib/api/endpoints/field-verification'
 
 interface VerificationFieldPendingProps {
+  latestSubmission?: FieldVerificationSubmission | null
+  selectedField?: string | null
   onBack: () => void
 }
 
-export function VerificationFieldPending({ onBack }: VerificationFieldPendingProps) {
+const FIELD_LABELS: Record<string, string> = {
+  education: '学历认证',
+  occupation: '职业认证',
+  income: '收入认证',
+}
+
+export function VerificationFieldPending({
+  latestSubmission,
+  selectedField,
+  onBack,
+}: VerificationFieldPendingProps) {
+  const status = String(latestSubmission?.status || 'submitted').toLowerCase()
+  const fieldName = FIELD_LABELS[selectedField || ''] || '材料认证'
+
+  const tone =
+    status === 'approved'
+      ? {
+          title: '审核通过',
+          description: `${fieldName}已通过审核，资料页会自动刷新认证状态。`,
+          icon: <CheckCircle className="w-8 h-8 text-primary" />,
+        }
+      : status === 'resubmission_required' || status === 'rejected'
+        ? {
+            title: '需要补充材料',
+            description: `${fieldName}当前需要补件，请根据审核意见重新提交。`,
+            icon: <AlertTriangle className="w-8 h-8 text-amber-600" />,
+          }
+        : {
+            title: '材料已提交',
+            description: `${fieldName}已进入审核流程，系统会先完成机器预审，再视情况转人工复核。`,
+            icon: <Clock className="w-8 h-8 text-primary" />,
+          }
+
   return (
     <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
@@ -17,11 +52,18 @@ export function VerificationFieldPending({ onBack }: VerificationFieldPendingPro
       </header>
       <div className="flex-1 flex flex-col items-center justify-center px-8 text-center">
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-          <CheckCircle className="w-8 h-8 text-primary" />
+          {tone.icon}
         </div>
-        <h2 className="font-serif text-xl text-foreground mb-3">材料已提交</h2>
-        <p className="text-sm text-muted-foreground mb-2">感谢你的配合</p>
-        <p className="text-sm text-muted-foreground mb-8">我们会在1-2个工作日内完成审核</p>
+        <h2 className="font-serif text-xl text-foreground mb-3">{tone.title}</h2>
+        <p className="text-sm text-muted-foreground mb-2">{tone.description}</p>
+        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left mt-4 mb-8">
+          <p className="text-sm font-medium text-foreground mb-2">当前回执</p>
+          <div className="space-y-2 text-sm text-muted-foreground">
+            <p>认证项目：{fieldName}</p>
+            <p>状态：{latestSubmission?.status || 'submitted'}</p>
+            {latestSubmission?.field_key ? <p>字段键：{latestSubmission.field_key}</p> : null}
+          </div>
+        </div>
         <button onClick={onBack} className="w-full py-4 bg-primary rounded-2xl text-primary-foreground font-medium">
           返回
         </button>

@@ -1,11 +1,20 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
+import {
+  buildGuideSteps,
+  formatChallengeDeadline,
+  formatRemainingTime,
+  getChallengeRemainingSeconds,
+  getGuidedRecordingState,
+} from './verification-helpers'
 
 interface VerificationVideoRecordProps {
   isRecording: boolean
   recordingTime: number
+  liveChallenge: LiveVideoChallenge | null
   previewStream: MediaStream | null
   onBack: () => void
   onRecordVideo: () => void
@@ -14,11 +23,26 @@ interface VerificationVideoRecordProps {
 export function VerificationVideoRecord({
   isRecording,
   recordingTime,
+  liveChallenge,
   previewStream,
   onBack,
   onRecordVideo,
 }: VerificationVideoRecordProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [nowMs, setNowMs] = useState(Date.now())
+
+  const guideState = useMemo(
+    () => getGuidedRecordingState({ challenge: liveChallenge, recordingTime }),
+    [liveChallenge, recordingTime],
+  )
+  const guideSteps = useMemo(() => buildGuideSteps(liveChallenge), [liveChallenge])
+  const remainingSeconds = getChallengeRemainingSeconds(liveChallenge?.expires_at, nowMs)
+  const isChallengeExpired = remainingSeconds !== null && remainingSeconds <= 0
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const video = videoRef.current
@@ -61,18 +85,66 @@ export function VerificationVideoRecord({
           </div>
         </div>
         <div className="text-center mb-8">
-          <h3 className="text-white text-xl font-medium mb-2">
-            {isRecording ? '请缓慢转动头部' : '准备好后点击开始'}
-          </h3>
+          <div className="mb-5 rounded-3xl bg-black/35 px-4 py-3 backdrop-blur-sm">
+            <p className="text-white/70 text-xs mb-1">
+              {isRecording
+                ? `第 ${guideState.currentIndex + 1} / ${Math.max(guideSteps.length, 1)} 步`
+                : '准备 challenge'}
+            </p>
+            <h3 className="text-white text-xl font-medium mb-2">
+              {isRecording
+                ? guideState.currentStep?.instruction || liveChallenge?.challenge_phrase || '请按屏幕提示完成 challenge'
+                : isChallengeExpired
+                  ? 'challenge 已过期，请返回重试'
+                  : '准备好后点击开始'}
+            </h3>
+            <p className="text-white/70 text-sm">
+              {isRecording
+                ? guideState.nextStep
+                  ? `下一步：${guideState.nextStep.instruction}`
+                  : '最后一步完成后会自动结束录制'
+                : isChallengeExpired
+                  ? '请退出后重新生成本次 challenge，避免提交时提示超时。'
+                  : liveChallenge?.challenge_phrase || '系统已生成本次 challenge，开始后请按顺序完成动作'}
+            </p>
+          </div>
+          <div className="mb-4 h-2 w-full max-w-xs rounded-full bg-white/20 overflow-hidden mx-auto">
+            <div
+              className="h-full rounded-full bg-white transition-all"
+              style={{ width: `${isRecording ? guideState.progress : 0}%` }}
+            />
+          </div>
+          <div className="grid gap-2 text-left max-w-xs mx-auto mb-4">
+            {guideSteps.map((step, index) => {
+              const isDone = isRecording && index < guideState.currentIndex
+              const isCurrent = isRecording && index === guideState.currentIndex
+              return (
+                <div
+                  key={step.key}
+                  className={`rounded-2xl px-3 py-2 text-sm transition-colors ${
+                    isCurrent
+                      ? 'bg-white text-foreground'
+                      : isDone
+                        ? 'bg-emerald-400/80 text-foreground'
+                        : 'bg-white/10 text-white/70'
+                  }`}
+                >
+                  {index + 1}. {step.instruction}
+                </div>
+              )
+            })}
+          </div>
           <p className="text-white/60 text-sm">
-            {isRecording ? `录制中 ${recordingTime}s / 6s` : '确保面部光线充足'}
+            {isRecording
+              ? `录制中 ${recordingTime}s / 6s`
+              : `challenge 有效期至 ${formatChallengeDeadline(liveChallenge?.expires_at)}，剩余 ${formatRemainingTime(remainingSeconds)}`}
           </p>
         </div>
         <button
           onClick={() => void onRecordVideo()}
-          disabled={isRecording}
+          disabled={isRecording || isChallengeExpired}
           className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${
-            isRecording ? 'bg-rose animate-pulse' : 'bg-white hover:scale-105'
+            isRecording ? 'bg-rose animate-pulse' : isChallengeExpired ? 'bg-white/40' : 'bg-white hover:scale-105'
           }`}
         >
           {isRecording ? <div className="w-8 h-8 rounded-md bg-white" /> : <div className="w-16 h-16 rounded-full bg-primary" />}

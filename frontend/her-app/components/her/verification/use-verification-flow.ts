@@ -9,11 +9,14 @@ import {
   listVerificationSubmissions,
   submitLiveVideoVerification,
   type LiveVideoChallenge,
+  type VerificationNotification,
+  type VerificationSubmission,
 } from '@/lib/api/endpoints/verification'
 import {
   listFieldVerifications,
   resolveDeclaredValueFromProfile,
   submitFieldVerification,
+  type FieldVerificationSubmission,
 } from '@/lib/api/endpoints/field-verification'
 import { fetchProfileFacts } from '@/lib/api/endpoints/collected'
 import {
@@ -106,9 +109,50 @@ export function useVerificationFlow(onBack: () => void) {
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isSubmittingField, setIsSubmittingField] = useState(false)
+  const [latestVideoSubmission, setLatestVideoSubmission] = useState<VerificationSubmission | null>(null)
+  const [latestVerificationNotification, setLatestVerificationNotification] = useState<VerificationNotification | null>(null)
+  const [latestFieldSubmission, setLatestFieldSubmission] = useState<FieldVerificationSubmission | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sseEventSourceRef = useRef<EventSource | null>(null)
   const sseReconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  function syncVerificationState(params: {
+    submissions: VerificationSubmission[]
+    notifications: VerificationNotification[]
+    fieldSubmissions: FieldVerificationSubmission[]
+  }) {
+    const latest = params.submissions[0] || null
+    const latestNotification = params.notifications[0] || null
+    const videoStatus = mapSubmissionStatus(latest?.status)
+    const pendingHint =
+      params.notifications.find((n) => n.type?.includes('resubmission'))?.body ||
+      latest?.recommended_next_step ||
+      latestNotification?.body ||
+      '按提示完成身份认证'
+
+    const fieldStatusByUi = new Map<string, FieldItem['status']>()
+    for (const submission of params.fieldSubmissions) {
+      const uiField = mapApiFieldToUi(submission.field_key)
+      if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
+    }
+
+    setLatestVideoSubmission(latest)
+    setLatestVerificationNotification(latestNotification)
+    setLatestFieldSubmission(params.fieldSubmissions[0] || null)
+    setFieldVerificationTypes(
+      DEFAULT_FIELDS.map((item) => {
+        if (item.id === 'video') {
+          return {
+            ...item,
+            status: videoStatus,
+            description: videoStatus === 'pending' ? pendingHint : item.description,
+          }
+        }
+        const fieldStatus = fieldStatusByUi.get(item.id)
+        return fieldStatus ? { ...item, status: fieldStatus } : item
+      }),
+    )
+  }
 
   useEffect(() => {
     console.log('[useVerificationFlow] useEffect 开始执行')
@@ -139,35 +183,7 @@ export function useVerificationFlow(onBack: () => void) {
         })
 
         if (cancelled) return
-        const latest = submissions[0]
-        const videoStatus = mapSubmissionStatus(latest?.status)
-
-        console.log('[loadVerificationState] videoStatus:', videoStatus)
-
-        const pendingHint =
-          notifications.find((n) => n.type?.includes('resubmission'))?.body ||
-          notifications[0]?.body ||
-          '按提示完成身份认证'
-
-        const fieldStatusByUi = new Map<string, FieldItem['status']>()
-        for (const submission of fieldSubmissions) {
-          const uiField = mapApiFieldToUi(submission.field_key)
-          if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
-        }
-
-        setFieldVerificationTypes(
-          DEFAULT_FIELDS.map((item) => {
-            if (item.id === 'video') {
-              return {
-                ...item,
-                status: videoStatus,
-                description: videoStatus === 'pending' ? pendingHint : item.description,
-              }
-            }
-            const fieldStatus = fieldStatusByUi.get(item.id)
-            return fieldStatus ? { ...item, status: fieldStatus } : item
-          }),
-        )
+        syncVerificationState({ submissions, notifications, fieldSubmissions })
 
         console.log('[loadVerificationState] fieldVerificationTypes 已更新')
         setLoadError(null)
@@ -248,32 +264,7 @@ export function useVerificationFlow(onBack: () => void) {
                   listVerificationNotifications(),
                   listFieldVerifications(),
                 ])
-                const latest = submissions[0]
-                const videoStatus = mapSubmissionStatus(latest?.status)
-                const pendingHint =
-                  notifications.find((n) => n.type?.includes('resubmission'))?.body ||
-                  notifications[0]?.body ||
-                  '按提示完成身份认证'
-
-                const fieldStatusByUi = new Map<string, FieldItem['status']>()
-                for (const submission of fieldSubmissions) {
-                  const uiField = mapApiFieldToUi(submission.field_key)
-                  if (uiField) fieldStatusByUi.set(uiField, mapSubmissionStatus(submission.status))
-                }
-
-                setFieldVerificationTypes(
-                  DEFAULT_FIELDS.map((item) => {
-                    if (item.id === 'video') {
-                      return {
-                        ...item,
-                        status: videoStatus,
-                        description: videoStatus === 'pending' ? pendingHint : item.description,
-                      }
-                    }
-                    const fieldStatus = fieldStatusByUi.get(item.id)
-                    return fieldStatus ? { ...item, status: fieldStatus } : item
-                  }),
-                )
+                syncVerificationState({ submissions, notifications, fieldSubmissions })
                 setLoadError(null)
               } catch (error) {
                 setLoadError(getErrorMessage(error, '认证状态加载失败'))
@@ -321,6 +312,8 @@ export function useVerificationFlow(onBack: () => void) {
     try {
       const challenge = await createLiveVideoChallenge()
       setLiveChallenge(challenge)
+      setLatestVideoSubmission(null)
+      setLatestVerificationNotification(null)
       setStep('video-record')
     } catch (error) {
       notifyError(error, '无法创建认证挑战')
@@ -365,7 +358,7 @@ export function useVerificationFlow(onBack: () => void) {
     }
     setIsSubmittingVideo(true)
     try {
-      await submitLiveVideoVerification({
+      const result = await submitLiveVideoVerification({
         challengeToken: token,
         challengePhrase: liveChallenge?.challenge_phrase,
         requiredActions: liveChallenge?.required_actions,
@@ -380,6 +373,8 @@ export function useVerificationFlow(onBack: () => void) {
       // ✅ 失效认证相关缓存，触发 profile 页面自动刷新
       await invalidateAllVerificationCache()
 
+      setLatestVideoSubmission(result.submission || null)
+      setLatestVerificationNotification(null)
       setStep('video-pending')
     } catch (error) {
       const message = getErrorMessage(error, '视频提交失败')
@@ -411,7 +406,7 @@ export function useVerificationFlow(onBack: () => void) {
         selectedField,
       )
 
-      await submitFieldVerification({
+      const result = await submitFieldVerification({
         fieldId: selectedField,
         file: selectedFile,
         declaredValue,
@@ -421,6 +416,7 @@ export function useVerificationFlow(onBack: () => void) {
       // ✅ 失效认证相关缓存，触发 profile 页面自动刷新
       await invalidateAllVerificationCache()
 
+      setLatestFieldSubmission(result.submission || null)
       setStep('field-pending')
     } catch (error) {
       notifyError(error, '材料提交失败')
@@ -438,6 +434,9 @@ export function useVerificationFlow(onBack: () => void) {
     isRecording,
     recordingTime,
     liveChallenge,
+    latestVideoSubmission,
+    latestVerificationNotification,
+    latestFieldSubmission,
     recordedVideo,
     previewStream,
     setRecordedVideo,

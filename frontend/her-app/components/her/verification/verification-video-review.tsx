@@ -2,9 +2,12 @@
 
 import { ArrowLeft, Camera, RotateCcw } from 'lucide-react'
 import { PageTransition } from '@/components/her/ui/animations'
+import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import type { RecordedVideo } from '@/lib/media/video-recorder'
+import { buildGuideSteps } from './verification-helpers'
 
 interface VerificationVideoReviewProps {
+  liveChallenge: LiveVideoChallenge | null
   recordedVideo: RecordedVideo | null
   isSubmittingVideo: boolean
   onBack: () => void
@@ -13,12 +16,15 @@ interface VerificationVideoReviewProps {
 }
 
 export function VerificationVideoReview({
+  liveChallenge,
   recordedVideo,
   isSubmittingVideo,
   onBack,
   onSubmit,
   onRerecord,
 }: VerificationVideoReviewProps) {
+  const guideSteps = buildGuideSteps(liveChallenge)
+
   return (
     <PageTransition className="h-full bg-background flex flex-col">
       <header className="sticky top-0 z-20 bg-background border-b border-border safe-area-top">
@@ -40,7 +46,20 @@ export function VerificationVideoReview({
           )}
         </div>
         <h2 className="text-lg font-medium text-foreground mb-2">视频录制完成</h2>
-        <p className="text-sm text-muted-foreground mb-8">请确认视频清晰后提交审核</p>
+        <p className="text-sm text-muted-foreground mb-5">请确认视频清晰，并且 challenge 中的动作和数字口令都已录到视频里。</p>
+        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left mb-8">
+          <p className="text-sm font-medium text-foreground mb-2">本次 challenge</p>
+          <p className="text-sm text-muted-foreground mb-3">
+            {liveChallenge?.challenge_phrase || '系统未返回 challenge 文案'}
+          </p>
+          <div className="space-y-2">
+            {guideSteps.map((step, index) => (
+              <div key={step.key} className="rounded-xl bg-background/80 px-3 py-2 text-sm text-foreground">
+                {index + 1}. {step.instruction}
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="w-full space-y-3">
           <button
             onClick={() => void onSubmit()}

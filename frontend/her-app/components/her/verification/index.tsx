@@ -25,6 +25,9 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     isRecording,
     recordingTime,
     liveChallenge,
+    latestVideoSubmission,
+    latestVerificationNotification,
+    latestFieldSubmission,
     recordedVideo,
     previewStream,
     setRecordedVideo,
@@ -85,6 +88,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
       <VerificationVideoRecord
         isRecording={isRecording}
         recordingTime={recordingTime}
+        liveChallenge={liveChallenge}
         previewStream={previewStream}
         onBack={() => setStep('video-intro')}
         onRecordVideo={handleRecordVideo}
@@ -96,6 +100,7 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
     console.log('[VerificationFlowContent] 渲染 video-review')
     return (
       <VerificationVideoReview
+        liveChallenge={liveChallenge}
         recordedVideo={recordedVideo}
         isSubmittingVideo={isSubmittingVideo}
         onBack={() => setStep('video-record')}
@@ -110,7 +115,17 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
 
   if (step === 'video-pending') {
     console.log('[VerificationFlowContent] 渲染 video-pending')
-    return <VerificationVideoPending onBack={onBack} />
+    return (
+      <VerificationVideoPending
+        latestNotification={latestVerificationNotification}
+        submission={latestVideoSubmission}
+        onBack={onBack}
+        onRestart={() => {
+          setRecordedVideo(null)
+          setStep('video-intro')
+        }}
+      />
+    )
   }
 
   if (step === 'field-upload') {
@@ -131,7 +146,13 @@ function VerificationFlowContent({ onBack }: VerificationFlowPageProps) {
 
   if (step === 'field-pending') {
     console.log('[VerificationFlowContent] 渲染 field-pending')
-    return <VerificationFieldPending onBack={onBack} />
+    return (
+      <VerificationFieldPending
+        latestSubmission={latestFieldSubmission}
+        selectedField={selectedField}
+        onBack={onBack}
+      />
+    )
   }
 
   console.log('[VerificationFlowContent] 没有匹配的 step，返回 null')

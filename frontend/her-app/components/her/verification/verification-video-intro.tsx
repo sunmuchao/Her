@@ -36,8 +36,14 @@ export function VerificationVideoIntro({
         </div>
         <h2 className="font-serif text-xl text-foreground mb-3">验证真实的你</h2>
         <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
-          为了保护真实用户的体验，我们需要你完成一个简短的视频认证。
+          为了保护真实用户的体验，我们需要你完成一个简短的视频认证。开始后系统会生成本次 challenge，包含随机动作，必要时还会要求你读出数字口令。
         </p>
+        <div className="w-full rounded-2xl bg-secondary/60 p-4 text-left text-sm text-muted-foreground mb-6 space-y-2">
+          <p>录制前请确认：</p>
+          <p>1. 光线充足，保持单人出镜。</p>
+          <p>2. 录制时按步骤完成动作，不要切出页面。</p>
+          <p>3. 如 challenge 包含数字口令，请大声读出屏幕提示。</p>
+        </div>
         <button
           type="button"
           disabled={isSubmittingVideo}
