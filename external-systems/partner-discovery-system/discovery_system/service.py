@@ -1064,6 +1064,15 @@ class DiscoveryService:
         )
         if not isinstance(detail_payload, dict):
             raise DiscoveryProfileNotFoundError("profile not found")
+        if session is not None:
+            self._record_appearance_feedback_event(
+                session=session,
+                candidate_profile_id=profile_id,
+                event_type="detail_view",
+                event_weight=1.2,
+                session_id=session.session_id,
+                metadata={"source": "discovery_profile_detail"},
+            )
         self._increment_metric("profile_detail_reads")
         funnel_stage(
             system="discovery",
@@ -2326,6 +2335,7 @@ class DiscoveryService:
     ) -> dict[str, Any]:
         # ✅ 参数预处理：如果需要排除当前结果，优先排除所有已展示历史，而不只是上一轮
         if exclude_current_results:
+            self._record_skip_feedback_for_refresh(session)
             shown_history_ids = {
                 int(candidate_id)
                 for candidate_id in list(session.state.get("shown_candidate_ids_history") or [])
@@ -2365,6 +2375,39 @@ class DiscoveryService:
             search=search_profiles,
         )
 
+    def _record_skip_feedback_for_refresh(self, session: StoredSession) -> None:
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id <= 0:
+            return
+        last_shown_ids = [
+            int(candidate_id)
+            for candidate_id in list(session.state.get("last_shown_candidate_ids") or [])
+            if int(candidate_id) > 0
+        ]
+        if not last_shown_ids:
+            return
+        tracked_run_ids = {
+            int(run_id)
+            for run_id in list(session.state.get("appearance_feedback_refresh_skip_run_ids") or [])
+            if int(run_id) > 0
+        }
+        if search_run_id in tracked_run_ids:
+            return
+        for candidate_id in last_shown_ids:
+            self._record_appearance_feedback_event(
+                session=session,
+                candidate_profile_id=candidate_id,
+                event_type="skip",
+                event_weight=-2.0,
+                session_id=session.session_id,
+                metadata={
+                    "source": "discovery_refresh_skip",
+                    "search_run_id": search_run_id,
+                },
+            )
+        tracked_run_ids.add(search_run_id)
+        session.state["appearance_feedback_refresh_skip_run_ids"] = sorted(tracked_run_ids)[-20:]
+
     def _profile_source(self) -> str:
         return _profile_source_impl()
 
@@ -2378,9 +2421,19 @@ class DiscoveryService:
         candidate: dict[str, Any],
         session_id: str,
     ) -> None:
+        self._record_appearance_feedback_event(
+            session=session,
+            candidate_profile_id=int(candidate.get("id") or 0),
+            event_type="express_interest",
+            event_weight=3.0,
+            session_id=session_id,
+            metadata={
+                "source": "discovery_express_interest",
+                "candidate_name": candidate.get("name"),
+            },
+        )
         try:
             from match_domain.appearance_features import (
-                record_feedback_event,
                 rebuild_user_preference_from_history,
                 refresh_profile_photo_features_from_record,
             )
@@ -2388,23 +2441,6 @@ class DiscoveryService:
             persona_source = self._persona_memory_source()
             if not persona_source:
                 return
-            candidate_profile_id = int(candidate.get("id") or 0)
-            if candidate_profile_id <= 0:
-                return
-            record_feedback_event(
-                source_dsn=persona_source,
-                user_key=str(session.requester_id),
-                profile_id=int(session.profile_id or 0),
-                candidate_profile_id=candidate_profile_id,
-                event_type="express_interest",
-                event_weight=3.0,
-                scene="discovery",
-                session_id=session_id,
-                metadata={
-                    "source": "discovery_express_interest",
-                    "candidate_name": candidate.get("name"),
-                },
-            )
             candidate_feature = dict(candidate.get("photo_features") or {})
             if not candidate_feature:
                 refreshed = refresh_profile_photo_features_from_record(
@@ -2419,6 +2455,36 @@ class DiscoveryService:
                     profile_id=int(session.profile_id or 0) or None,
                     scene="discovery",
                 )
+        except Exception:
+            return
+
+    def _record_appearance_feedback_event(
+        self,
+        *,
+        session: StoredSession,
+        candidate_profile_id: int,
+        event_type: str,
+        event_weight: float,
+        session_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        try:
+            from match_domain.appearance_features import record_feedback_event
+
+            persona_source = self._persona_memory_source()
+            if not persona_source or candidate_profile_id <= 0:
+                return
+            record_feedback_event(
+                source_dsn=persona_source,
+                user_key=str(session.requester_id),
+                profile_id=int(session.profile_id or 0),
+                candidate_profile_id=int(candidate_profile_id),
+                event_type=event_type,
+                event_weight=event_weight,
+                scene="discovery",
+                session_id=session_id,
+                metadata=metadata,
+            )
         except Exception:
             return
 

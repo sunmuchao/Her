@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 from profile_service import (
     get_profile,
+    iter_profile_batches,
     list_appearance_feedback_events,
     list_profile_photos,
     list_profile_photo_features,
@@ -420,6 +421,100 @@ def refresh_profile_photo_features_from_record(
     return saved
 
 
+def backfill_profile_photo_features(
+    *,
+    source_dsn: str | None,
+    profile_source_dsn: str | None = None,
+    source_table_name: str | None = None,
+    photos_table_name: str | None = None,
+    where_clause: str = "",
+    params: Iterable[Any] | None = None,
+    batch_size: int = 200,
+    limit: int | None = None,
+    sync_embedding: bool = False,
+    only_missing: bool = False,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+) -> dict[str, Any]:
+    if not source_dsn:
+        return {"saved": False, "error": "source_not_configured"}
+    profile_source = str(profile_source_dsn or source_dsn or "").strip()
+    resolved_profile_source, resolved_table = resolve_profile_source(profile_source, source_table_name)
+    if not resolved_profile_source or not resolved_table:
+        return {"saved": False, "error": "profile_source_unresolved"}
+
+    normalized_batch_size = max(1, int(batch_size or 200))
+    normalized_limit = max(0, int(limit or 0))
+    processed = 0
+    saved = 0
+    skipped = 0
+    failed = 0
+    errors: list[dict[str, Any]] = []
+
+    for batch in iter_profile_batches(
+        source_dsn=resolved_profile_source,
+        source_table_name=resolved_table,
+        where_clause=where_clause,
+        params=tuple(params or ()),
+        batch_size=normalized_batch_size,
+    ):
+        candidate_rows = [dict(row) for row in batch if isinstance(row, dict)]
+        if only_missing and candidate_rows:
+            existing_map = load_candidate_photo_features(
+                source_dsn=source_dsn,
+                profile_ids=[int(row.get("id") or 0) for row in candidate_rows],
+                table_name=table_name,
+            )
+            candidate_rows = [
+                row
+                for row in candidate_rows
+                if int(row.get("id") or 0) > 0 and int(row.get("id") or 0) not in existing_map
+            ]
+        for row in candidate_rows:
+            profile_id = int(row.get("id") or 0)
+            if profile_id <= 0:
+                skipped += 1
+                continue
+            if normalized_limit and processed >= normalized_limit:
+                return {
+                    "saved": True,
+                    "processed": processed,
+                    "saved_count": saved,
+                    "skipped_count": skipped,
+                    "failed_count": failed,
+                    "errors": errors,
+                    "stopped_early": True,
+                }
+            try:
+                result = refresh_profile_photo_features(
+                    source_dsn=source_dsn,
+                    profile_source_dsn=resolved_profile_source,
+                    source_table_name=resolved_table,
+                    photos_table_name=photos_table_name,
+                    profile_id=profile_id,
+                    table_name=table_name,
+                    sync_embedding=sync_embedding,
+                )
+            except Exception as exc:
+                failed += 1
+                errors.append({"profile_id": profile_id, "error": str(exc)[:200]})
+            else:
+                if str(result.get("analysis_status") or "").lower() == "done":
+                    saved += 1
+                else:
+                    skipped += 1
+            processed += 1
+
+    return {
+        "saved": True,
+        "processed": processed,
+        "saved_count": saved,
+        "skipped_count": skipped,
+        "failed_count": failed,
+        "errors": errors,
+        "stopped_early": False,
+    }
+
+
 def load_candidate_photo_features(
     *,
     source_dsn: str | None,
@@ -654,6 +749,58 @@ def rebuild_user_preference_from_history(
     return load_requester_appearance_preference(source_dsn=source_dsn, user_key=user_key) or saved
 
 
+def backfill_user_appearance_preferences(
+    *,
+    source_dsn: str | None,
+    user_keys: Iterable[str],
+    scene: str | None = None,
+    event_limit: int = 200,
+) -> dict[str, Any]:
+    if not source_dsn:
+        return {"saved": False, "error": "source_not_configured"}
+    normalized_user_keys = []
+    seen_keys: set[str] = set()
+    for value in user_keys:
+        key = str(value or "").strip()
+        if not key or key in seen_keys:
+            continue
+        normalized_user_keys.append(key)
+        seen_keys.add(key)
+    if not normalized_user_keys:
+        return {"saved": False, "error": "no_user_keys"}
+
+    processed = 0
+    saved = 0
+    failed = 0
+    results: list[dict[str, Any]] = []
+    for user_key in normalized_user_keys:
+        try:
+            result = rebuild_user_preference_from_history(
+                source_dsn=source_dsn,
+                user_key=user_key,
+                profile_id=None,
+                scene=scene,
+                event_limit=event_limit,
+            )
+        except Exception as exc:
+            failed += 1
+            results.append({"user_key": user_key, "saved": False, "error": str(exc)[:200]})
+        else:
+            if result.get("saved") is False and result.get("error"):
+                failed += 1
+            else:
+                saved += 1
+            results.append({"user_key": user_key, **dict(result or {})})
+        processed += 1
+    return {
+        "saved": True,
+        "processed": processed,
+        "saved_count": saved,
+        "failed_count": failed,
+        "results": results,
+    }
+
+
 def sync_user_appearance_preference_embedding(
     *,
     source_dsn: str | None,
@@ -712,10 +859,12 @@ __all__ = [
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "PhotoBonusBreakdown",
+    "backfill_profile_photo_features",
     "build_photo_feature_patch",
     "compute_photo_bonus_breakdown",
     "load_candidate_photo_features",
     "load_requester_appearance_preference",
+    "backfill_user_appearance_preferences",
     "record_feedback_event",
     "rebuild_user_preference_from_events",
     "rebuild_user_preference_from_history",

@@ -4,6 +4,8 @@ import unittest
 from unittest import mock
 
 from match_domain.appearance_features import (
+    backfill_profile_photo_features,
+    backfill_user_appearance_preferences,
     build_photo_feature_patch,
     compute_photo_bonus_breakdown,
     rebuild_user_preference_from_history,
@@ -109,6 +111,83 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertGreater(result["preferred_mature_score"], 50)
         self.assertIn("更容易被这类风格吸引", result["appearance_preference_summary"])
         self.assertTrue(saved_rows)
+
+    def test_backfill_profile_photo_features_processes_batches_and_skips_existing(self):
+        rows = [
+            {"id": 11, "avatar_url": "https://img.her.local/11.jpg"},
+            {"id": 12, "avatar_url": "https://img.her.local/12.jpg"},
+            {"id": 13, "avatar_url": "https://img.her.local/13.jpg"},
+        ]
+        refreshed_ids: list[int] = []
+
+        def fake_refresh(**kwargs):
+            refreshed_ids.append(int(kwargs["profile_id"]))
+            return {"analysis_status": "done", "profile_id": kwargs["profile_id"]}
+
+        with (
+            mock.patch("match_domain.appearance_features.resolve_profile_source", return_value=("mysql://profiles", "profiles")),
+            mock.patch("match_domain.appearance_features.iter_profile_batches", return_value=[rows[:2], rows[2:]]),
+            mock.patch(
+                "match_domain.appearance_features.load_candidate_photo_features",
+                return_value={12: {"profile_id": 12, "analysis_status": "done"}},
+            ),
+            mock.patch("match_domain.appearance_features.refresh_profile_photo_features", side_effect=fake_refresh),
+        ):
+            result = backfill_profile_photo_features(
+                source_dsn="mysql://persona",
+                profile_source_dsn="mysql://profiles",
+                only_missing=True,
+            )
+
+        self.assertEqual(refreshed_ids, [11, 13])
+        self.assertEqual(result["processed"], 2)
+        self.assertEqual(result["saved_count"], 2)
+        self.assertEqual(result["failed_count"], 0)
+
+    def test_backfill_profile_photo_features_stops_at_limit(self):
+        rows = [
+            {"id": 21},
+            {"id": 22},
+            {"id": 23},
+        ]
+        refreshed_ids: list[int] = []
+
+        def fake_refresh(**kwargs):
+            refreshed_ids.append(int(kwargs["profile_id"]))
+            return {"analysis_status": "done"}
+
+        with (
+            mock.patch("match_domain.appearance_features.resolve_profile_source", return_value=("mysql://profiles", "profiles")),
+            mock.patch("match_domain.appearance_features.iter_profile_batches", return_value=[rows]),
+            mock.patch("match_domain.appearance_features.refresh_profile_photo_features", side_effect=fake_refresh),
+        ):
+            result = backfill_profile_photo_features(
+                source_dsn="mysql://persona",
+                limit=2,
+            )
+
+        self.assertEqual(refreshed_ids, [21, 22])
+        self.assertEqual(result["processed"], 2)
+        self.assertTrue(result["stopped_early"])
+
+    def test_backfill_user_appearance_preferences_aggregates_results(self):
+        with mock.patch(
+            "match_domain.appearance_features.rebuild_user_preference_from_history",
+            side_effect=[
+                {"user_key": "u1", "preferred_mature_score": 71},
+                {"saved": False, "error": "no_feedback_events"},
+            ],
+        ):
+            result = backfill_user_appearance_preferences(
+                source_dsn="mysql://persona",
+                user_keys=["u1", "u2", "u1"],
+                scene="discovery",
+            )
+
+        self.assertEqual(result["processed"], 2)
+        self.assertEqual(result["saved_count"], 1)
+        self.assertEqual(result["failed_count"], 1)
+        self.assertEqual(result["results"][0]["user_key"], "u1")
 
 
 if __name__ == "__main__":

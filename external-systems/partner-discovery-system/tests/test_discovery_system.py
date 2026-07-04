@@ -1681,6 +1681,30 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertIn("工作日回复可能偏晚。", view["caution_sections"][0]["items"])
         self.assertIn("城市一致、关系目标一致、工作节奏稳定。", view["matchmaker_notes"][0])
 
+    def test_get_profile_detail_records_detail_view_feedback(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        detail_payload = {
+            "id": 1001,
+            "name": "林知夏",
+            "photo_preview": ["https://static.example.com/p/1001/1.jpg"],
+            "profile": {"age": 29, "city": "无锡", "job": "中学老师"},
+        }
+
+        with mock.patch.dict(os.environ, {"HER_DISCOVERY_PROFILE_SOURCE": "mysql://demo"}, clear=False), mock.patch(
+            "discovery_system.service.load_profile_detail",
+            return_value=detail_payload,
+        ), mock.patch.object(service, "_record_appearance_feedback_event") as mock_feedback:
+            service.get_profile_detail(1001, session_id=session_id)
+
+        mock_feedback.assert_called_once()
+        self.assertEqual(mock_feedback.call_args.kwargs["event_type"], "detail_view")
+        self.assertEqual(mock_feedback.call_args.kwargs["candidate_profile_id"], 1001)
+
     def test_service_can_create_saved_search_subscription_from_last_empty_search(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),
@@ -1847,6 +1871,43 @@ class DiscoveryServiceTests(unittest.TestCase):
         create_match_case.assert_called_once()
         dispatch_match_case_outreach.assert_called_once()
         fake_conn.close.assert_called_once()
+
+    def test_refresh_search_records_skip_feedback_once_per_search_run(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        stored_session.state["last_search_run_id"] = 9
+        stored_session.state["last_shown_candidate_ids"] = [1001, 1002]
+
+        with mock.patch.object(service, "_record_appearance_feedback_event") as mock_feedback, mock.patch(
+            "discovery_system.service._search_partner_candidates_impl",
+            return_value={"has_match": False, "results": []},
+        ):
+            service._search_partner_candidates(
+                stored_session,
+                criteria={"cities": ["无锡"]},
+                personality_match={},
+                limit=5,
+                exclude_current_results=True,
+            )
+            service._search_partner_candidates(
+                stored_session,
+                criteria={"cities": ["无锡"]},
+                personality_match={},
+                limit=5,
+                exclude_current_results=True,
+            )
+
+        self.assertEqual(mock_feedback.call_count, 2)
+        self.assertEqual(
+            [call.kwargs["candidate_profile_id"] for call in mock_feedback.call_args_list],
+            [1001, 1002],
+        )
 
     def test_service_records_persona_memory_tool_call(self) -> None:
         service = DiscoveryService(
