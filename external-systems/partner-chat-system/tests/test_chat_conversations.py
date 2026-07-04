@@ -235,6 +235,60 @@ class ChatConversationTests(unittest.TestCase):
         self.assertEqual(tasks, [])
         self.assertEqual(out["agent_tasks_enqueued"], 0)
 
+    def test_main_group_messages_record_chat_started_and_continued_feedback(self):
+        layout = self._create_layout()
+        main = next(
+            item for item in layout["conversations"]
+            if item["metadata"]["layout_role"] == "main_group"
+        )
+        with patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://persona"}, clear=False), \
+             patch("chat_system.conversations.find_profile_id_by_user_id", side_effect=lambda _conn, uid: {"user-a": 301, "user-b": 302}.get(uid)), \
+             patch("chat_system.conversations.record_feedback_event") as mock_feedback:
+            post_conversation_message(
+                self.conn,
+                main["conversation_id"],
+                "user-a",
+                "第一条公开聊天",
+                now=datetime(2026, 5, 8, 21, 11, 0),
+            )
+            post_conversation_message(
+                self.conn,
+                main["conversation_id"],
+                "user-a",
+                "第二条公开聊天",
+                now=datetime(2026, 5, 8, 21, 12, 0),
+            )
+            post_conversation_message(
+                self.conn,
+                main["conversation_id"],
+                "user-a",
+                "第三条公开聊天",
+                now=datetime(2026, 5, 8, 21, 13, 0),
+            )
+
+        self.assertEqual(mock_feedback.call_count, 2)
+        self.assertEqual(mock_feedback.call_args_list[0].kwargs["event_type"], "chat_started")
+        self.assertEqual(mock_feedback.call_args_list[1].kwargs["event_type"], "chat_continued")
+
+    def test_assistant_dm_does_not_record_appearance_feedback(self):
+        layout = self._create_layout()
+        dm_a = next(
+            item for item in layout["conversations"]
+            if item["metadata"]["layout_role"] == "assistant_dm_a"
+        )
+        with patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://persona"}, clear=False), \
+             patch("chat_system.conversations.find_profile_id_by_user_id", return_value=301), \
+             patch("chat_system.conversations.record_feedback_event") as mock_feedback:
+            post_conversation_message(
+                self.conn,
+                dm_a["conversation_id"],
+                "user-a",
+                "这条是发给红娘助手的，不该记候选人偏好",
+                now=datetime(2026, 5, 8, 21, 11, 0),
+            )
+
+        mock_feedback.assert_not_called()
+
     def test_public_user_message_creates_task_when_public_followup_is_active(self):
         layout = self._create_layout()
         main = next(

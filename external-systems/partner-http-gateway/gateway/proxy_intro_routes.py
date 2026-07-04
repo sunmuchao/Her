@@ -601,7 +601,11 @@ def rest_proxy_intro_open_chat(
             participant_a_id=str(requester_user_id),
             participant_b_id=str(candidate_user_id),
             agent_id=str(os.environ.get("HER_MATCHMAKER_AGENT_ID") or "agent-c"),
-            metadata={"source": "proxy_intro_handoff"},
+            metadata={
+                "source": "proxy_intro_handoff",
+                "participant_a_profile_id": int(case["requester_id"]),
+                "participant_b_profile_id": int(case["candidate_id"]),
+            },
             now=_parse_optional_now(body),
         )
         conversations = list(layout.get("conversations") or [])

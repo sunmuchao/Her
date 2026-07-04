@@ -167,6 +167,79 @@ def rest_discovery_express_interest(
     return 200, {**_json_safe(out), "trace_id": get_trace_id()}
 
 
+def rest_discovery_quick_pass(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    candidate_id: int,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.record_quick_pass(
+            session_id,
+            candidate_id=candidate_id,
+            now=_parse_optional_now(body),
+        )
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+def rest_discovery_explicit_dislike(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    candidate_id: int,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.record_explicit_dislike(
+            session_id,
+            candidate_id=candidate_id,
+            now=_parse_optional_now(body),
+        )
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
+def rest_discovery_candidate_telemetry(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    session_id: str,
+    candidate_id: int,
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    try:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        out = gateway._discovery.record_candidate_telemetry(
+            session_id,
+            candidate_id=candidate_id,
+            telemetry=body.get("telemetry") if isinstance(body.get("telemetry"), dict) else body,
+            now=_parse_optional_now(body),
+        )
+    except DiscoveryServiceError as exc:
+        return _discovery_error(exc)
+    return 200, {**_json_safe(out), "trace_id": get_trace_id()}
+
+
 def dispatch_discovery_rest(
     gateway: DiscoveryGateway,
     environ: dict[str, Any],
@@ -228,6 +301,81 @@ def dispatch_discovery_rest(
                 "trace_id": get_trace_id(),
             }
         return rest_discovery_express_interest(
+            gateway,
+            environ,
+            safe_session_id,
+            candidate_id,
+            _parse_json_body(_read_body(environ)),
+        )
+
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/candidates/(\d+)/quick-pass", path)
+    if match and method == "POST":
+        safe_session_id, error = _validate_session_id(match.group(1))
+        if error:
+            return 400, error
+        try:
+            candidate_id = int(match.group(2))
+            if candidate_id <= 0 or candidate_id > 10**9:
+                return 400, {
+                    "error": {"code": "invalid_candidate_id", "message": "candidate_id must be between 1 and 10^9"},
+                    "trace_id": get_trace_id(),
+                }
+        except ValueError:
+            return 400, {
+                "error": {"code": "invalid_candidate_id", "message": "candidate_id must be an integer"},
+                "trace_id": get_trace_id(),
+            }
+        return rest_discovery_quick_pass(
+            gateway,
+            environ,
+            safe_session_id,
+            candidate_id,
+            _parse_json_body(_read_body(environ)),
+        )
+
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/candidates/(\d+)/explicit-dislike", path)
+    if match and method == "POST":
+        safe_session_id, error = _validate_session_id(match.group(1))
+        if error:
+            return 400, error
+        try:
+            candidate_id = int(match.group(2))
+            if candidate_id <= 0 or candidate_id > 10**9:
+                return 400, {
+                    "error": {"code": "invalid_candidate_id", "message": "candidate_id must be between 1 and 10^9"},
+                    "trace_id": get_trace_id(),
+                }
+        except ValueError:
+            return 400, {
+                "error": {"code": "invalid_candidate_id", "message": "candidate_id must be an integer"},
+                "trace_id": get_trace_id(),
+            }
+        return rest_discovery_explicit_dislike(
+            gateway,
+            environ,
+            safe_session_id,
+            candidate_id,
+            _parse_json_body(_read_body(environ)),
+        )
+
+    match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/candidates/(\d+)/telemetry", path)
+    if match and method == "POST":
+        safe_session_id, error = _validate_session_id(match.group(1))
+        if error:
+            return 400, error
+        try:
+            candidate_id = int(match.group(2))
+            if candidate_id <= 0 or candidate_id > 10**9:
+                return 400, {
+                    "error": {"code": "invalid_candidate_id", "message": "candidate_id must be between 1 and 10^9"},
+                    "trace_id": get_trace_id(),
+                }
+        except ValueError:
+            return 400, {
+                "error": {"code": "invalid_candidate_id", "message": "candidate_id must be an integer"},
+                "trace_id": get_trace_id(),
+            }
+        return rest_discovery_candidate_telemetry(
             gateway,
             environ,
             safe_session_id,

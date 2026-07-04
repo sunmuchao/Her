@@ -886,15 +886,76 @@ def sync_user_appearance_preference_embedding(
     return {"saved": bool(embedding_out.get("saved")), "preference": updated}
 
 
+@dataclass(frozen=True)
+class AppearanceInterestSignal:
+    positive_signal: float
+    negative_signal: float
+    net_signal: float
+    is_quick_bounce: bool
+    detail_quality: str
+    telemetry_weight: float
+
+
+def compute_appearance_interest_signal(
+    *,
+    event_weight: float = 0.0,
+    detail_view_duration_ms: int | float | None = None,
+    card_visible_duration_ms: int | float | None = None,
+    photo_swipe_count: int | float | None = None,
+    return_view_count: int | float | None = None,
+    quick_bounce: bool | None = None,
+) -> AppearanceInterestSignal:
+    detail_ms = max(0.0, float(detail_view_duration_ms or 0.0))
+    visible_ms = max(0.0, float(card_visible_duration_ms or 0.0))
+    swipe_count = max(0.0, float(photo_swipe_count or 0.0))
+    revisit_count = max(0.0, float(return_view_count or 0.0))
+    resolved_quick_bounce = bool(quick_bounce) or (0.0 < detail_ms < 2000.0)
+
+    telemetry_weight = 0.0
+    if visible_ms >= 1200.0:
+        telemetry_weight += min(1.5, visible_ms / 4000.0)
+    if detail_ms >= 3000.0:
+        telemetry_weight += min(2.5, detail_ms / 5000.0)
+    elif detail_ms >= 2000.0:
+        telemetry_weight += 0.8
+    if swipe_count > 0:
+        telemetry_weight += min(1.2, swipe_count * 0.35)
+    if revisit_count > 0:
+        telemetry_weight += min(1.5, revisit_count * 0.75)
+    if resolved_quick_bounce:
+        telemetry_weight -= 2.0
+
+    total = float(event_weight) + telemetry_weight
+    if resolved_quick_bounce:
+        detail_quality = "low"
+    elif detail_ms >= 8000.0 or revisit_count > 0:
+        detail_quality = "high"
+    elif detail_ms >= 3000.0 or swipe_count >= 2:
+        detail_quality = "medium"
+    else:
+        detail_quality = "low"
+
+    return AppearanceInterestSignal(
+        positive_signal=max(0.0, round(total, 4)),
+        negative_signal=max(0.0, round(-total, 4)),
+        net_signal=round(total, 4),
+        is_quick_bounce=resolved_quick_bounce,
+        detail_quality=detail_quality,
+        telemetry_weight=round(telemetry_weight, 4),
+    )
+
+
 __all__ = [
     "APPEARANCE_PREFERENCE_VECTOR_TYPE",
     "APPEARANCE_PROFILE_VECTOR_TYPE",
     "DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE",
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
+    "AppearanceInterestSignal",
     "PhotoBonusBreakdown",
     "backfill_profile_photo_features",
     "build_photo_feature_patch",
+    "compute_appearance_interest_signal",
     "compute_photo_bonus_breakdown",
     "load_candidate_photo_features",
     "load_requester_appearance_preference",

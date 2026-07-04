@@ -1404,6 +1404,26 @@ def find_user_id_by_profile_id(conn, profile_id: int) -> str | None:
     return user_id or None
 
 
+def find_profile_id_by_user_id(conn, user_id: str) -> int | None:
+    row = row_to_dict(
+        conn.execute(
+            """
+            SELECT JSON_EXTRACT(basic_info_json, '$.profile_id') AS profile_id
+            FROM user_onboarding_profiles
+            WHERE user_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT 1
+            """,
+            (str(user_id or "").strip(),),
+        ).fetchone()
+    )
+    try:
+        profile_id = int((row or {}).get("profile_id"))
+    except (TypeError, ValueError):
+        return None
+    return profile_id if profile_id > 0 else None
+
+
 def submit_onboarding_profile(
     conn,
     user_id: str,

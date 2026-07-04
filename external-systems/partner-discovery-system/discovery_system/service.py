@@ -1500,6 +1500,70 @@ class DiscoveryService:
             now=now,
         )
 
+    def record_candidate_telemetry(
+        self,
+        session_id: str,
+        *,
+        candidate_id: int,
+        telemetry: dict[str, Any] | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        session = self._require_session(session_id)
+        if session.status != "active":
+            raise DiscoverySessionClosedError("discovery session is closed")
+        search_run_id, _search_run, _candidate = self._load_latest_search_candidate(session, candidate_id)
+        payload = dict(telemetry or {})
+        metrics = {
+            "card_impression_count": max(0, int(payload.get("card_impression_count") or 0)),
+            "card_visible_duration_ms": max(0, int(payload.get("card_visible_duration_ms") or 0)),
+            "detail_view_duration_ms": max(0, int(payload.get("detail_view_duration_ms") or 0)),
+            "photo_swipe_count": max(0, int(payload.get("photo_swipe_count") or 0)),
+            "return_view_count": max(0, int(payload.get("return_view_count") or 0)),
+        }
+        if not any(metrics.values()):
+            return {
+                "ok": True,
+                "session_id": session.session_id,
+                "candidate_id": int(candidate_id),
+                "search_run_id": search_run_id,
+                "ignored": True,
+            }
+        quick_bounce = (
+            metrics["detail_view_duration_ms"] > 0
+            and metrics["detail_view_duration_ms"] < 2000
+        )
+        self._record_appearance_feedback_event(
+            session=session,
+            candidate_profile_id=int(candidate_id),
+            event_type="engagement_metrics",
+            event_weight=0.0,
+            session_id=session_id,
+            metadata={
+                "source": "discovery_engagement_metrics",
+                "search_run_id": search_run_id,
+                **metrics,
+                "quick_bounce": quick_bounce,
+            },
+        )
+        audit_event(
+            action="discovery.telemetry",
+            resource_type="discovery_candidate",
+            outcome="recorded",
+            resource_id=int(candidate_id),
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+        )
+        return {
+            "ok": True,
+            "session_id": session.session_id,
+            "candidate_id": int(candidate_id),
+            "search_run_id": search_run_id,
+            "telemetry": metrics,
+            "quick_bounce": quick_bounce,
+            "ignored": False,
+        }
+
     def _record_candidate_feedback_action(
         self,
         session_id: str,

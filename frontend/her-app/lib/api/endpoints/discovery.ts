@@ -62,6 +62,68 @@ export async function expressDiscoveryCandidateInterest(params: {
   )
 }
 
+export async function recordDiscoveryCandidateQuickPass(params: {
+  sessionId: string
+  candidateId: string | number
+}) {
+  return gatewayJson<{
+    ok?: boolean
+    session_id?: string
+    candidate_id?: number
+    event_type?: string
+    deduped?: boolean
+  }>(
+    `/v1/discovery/sessions/${encodeURIComponent(params.sessionId)}/candidates/${encodeURIComponent(String(params.candidateId))}/quick-pass`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export async function recordDiscoveryCandidateExplicitDislike(params: {
+  sessionId: string
+  candidateId: string | number
+}) {
+  return gatewayJson<{
+    ok?: boolean
+    session_id?: string
+    candidate_id?: number
+    event_type?: string
+    deduped?: boolean
+  }>(
+    `/v1/discovery/sessions/${encodeURIComponent(params.sessionId)}/candidates/${encodeURIComponent(String(params.candidateId))}/explicit-dislike`,
+    { method: 'POST', body: JSON.stringify({}) },
+  )
+}
+
+export async function recordDiscoveryCandidateTelemetry(params: {
+  sessionId: string
+  candidateId: string | number
+  telemetry: {
+    card_impression_count?: number
+    card_visible_duration_ms?: number
+    detail_view_duration_ms?: number
+    photo_swipe_count?: number
+    return_view_count?: number
+  }
+}) {
+  return gatewayJson<{
+    ok?: boolean
+    session_id?: string
+    candidate_id?: number
+    search_run_id?: string
+    telemetry?: Record<string, number>
+    quick_bounce?: boolean
+    ignored?: boolean
+  }>(
+    `/v1/discovery/sessions/${encodeURIComponent(params.sessionId)}/candidates/${encodeURIComponent(String(params.candidateId))}/telemetry`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        telemetry: params.telemetry,
+      }),
+    },
+  )
+}
+
 export async function fetchDiscoverySessionList(params: {
   profileId: number
   limit?: number

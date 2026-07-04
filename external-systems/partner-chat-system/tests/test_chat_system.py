@@ -264,6 +264,45 @@ class ChatSystemTests(unittest.TestCase):
         )
         self.assertEqual(m1["message_id"], m2["message_id"])
 
+    def test_thread_messages_record_chat_started_and_continued_feedback(self):
+        thread = get_or_create_thread(
+            self.conn,
+            case_id="case-feedback",
+            relation_key="rel-feedback",
+            participant_a_id="user-a",
+            participant_b_id="user-b",
+        )
+        with mock.patch.dict(os.environ, {"PERSONA_MEMORY_MYSQL_SOURCE": "mysql://persona"}, clear=False), \
+             mock.patch("chat_system.service.find_profile_id_by_user_id", side_effect=lambda _conn, uid: {"user-a": 101, "user-b": 202}.get(uid)), \
+             mock.patch("chat_system.service.record_feedback_event") as mock_feedback:
+            post_message(
+                self.conn,
+                thread["thread_id"],
+                "user-a",
+                "你好呀",
+                visibility=VIS_DYADIC,
+            )
+            post_message(
+                self.conn,
+                thread["thread_id"],
+                "user-a",
+                "想继续多了解一下",
+                visibility=VIS_DYADIC,
+            )
+            post_message(
+                self.conn,
+                thread["thread_id"],
+                "user-a",
+                "第三条消息不重复记 continued",
+                visibility=VIS_DYADIC,
+            )
+
+        self.assertEqual(mock_feedback.call_count, 2)
+        self.assertEqual(mock_feedback.call_args_list[0].kwargs["event_type"], "chat_started")
+        self.assertEqual(mock_feedback.call_args_list[1].kwargs["event_type"], "chat_continued")
+        self.assertEqual(mock_feedback.call_args_list[0].kwargs["profile_id"], 101)
+        self.assertEqual(mock_feedback.call_args_list[0].kwargs["candidate_profile_id"], 202)
+
     def test_owner_only_messages_from_non_participants_are_hidden(self):
         th = get_or_create_thread(
             self.conn,

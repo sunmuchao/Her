@@ -1,7 +1,7 @@
 'use client'
 
 import { ArrowLeft, BadgeCheck, MapPin, Heart, MessageCircle, CheckCircle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { fetchCandidateDetail, fetchCandidateXiaoyaAnalysis } from '@/lib/api/endpoints/candidates'
 import type { TrustSummary } from '@/lib/api/endpoints/trust'
@@ -20,7 +20,12 @@ import { FadeIn, Heartbeat, PageTransition } from './ui/animations'
 import { ImageCarousel } from './ui/image-carousel'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
-import { expressDiscoveryCandidateInterest } from '@/lib/api/endpoints/discovery'
+import {
+  expressDiscoveryCandidateInterest,
+  recordDiscoveryCandidateExplicitDislike,
+  recordDiscoveryCandidateQuickPass,
+  recordDiscoveryCandidateTelemetry,
+} from '@/lib/api/endpoints/discovery'
 import {
   createProxyIntroRequest,
   replyProxyIntroCase,
@@ -72,7 +77,11 @@ export default function CandidateDetailPage({
   const [usingMockData, setUsingMockData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isExpressingInterest, setIsExpressingInterest] = useState(false)
+  const [isRecordingSkip, setIsRecordingSkip] = useState(false)
+  const [isRecordingDislike, setIsRecordingDislike] = useState(false)
   const [showSubmittedHint, setShowSubmittedHint] = useState(false)
+  const detailOpenedAtRef = useRef<number | null>(null)
+  const photoSwipeCountRef = useRef(0)
 
   function xiaoyaCacheKey(candidateIdValue: string, sessionIdValue: string) {
     return `xiaoya-analysis:${sessionIdValue}:${candidateIdValue}`
@@ -152,6 +161,42 @@ export default function CandidateDetailPage({
     if (!sections.summary && !sections.riskPoint && !sections.firstQuestion) return null
     return sections
   }
+
+  useEffect(() => {
+    detailOpenedAtRef.current = Date.now()
+    photoSwipeCountRef.current = 0
+    const numericCandidateId = Number(resolvedCandidateId)
+    if (typeof window === 'undefined' || !sessionId || !Number.isFinite(numericCandidateId) || numericCandidateId <= 0) {
+      return
+    }
+    const returnKey = `discovery-detail-open:${sessionId}:${numericCandidateId}`
+    const previousOpens = Number(window.sessionStorage.getItem(returnKey) || '0')
+    window.sessionStorage.setItem(returnKey, String(previousOpens + 1))
+    if (previousOpens > 0) {
+      void recordDiscoveryCandidateTelemetry({
+        sessionId,
+        candidateId: numericCandidateId,
+        telemetry: {
+          return_view_count: 1,
+        },
+      }).catch(() => {})
+    }
+    return () => {
+      const openedAt = detailOpenedAtRef.current
+      if (!openedAt) return
+      const durationMs = Math.max(0, Date.now() - openedAt)
+      const photoSwipeCount = photoSwipeCountRef.current
+      if (durationMs <= 0 && photoSwipeCount <= 0) return
+      void recordDiscoveryCandidateTelemetry({
+        sessionId,
+        candidateId: numericCandidateId,
+        telemetry: {
+          detail_view_duration_ms: durationMs,
+          photo_swipe_count: photoSwipeCount,
+        },
+      }).catch(() => {})
+    }
+  }, [resolvedCandidateId, sessionId])
 
   useEffect(() => {
     let cancelled = false
@@ -377,6 +422,54 @@ export default function CandidateDetailPage({
     }
   }
 
+  const handleSkip = async () => {
+    if (isRecordingSkip) return
+    if (viewType === 'interest' && caseId) {
+      await handleDecline()
+      return
+    }
+    const numericCandidateId = Number(resolvedCandidateId)
+    if (!sessionId || !Number.isFinite(numericCandidateId) || numericCandidateId <= 0) {
+      onBack()
+      return
+    }
+    setIsRecordingSkip(true)
+    try {
+      await recordDiscoveryCandidateQuickPass({
+        sessionId,
+        candidateId: numericCandidateId,
+      })
+    } catch (error) {
+      notifyError(error, '暂时跳过失败，请稍后重试')
+      return
+    } finally {
+      setIsRecordingSkip(false)
+    }
+    onBack()
+  }
+
+  const handleExplicitDislike = async () => {
+    if (isRecordingDislike || isRecordingSkip || isExpressingInterest) return
+    const numericCandidateId = Number(resolvedCandidateId)
+    if (!sessionId || !Number.isFinite(numericCandidateId) || numericCandidateId <= 0) {
+      onBack()
+      return
+    }
+    setIsRecordingDislike(true)
+    try {
+      await recordDiscoveryCandidateExplicitDislike({
+        sessionId,
+        candidateId: numericCandidateId,
+      })
+    } catch (error) {
+      notifyError(error, '不喜欢反馈失败，请稍后重试')
+      return
+    } finally {
+      setIsRecordingDislike(false)
+    }
+    onBack()
+  }
+
   useEffect(() => {
     let cancelled = false
     const numericCandidateId = Number(resolvedCandidateId)
@@ -598,6 +691,9 @@ export default function CandidateDetailPage({
           indicatorStyle="pills"
           className="h-full"
           autoPlay
+          onUserNavigate={() => {
+            photoSwipeCountRef.current += 1
+          }}
         />
         
         {/* Gradient overlay */}
@@ -751,18 +847,18 @@ export default function CandidateDetailPage({
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border safe-area-bottom">
         <div className="flex gap-3 max-w-md mx-auto">
           <button
-            onClick={() => {
-              if (viewType === 'interest' && caseId) {
-                void handleDecline()
-              } else {
-                onBack()
-              }
-            }}
-            disabled={isExpressingInterest}
+            onClick={() => void handleSkip()}
+            disabled={isExpressingInterest || isRecordingSkip}
             className="flex-1 py-3 border border-border rounded-xl text-foreground font-medium hover:bg-secondary transition-colors focus-ring disabled:opacity-70"
             aria-label={viewType === 'interest' ? '暂不考虑这位候选人' : '暂时跳过这位候选人'}
           >
-            {isExpressingInterest && viewType === 'interest' ? '处理中' : viewType === 'interest' ? '暂不考虑' : '暂时跳过'}
+            {isExpressingInterest && viewType === 'interest'
+              ? '处理中'
+              : isRecordingSkip
+                ? '处理中'
+                : viewType === 'interest'
+                  ? '暂不考虑'
+                  : '暂时跳过'}
           </button>
           <Heartbeat>
             <button
@@ -784,6 +880,18 @@ export default function CandidateDetailPage({
             </button>
           </Heartbeat>
         </div>
+        {viewType !== 'interest' && sessionId ? (
+          <div className="mt-2 flex justify-center">
+            <button
+              type="button"
+              onClick={() => void handleExplicitDislike()}
+              disabled={isExpressingInterest || isRecordingSkip || isRecordingDislike}
+              className="text-xs font-medium text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline disabled:opacity-60"
+            >
+              {isRecordingDislike ? '处理中' : '明确不喜欢，不再推荐'}
+            </button>
+          </div>
+        ) : null}
         {showSubmittedHint ? (
           <div className="mt-2 flex items-center justify-center gap-3">
             <p className="text-xs text-muted-foreground">已提交，后续进展会在关系页更新</p>

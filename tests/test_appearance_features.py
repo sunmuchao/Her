@@ -5,15 +5,45 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 from match_domain.appearance_features import (
+    AppearanceInterestSignal,
     backfill_profile_photo_features,
     backfill_user_appearance_preferences,
     build_photo_feature_patch,
+    compute_appearance_interest_signal,
     compute_photo_bonus_breakdown,
     rebuild_user_preference_from_history,
 )
 
 
 class AppearanceFeaturesTests(unittest.TestCase):
+    def test_compute_appearance_interest_signal_detects_quick_bounce(self):
+        signal = compute_appearance_interest_signal(
+            event_weight=1.0,
+            detail_view_duration_ms=1200,
+            card_visible_duration_ms=800,
+            photo_swipe_count=0,
+            return_view_count=0,
+        )
+
+        self.assertIsInstance(signal, AppearanceInterestSignal)
+        self.assertTrue(signal.is_quick_bounce)
+        self.assertEqual(signal.detail_quality, 'low')
+        self.assertLess(signal.net_signal, 0)
+
+    def test_compute_appearance_interest_signal_rewards_engaged_detail_view(self):
+        signal = compute_appearance_interest_signal(
+            event_weight=0.5,
+            detail_view_duration_ms=9500,
+            card_visible_duration_ms=2600,
+            photo_swipe_count=3,
+            return_view_count=1,
+        )
+
+        self.assertFalse(signal.is_quick_bounce)
+        self.assertEqual(signal.detail_quality, 'high')
+        self.assertGreater(signal.telemetry_weight, 0)
+        self.assertGreater(signal.net_signal, 0)
+
     def test_compute_photo_bonus_breakdown_without_preference(self):
         bonus = compute_photo_bonus_breakdown(
             {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
 from typing import Any
@@ -13,6 +14,7 @@ try:
 except ImportError:  # pragma: no cover
     IntegrityError = Exception  # type: ignore[misc,assignment]
 
+from match_domain.appearance_features import record_feedback_event
 from match_domain.outbox import append_outbox_pending
 from her_runtime_context import get_trace_id
 from observability import (
@@ -21,6 +23,7 @@ from observability import (
     funnel_stage,
 )
 
+from .auth_accounts import find_profile_id_by_user_id
 from .events import chat_message_created_event, chat_thread_opened_event
 from .persona_jobs import maybe_enqueue_persona_sync_job
 from .risk import assert_message_allowed, maybe_capture_message_risk_signal
@@ -49,6 +52,69 @@ def _inflate_message(row: dict[str, Any] | None) -> dict[str, Any] | None:
 def _ledger_relation_key(thread: dict[str, Any]) -> str:
     metadata = thread.get("metadata") or {}
     return str(metadata.get("ledger_relation_key") or thread["relation_key"])
+
+
+def _persona_memory_source() -> str:
+    return str(os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or "").strip()
+
+
+def _record_thread_chat_feedback(
+    conn,
+    *,
+    thread: dict[str, Any],
+    author_id: str,
+    message_id: int,
+) -> None:
+    source_dsn = _persona_memory_source()
+    if not source_dsn:
+        return
+    participant_a_id = str(thread.get("participant_a_id") or "").strip()
+    participant_b_id = str(thread.get("participant_b_id") or "").strip()
+    counterpart_user_id = participant_b_id if participant_a_id == author_id else participant_a_id
+    if not counterpart_user_id or counterpart_user_id == author_id:
+        return
+    author_profile_id = find_profile_id_by_user_id(conn, author_id)
+    counterpart_profile_id = find_profile_id_by_user_id(conn, counterpart_user_id)
+    if not author_profile_id or not counterpart_profile_id:
+        return
+    count_row = row_to_dict(
+        conn.execute(
+            """
+            SELECT COUNT(*) AS message_count
+            FROM chat_messages
+            WHERE thread_id = ?
+              AND author_id = ?
+              AND visibility = ?
+              AND source = ?
+              AND message_id <= ?
+            """,
+            (str(thread["thread_id"]), author_id, VIS_DYADIC, SRC_USER, int(message_id)),
+        ).fetchone()
+    )
+    message_count = int((count_row or {}).get("message_count") or 0)
+    if message_count == 1:
+        event_type = "chat_started"
+    elif message_count == 2:
+        event_type = "chat_continued"
+    else:
+        return
+    record_feedback_event(
+        source_dsn=source_dsn,
+        user_key=str(author_profile_id),
+        profile_id=int(author_profile_id),
+        candidate_profile_id=int(counterpart_profile_id),
+        event_type=event_type,
+        event_weight=0.0,
+        scene="chat",
+        session_id=str(thread.get("case_id") or thread.get("thread_id") or ""),
+        metadata={
+            "source": "chat_thread_message",
+            "thread_id": str(thread["thread_id"]),
+            "case_id": str(thread.get("case_id") or ""),
+            "message_id": int(message_id),
+            "message_count": message_count,
+        },
+    )
 
 
 def get_thread(conn, thread_id: str) -> dict[str, Any] | None:
@@ -440,6 +506,16 @@ def post_message(
         source=source,
         author_id=author,
     )
+    if visibility == VIS_DYADIC and source == SRC_USER:
+        try:
+            _record_thread_chat_feedback(
+                conn,
+                thread=thread,
+                author_id=author,
+                message_id=inserted_id,
+            )
+        except Exception:
+            pass
     return dict(row)
 
 

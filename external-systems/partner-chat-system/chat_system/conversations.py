@@ -17,6 +17,7 @@ try:
 except ImportError:  # pragma: no cover
     IntegrityError = Exception  # type: ignore[misc,assignment]
 
+from match_domain.appearance_features import record_feedback_event
 from match_domain.outbox import append_outbox_pending
 from her_runtime_context import get_trace_id
 from observability import (
@@ -25,6 +26,7 @@ from observability import (
     funnel_stage,
 )
 
+from .auth_accounts import find_profile_id_by_user_id
 from .events import (
     chat_conversation_message_created_event,
     chat_conversation_opened_event,
@@ -188,6 +190,75 @@ def _conversation_bundle(conn, conversation_id: str) -> dict[str, Any]:
         raise ValueError("conversation not found")
     members = list_conversation_members_for_conversations(conn, [conversation_id]).get(str(conversation_id), [])
     return {**conversation, "members": members}
+
+
+def _persona_memory_source() -> str:
+    return str(os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or "").strip()
+
+
+def _record_conversation_chat_feedback(
+    conn,
+    *,
+    conversation: dict[str, Any],
+    author_id: str,
+    message_id: int,
+) -> None:
+    source_dsn = _persona_memory_source()
+    if not source_dsn:
+        return
+    members = list_conversation_members(conn, str(conversation["conversation_id"]))
+    human_counterparts = [
+        str(member.get("participant_id") or "").strip()
+        for member in members
+        if str(member.get("participant_id") or "").strip() != author_id
+        and str(member.get("member_role") or "").strip() == ROLE_HUMAN
+        and member.get("can_read")
+    ]
+    if len(human_counterparts) != 1:
+        return
+    counterpart_user_id = human_counterparts[0]
+    author_profile_id = find_profile_id_by_user_id(conn, author_id)
+    counterpart_profile_id = find_profile_id_by_user_id(conn, counterpart_user_id)
+    if not author_profile_id or not counterpart_profile_id:
+        return
+    count_row = row_to_dict(
+        conn.execute(
+            """
+            SELECT COUNT(*) AS message_count
+            FROM chat_conversation_messages
+            WHERE conversation_id = ?
+              AND author_id = ?
+              AND source = ?
+              AND message_id <= ?
+            """,
+            (str(conversation["conversation_id"]), author_id, SOURCE_USER, int(message_id)),
+        ).fetchone()
+    )
+    message_count = int((count_row or {}).get("message_count") or 0)
+    if message_count == 1:
+        event_type = "chat_started"
+    elif message_count == 2:
+        event_type = "chat_continued"
+    else:
+        return
+    record_feedback_event(
+        source_dsn=source_dsn,
+        user_key=str(author_profile_id),
+        profile_id=int(author_profile_id),
+        candidate_profile_id=int(counterpart_profile_id),
+        event_type=event_type,
+        event_weight=0.0,
+        scene="chat",
+        session_id=str(conversation.get("case_id") or conversation.get("conversation_id") or ""),
+        metadata={
+            "source": "chat_conversation_message",
+            "conversation_id": str(conversation["conversation_id"]),
+            "case_id": str(conversation.get("case_id") or ""),
+            "channel_key": str(conversation.get("channel_key") or ""),
+            "message_id": int(message_id),
+            "message_count": message_count,
+        },
+    )
 
 
 def _upsert_conversation_member(
@@ -812,6 +883,16 @@ def post_conversation_message(
         author_id=author_id,
         source=str(resolved_source),
     )
+    if resolved_source == SOURCE_USER:
+        try:
+            _record_conversation_chat_feedback(
+                conn,
+                conversation=conversation,
+                author_id=author_id,
+                message_id=inserted_id,
+            )
+        except Exception:
+            pass
     return dict(row)
 
 

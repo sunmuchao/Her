@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
+import { recordDiscoveryCandidateTelemetry } from '@/lib/api/endpoints/discovery'
 import type { CandidatePreview } from '@/lib/types/candidate'
 
 type DiscoveryCandidateCardProps = {
@@ -25,9 +27,63 @@ export function DiscoveryCandidateCard({
   const mbtiType = candidate.personality_match_context?.mbti?.type_code
   const attachmentType = candidate.personality_match_context?.attachment?.type_code
   const matchHighlights = (candidate.matchHighlights || []).filter(Boolean).slice(0, 4)
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  const hasRecordedImpressionRef = useRef(false)
+  const visibleStartRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    const numericCandidateId = Number(candidate.id)
+    if (!sessionId || !buttonRef.current || !Number.isFinite(numericCandidateId) || numericCandidateId <= 0) {
+      return
+    }
+    const node = buttonRef.current
+    const flushVisibleDuration = () => {
+      const startedAt = visibleStartRef.current
+      if (!startedAt) return
+      visibleStartRef.current = null
+      const durationMs = Math.max(0, Math.round(performance.now() - startedAt))
+      if (durationMs < 250) return
+      void recordDiscoveryCandidateTelemetry({
+        sessionId,
+        candidateId: numericCandidateId,
+        telemetry: {
+          card_visible_duration_ms: durationMs,
+        },
+      }).catch(() => {})
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          if (!hasRecordedImpressionRef.current) {
+            hasRecordedImpressionRef.current = true
+            void recordDiscoveryCandidateTelemetry({
+              sessionId,
+              candidateId: numericCandidateId,
+              telemetry: {
+                card_impression_count: 1,
+              },
+            }).catch(() => {})
+          }
+          if (!visibleStartRef.current) {
+            visibleStartRef.current = performance.now()
+          }
+          return
+        }
+        flushVisibleDuration()
+      },
+      { threshold: [0, 0.6, 1] },
+    )
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+      flushVisibleDuration()
+    }
+  }, [candidate.id, sessionId])
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={() => onViewCandidate(candidate.id, candidate, sessionId)}
       className={cn(

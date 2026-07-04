@@ -17,6 +17,7 @@ interface ImageCarouselProps {
   autoPlay?: boolean
   autoPlayIntervalMs?: number
   pauseOnHover?: boolean
+  onUserNavigate?: (nextIndex: number) => void
 }
 
 export function ImageCarousel({
@@ -30,6 +31,7 @@ export function ImageCarousel({
   autoPlay = true,
   autoPlayIntervalMs = 3000,
   pauseOnHover = true,
+  onUserNavigate,
 }: ImageCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -56,27 +58,45 @@ export function ImageCarousel({
     const threshold = 50
 
     if (diff > threshold && currentIndex < images.length - 1) {
-      setCurrentIndex(prev => prev + 1)
+      setCurrentIndex(prev => {
+        const next = prev + 1
+        onUserNavigate?.(next)
+        return next
+      })
     } else if (diff < -threshold && currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1)
+      setCurrentIndex(prev => {
+        const next = prev - 1
+        onUserNavigate?.(next)
+        return next
+      })
     }
   }
 
   const goTo = useCallback((index: number) => {
-    setCurrentIndex(Math.max(0, Math.min(index, images.length - 1)))
-  }, [images.length])
+    const next = Math.max(0, Math.min(index, images.length - 1))
+    onUserNavigate?.(next)
+    setCurrentIndex(next)
+  }, [images.length, onUserNavigate])
 
   const goNext = useCallback(() => {
     if (currentIndex < images.length - 1) {
-      setCurrentIndex(prev => prev + 1)
+      setCurrentIndex(prev => {
+        const next = prev + 1
+        onUserNavigate?.(next)
+        return next
+      })
     }
-  }, [currentIndex, images.length])
+  }, [currentIndex, images.length, onUserNavigate])
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1)
+      setCurrentIndex(prev => {
+        const next = prev - 1
+        onUserNavigate?.(next)
+        return next
+      })
     }
-  }, [currentIndex])
+  }, [currentIndex, onUserNavigate])
 
   useEffect(() => {
     setCurrentIndex((prev) => Math.min(prev, Math.max(0, images.length - 1)))

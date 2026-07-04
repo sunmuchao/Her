@@ -640,33 +640,173 @@ class GatewayWsgiTests(unittest.TestCase):
     def test_discovery_express_interest(self) -> None:
         session_id = "discovery-session-abc"
         candidate_id = 7152
+        tokens = json.dumps({"token-user-a": {"actor_id": "10001", "roles": ["end_user"]}})
 
-        with mock.patch.object(
-            self.gw._discovery,
-            "get_session_owner_id",
-            return_value=10001,
-        ), mock.patch.object(
-            self.gw._discovery,
-            "express_interest",
-            return_value={
-                "ok": True,
-                "session_id": session_id,
-                "candidate_id": candidate_id,
-                "subscription_id": "sub-123",
-            },
-        ) as express_mock:
-            env = _wsgi_env(
-                "POST",
-                f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/express-interest",
-                json.dumps({}).encode("utf-8"),
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
             )
-            out = b"".join(self.gw(env, self.start_response))
+            with mock.patch.object(
+                gw._discovery,
+                "get_session_owner_id",
+                return_value=10001,
+            ), mock.patch.object(
+                gw._discovery,
+                "express_interest",
+                return_value={
+                    "ok": True,
+                    "session_id": session_id,
+                    "candidate_id": candidate_id,
+                    "subscription_id": "sub-123",
+                },
+            ) as express_mock:
+                env = _wsgi_env(
+                    "POST",
+                    f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/express-interest",
+                    json.dumps({}).encode("utf-8"),
+                    extra=_auth_headers("token-user-a"),
+                )
+                out = b"".join(gw(env, self.start_response))
 
         self.assertIn("200", self.status)
         data = json.loads(out.decode("utf-8"))
         self.assertTrue(data["ok"])
         self.assertEqual(data["subscription_id"], "sub-123")
         express_mock.assert_called_once()
+
+    def test_discovery_quick_pass(self) -> None:
+        session_id = "discovery-session-abc"
+        candidate_id = 7152
+        tokens = json.dumps({"token-user-a": {"actor_id": "10001", "roles": ["end_user"]}})
+
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with mock.patch.object(
+                gw._discovery,
+                "get_session_owner_id",
+                return_value=10001,
+            ), mock.patch.object(
+                gw._discovery,
+                "record_quick_pass",
+                return_value={
+                    "ok": True,
+                    "session_id": session_id,
+                    "candidate_id": candidate_id,
+                    "event_type": "quick_pass",
+                    "deduped": False,
+                },
+            ) as quick_pass_mock:
+                env = _wsgi_env(
+                    "POST",
+                    f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/quick-pass",
+                    json.dumps({}).encode("utf-8"),
+                    extra=_auth_headers("token-user-a"),
+                )
+                out = b"".join(gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        data = json.loads(out.decode("utf-8"))
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["event_type"], "quick_pass")
+        quick_pass_mock.assert_called_once()
+
+    def test_discovery_explicit_dislike(self) -> None:
+        session_id = "discovery-session-abc"
+        candidate_id = 7152
+        tokens = json.dumps({"token-user-a": {"actor_id": "10001", "roles": ["end_user"]}})
+
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with mock.patch.object(
+                gw._discovery,
+                "get_session_owner_id",
+                return_value=10001,
+            ), mock.patch.object(
+                gw._discovery,
+                "record_explicit_dislike",
+                return_value={
+                    "ok": True,
+                    "session_id": session_id,
+                    "candidate_id": candidate_id,
+                    "event_type": "explicit_dislike",
+                    "deduped": False,
+                },
+            ) as dislike_mock:
+                env = _wsgi_env(
+                    "POST",
+                    f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/explicit-dislike",
+                    json.dumps({}).encode("utf-8"),
+                    extra=_auth_headers("token-user-a"),
+                )
+                out = b"".join(gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        data = json.loads(out.decode("utf-8"))
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["event_type"], "explicit_dislike")
+        dislike_mock.assert_called_once()
+
+    def test_discovery_candidate_telemetry(self) -> None:
+        session_id = "discovery-session-abc"
+        candidate_id = 7152
+        tokens = json.dumps({"token-user-a": {"actor_id": "10001", "roles": ["end_user"]}})
+        telemetry = {
+            "card_impression_count": 1,
+            "card_visible_duration_ms": 1800,
+            "detail_view_duration_ms": 3200,
+            "photo_swipe_count": 2,
+            "return_view_count": 1,
+        }
+
+        with mock.patch.dict(os.environ, {"PARTNER_GATEWAY_STATIC_TOKENS_JSON": tokens}, clear=False):
+            gw = PartnerGateway(
+                recommendation_dsn="mysql://noop",
+                matchmaking_dsn="mysql://noop",
+                chat_dsn="mysql://noop",
+                db_pool_max=0,
+            )
+            with mock.patch.object(
+                gw._discovery,
+                "get_session_owner_id",
+                return_value=10001,
+            ), mock.patch.object(
+                gw._discovery,
+                "record_candidate_telemetry",
+                return_value={
+                    "ok": True,
+                    "session_id": session_id,
+                    "candidate_id": candidate_id,
+                    "telemetry": telemetry,
+                    "quick_bounce": False,
+                    "ignored": False,
+                },
+            ) as telemetry_mock:
+                env = _wsgi_env(
+                    "POST",
+                    f"/v1/discovery/sessions/{session_id}/candidates/{candidate_id}/telemetry",
+                    json.dumps({"telemetry": telemetry}).encode("utf-8"),
+                    extra=_auth_headers("token-user-a"),
+                )
+                out = b"".join(gw(env, self.start_response))
+
+        self.assertIn("200", self.status)
+        data = json.loads(out.decode("utf-8"))
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["telemetry"]["photo_swipe_count"], 2)
+        telemetry_mock.assert_called_once()
 
     def test_internal_error_emits_error_log(self) -> None:
         env = _wsgi_env("GET", "/v1/failure")
