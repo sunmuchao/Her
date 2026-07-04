@@ -1466,6 +1466,104 @@ class DiscoveryService:
             "case": json_safe(case),
         }
 
+    def record_quick_pass(
+        self,
+        session_id: str,
+        *,
+        candidate_id: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        return self._record_candidate_feedback_action(
+            session_id,
+            candidate_id=candidate_id,
+            event_type="quick_pass",
+            event_weight=-3.0,
+            action_name="quick_pass",
+            outcome="recorded",
+            now=now,
+        )
+
+    def record_explicit_dislike(
+        self,
+        session_id: str,
+        *,
+        candidate_id: int,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        return self._record_candidate_feedback_action(
+            session_id,
+            candidate_id=candidate_id,
+            event_type="explicit_dislike",
+            event_weight=-4.0,
+            action_name="explicit_dislike",
+            outcome="recorded",
+            now=now,
+        )
+
+    def _record_candidate_feedback_action(
+        self,
+        session_id: str,
+        *,
+        candidate_id: int,
+        event_type: str,
+        event_weight: float,
+        action_name: str,
+        outcome: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        current = now or datetime.now()
+        session = self._require_session(session_id)
+        if session.status != "active":
+            raise DiscoverySessionClosedError("discovery session is closed")
+        search_run_id, _search_run, _candidate = self._load_latest_search_candidate(session, candidate_id)
+        feedback_key = f"{search_run_id}:{candidate_id}:{event_type}"
+        seen_keys = {
+            str(item).strip()
+            for item in list(session.state.get("appearance_feedback_action_keys") or [])
+            if str(item).strip()
+        }
+        is_deduped = feedback_key in seen_keys
+        if not is_deduped:
+            self._record_appearance_feedback_event(
+                session=session,
+                candidate_profile_id=int(candidate_id),
+                event_type=event_type,
+                event_weight=event_weight,
+                session_id=session_id,
+                metadata={
+                    "source": f"discovery_{event_type}",
+                    "search_run_id": search_run_id,
+                },
+            )
+            seen_keys.add(feedback_key)
+            session.state["appearance_feedback_action_keys"] = sorted(seen_keys)[-200:]
+        if event_type == "explicit_dislike":
+            disliked_ids = {
+                int(item)
+                for item in list(session.state.get("explicit_dislike_candidate_ids") or [])
+                if int(item) > 0
+            }
+            disliked_ids.add(int(candidate_id))
+            session.state["explicit_dislike_candidate_ids"] = sorted(disliked_ids)
+        self.storage.save_session(session)
+        audit_event(
+            action=f"discovery.{action_name}",
+            resource_type="discovery_candidate",
+            outcome=outcome,
+            resource_id=int(candidate_id),
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+        )
+        return {
+            "ok": True,
+            "session_id": session.session_id,
+            "candidate_id": int(candidate_id),
+            "event_type": event_type,
+            "search_run_id": search_run_id,
+            "deduped": is_deduped,
+        }
+
     def _build_runtime_input(
         self,
         session: StoredSession,
@@ -2374,6 +2472,25 @@ class DiscoveryService:
             load_profile=load_self_profile,
             search=search_profiles,
         )
+
+    def _load_latest_search_candidate(
+        self,
+        session: StoredSession,
+        candidate_id: int,
+    ) -> tuple[int, StoredSearchRun, dict[str, Any]]:
+        normalized_candidate_id = int(candidate_id)
+        if normalized_candidate_id <= 0:
+            raise DiscoveryCandidateNotFoundError("candidate not found")
+        search_run_id = int(session.state.get("last_search_run_id") or 0)
+        if search_run_id <= 0:
+            raise DiscoveryInterestNotAvailableError("当前还没有可操作的推荐结果。")
+        search_run = self.storage.get_search_run(search_run_id)
+        if search_run is None:
+            raise DiscoveryInterestNotAvailableError("推荐结果已失效，请让红娘重新搜一轮。")
+        candidate = self._find_candidate_in_search_run(search_run.response, normalized_candidate_id)
+        if candidate is None:
+            raise DiscoveryCandidateNotFoundError("candidate not found in latest discovery results")
+        return search_run_id, search_run, candidate
 
     def _record_skip_feedback_for_refresh(self, session: StoredSession) -> None:
         search_run_id = int(session.state.get("last_search_run_id") or 0)

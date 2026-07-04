@@ -1909,6 +1909,82 @@ class DiscoveryServiceTests(unittest.TestCase):
             [1001, 1002],
         )
 
+    def test_record_quick_pass_dedupes_within_same_search_run(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        current = created["session"]["updated_at"]
+        search_run_id = service.storage.create_search_run(
+            session_id=session_id,
+            requester_id=70001,
+            profile_id=10001,
+            source="discovery_session",
+            criteria={"cities": ["无锡"]},
+            self_profile={"city": "无锡"},
+            limit_count=5,
+            response={
+                "has_match": True,
+                "result_count": 1,
+                "results": [{"id": 1001, "name": "林知夏"}],
+            },
+            created_at=current,
+        )
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        stored_session.state["last_search_run_id"] = search_run_id
+        service.storage.save_session(stored_session)
+
+        with mock.patch.object(service, "_record_appearance_feedback_event") as mock_feedback:
+            first = service.record_quick_pass(session_id, candidate_id=1001)
+            second = service.record_quick_pass(session_id, candidate_id=1001)
+
+        self.assertTrue(first["ok"])
+        self.assertFalse(first["deduped"])
+        self.assertTrue(second["deduped"])
+        mock_feedback.assert_called_once()
+        self.assertEqual(mock_feedback.call_args.kwargs["event_type"], "quick_pass")
+
+    def test_record_explicit_dislike_tracks_candidate_in_session_state(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_FakeRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        current = created["session"]["updated_at"]
+        search_run_id = service.storage.create_search_run(
+            session_id=session_id,
+            requester_id=70001,
+            profile_id=10001,
+            source="discovery_session",
+            criteria={"cities": ["无锡"]},
+            self_profile={"city": "无锡"},
+            limit_count=5,
+            response={
+                "has_match": True,
+                "result_count": 1,
+                "results": [{"id": 1002, "name": "周静"}],
+            },
+            created_at=current,
+        )
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        stored_session.state["last_search_run_id"] = search_run_id
+        service.storage.save_session(stored_session)
+
+        with mock.patch.object(service, "_record_appearance_feedback_event") as mock_feedback:
+            out = service.record_explicit_dislike(session_id, candidate_id=1002)
+
+        self.assertTrue(out["ok"])
+        self.assertEqual(out["event_type"], "explicit_dislike")
+        mock_feedback.assert_called_once()
+        stored_session = service.storage.get_session(session_id)
+        assert stored_session is not None
+        self.assertEqual(stored_session.state["explicit_dislike_candidate_ids"], [1002])
+
     def test_service_records_persona_memory_tool_call(self) -> None:
         service = DiscoveryService(
             storage=InMemoryDiscoveryStorage(),
