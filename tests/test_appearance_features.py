@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timedelta
 from unittest import mock
 
 from match_domain.appearance_features import (
@@ -188,6 +189,67 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertEqual(result["saved_count"], 1)
         self.assertEqual(result["failed_count"], 1)
         self.assertEqual(result["results"][0]["user_key"], "u1")
+
+    def test_rebuild_user_preference_from_history_applies_time_decay(self):
+        recent_row = {
+            "mature_score": 80,
+            "clean_score": 78,
+            "gentle_score": 60,
+            "sunny_score": 40,
+            "stylish_score": 58,
+            "appearance_summary": "偏成熟清爽。",
+        }
+        old_row = {
+            "mature_score": 20,
+            "clean_score": 22,
+            "gentle_score": 45,
+            "sunny_score": 85,
+            "stylish_score": 30,
+            "appearance_summary": "偏活力阳光。",
+        }
+        captured_patches: list[dict[str, object]] = []
+        now = datetime(2026, 7, 4, 12, 0, 0)
+
+        def fake_upsert(**kwargs):
+            captured_patches.append(dict(kwargs["patch"]))
+            return {"user_key": kwargs["user_key"], **kwargs["patch"]}
+
+        with (
+            mock.patch(
+                "match_domain.appearance_features.list_appearance_feedback_events",
+                return_value=[
+                    {
+                        "candidate_profile_id": 18,
+                        "event_type": "express_interest",
+                        "event_weight": 3.0,
+                        "created_at": now - timedelta(days=2),
+                    },
+                    {
+                        "candidate_profile_id": 19,
+                        "event_type": "express_interest",
+                        "event_weight": 3.0,
+                        "created_at": now - timedelta(days=180),
+                    },
+                ],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.load_candidate_photo_features",
+                return_value={18: recent_row, 19: old_row},
+            ),
+            mock.patch("match_domain.appearance_features.upsert_user_appearance_preference", side_effect=fake_upsert),
+            mock.patch("match_domain.appearance_features.sync_user_appearance_preference_embedding", return_value={"saved": True}),
+            mock.patch("match_domain.appearance_features.load_requester_appearance_preference", return_value=None),
+        ):
+            result = rebuild_user_preference_from_history(
+                source_dsn="mysql://persona",
+                user_key="user-1",
+                profile_id=12,
+                scene="discovery",
+                now=now,
+            )
+
+        self.assertGreater(result["preferred_mature_score"], 60)
+        self.assertTrue(captured_patches)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Iterable
 
 from profile_service import (
@@ -66,6 +67,7 @@ _DEFAULT_EVENT_WEIGHTS = {
     "quick_pass": -3.0,
     "explicit_dislike": -4.0,
 }
+_PREFERENCE_EVENT_HALF_LIFE_DAYS = 45.0
 
 
 @dataclass(frozen=True)
@@ -121,6 +123,36 @@ def _score_to_bonus(value: Any, *, max_bonus: float) -> float:
         return 0.0
     numeric = max(0.0, min(100.0, numeric))
     return round((numeric / 100.0) * max_bonus, 2)
+
+
+def _coerce_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _time_decay_multiplier(
+    created_at: Any,
+    *,
+    now: datetime | None = None,
+    half_life_days: float = _PREFERENCE_EVENT_HALF_LIFE_DAYS,
+) -> float:
+    created_dt = _coerce_datetime(created_at)
+    if created_dt is None:
+        return 1.0
+    current = now or datetime.now(created_dt.tzinfo)
+    age_seconds = max(0.0, (current - created_dt).total_seconds())
+    if half_life_days <= 0:
+        return 1.0
+    half_life_seconds = half_life_days * 86400.0
+    return max(0.15, 0.5 ** (age_seconds / half_life_seconds))
 
 
 def compute_photo_bonus_breakdown(
@@ -682,6 +714,7 @@ def rebuild_user_preference_from_history(
     profile_id: int | None,
     scene: str | None = None,
     event_limit: int = 200,
+    now: datetime | None = None,
     table_name: str = DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE,
 ) -> dict[str, Any]:
     if not source_dsn:
@@ -717,6 +750,7 @@ def rebuild_user_preference_from_history(
             continue
         event_type = str(event.get("event_type") or "").strip()
         signed_weight = float(event.get("event_weight") or _DEFAULT_EVENT_WEIGHTS.get(event_type, 0.0))
+        signed_weight *= _time_decay_multiplier(event.get("created_at"), now=now)
         if signed_weight == 0:
             continue
         cloned = dict(feature_row)
