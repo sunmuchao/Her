@@ -260,6 +260,12 @@ def _default_reason_summary(candidate: dict[str, Any]) -> str:
     matched_on = [str(item).strip() for item in list(candidate.get("matched_on") or []) if str(item or "").strip()]
     if matched_on:
         return "、".join(matched_on[:3])
+    explanation_summary = str((candidate.get("match_explanation") or {}).get("summary") or "").strip()
+    if explanation_summary:
+        return explanation_summary
+    appearance_summary = str((candidate.get("appearance_reasoning") or {}).get("summary") or "").strip()
+    if appearance_summary:
+        return appearance_summary
     trust_headline = str((candidate.get("trust_summary") or {}).get("headline") or "").strip()
     if trust_headline:
         return trust_headline
@@ -277,6 +283,20 @@ def _build_match_highlights(candidate: dict[str, Any], *, reason_summary: str = 
             break
 
     for item in list((candidate.get("personality_reasoning") or {}).get("reasons") or []):
+        value = str(item or "").strip()
+        if value and value not in highlights:
+            highlights.append(value)
+        if len(highlights) >= 4:
+            break
+
+    for item in list((candidate.get("match_explanation") or {}).get("highlights") or []):
+        value = str(item or "").strip()
+        if value and value not in highlights:
+            highlights.append(value)
+        if len(highlights) >= 4:
+            break
+
+    for item in list((candidate.get("appearance_reasoning") or {}).get("highlights") or []):
         value = str(item or "").strip()
         if value and value not in highlights:
             highlights.append(value)
@@ -418,6 +438,10 @@ def _build_matchmaker_notes(
     matched_on = _clean_text_list(candidate.get("matched_on"))
     if matched_on:
         return [f"红娘这一轮主要看中：{'、'.join(matched_on[:3])}。"]
+
+    explanation_summary = str((candidate.get("match_explanation") or {}).get("summary") or "").strip()
+    if explanation_summary:
+        return [explanation_summary]
 
     trust_headline = str((candidate.get("trust_summary") or {}).get("headline") or "").strip()
     if trust_headline:

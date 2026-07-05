@@ -6,16 +6,78 @@ from unittest import mock
 
 from match_domain.appearance_features import (
     AppearanceInterestSignal,
+    GlobalAppearanceScorer,
+    RiskPenaltyCalculator,
+    TrustBonusCalculator,
+    apply_click_quality_correction,
     backfill_profile_photo_features,
     backfill_user_appearance_preferences,
+    build_appearance_explanation,
     build_photo_feature_patch,
+    classify_click_quality,
+    compute_cover_authenticity_score,
+    compute_cover_detail_consistency_score,
+    compute_detail_duration_strength,
     compute_appearance_interest_signal,
     compute_photo_bonus_breakdown,
     rebuild_user_preference_from_history,
+    resolve_preference_weight_multiplier,
 )
 
 
 class AppearanceFeaturesTests(unittest.TestCase):
+    def test_compute_detail_duration_strength_maps_bounce_and_deep_read(self):
+        self.assertLess(compute_detail_duration_strength(1200), 0)
+        self.assertGreater(compute_detail_duration_strength(12000), 0)
+
+    def test_classify_click_quality_distinguishes_low_medium_high(self):
+        self.assertEqual(
+            classify_click_quality(detail_view_duration_ms=1200, quick_bounce=True),
+            'low',
+        )
+        self.assertEqual(
+            classify_click_quality(detail_view_duration_ms=4200, photo_swipe_count=1),
+            'medium',
+        )
+        self.assertEqual(
+            classify_click_quality(detail_view_duration_ms=9500, return_view_count=1),
+            'high',
+        )
+
+    def test_apply_click_quality_correction_penalizes_bounce_and_rewards_engagement(self):
+        low = apply_click_quality_correction(
+            base_event_weight=1.0,
+            detail_view_duration_ms=1200,
+            quick_bounce=True,
+        )
+        high = apply_click_quality_correction(
+            base_event_weight=1.0,
+            detail_view_duration_ms=9500,
+            photo_swipe_count=3,
+            return_view_count=1,
+        )
+        self.assertLess(low, 0)
+        self.assertGreater(high, 1.0)
+
+    def test_cover_authenticity_and_consistency_scores_are_reasonable(self):
+        profile_row = {
+            "id": 12,
+            "avatar_url": "https://img.her.local/12/avatar.jpg",
+            "photo_verification_level": "id",
+        }
+        photo_entries = [
+            {"photo_source": "https://img.her.local/12/avatar.jpg"},
+            {"photo_source": "https://img.her.local/12/gallery-1.jpg"},
+            {"photo_source": "https://img.her.local/12/gallery-2.jpg"},
+        ]
+        authenticity = compute_cover_authenticity_score(
+            profile_row=profile_row,
+            photo_entries=photo_entries,
+        )
+        consistency = compute_cover_detail_consistency_score(photo_entries)
+        self.assertGreater(authenticity, 60)
+        self.assertGreater(consistency, 50)
+
     def test_compute_appearance_interest_signal_detects_quick_bounce(self):
         signal = compute_appearance_interest_signal(
             event_weight=1.0,
@@ -83,6 +145,84 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertGreater(bonus.preference_bonus, 8)
         self.assertGreater(bonus.total, bonus.global_bonus)
 
+    def test_preference_weight_multiplier_scales_with_history_size(self):
+        self.assertEqual(
+            resolve_preference_weight_multiplier({"positive_sample_count": 1, "negative_sample_count": 1}),
+            0.45,
+        )
+        self.assertEqual(
+            resolve_preference_weight_multiplier({"positive_sample_count": 5, "negative_sample_count": 2}),
+            0.75,
+        )
+        self.assertEqual(
+            resolve_preference_weight_multiplier({"positive_sample_count": 12, "negative_sample_count": 10}),
+            1.15,
+        )
+
+    def test_trust_and_risk_calculators_return_split_breakdowns(self):
+        profile_row = {
+            "verified_level": "id",
+            "photo_verification_level": "live_video_verified",
+        }
+        feature_row = {
+            "photo_authenticity_score": 36,
+            "photo_quality_score": 42,
+        }
+        trust = TrustBonusCalculator.compute(profile_row, feature_row)
+        risk = RiskPenaltyCalculator.compute(
+            profile_row,
+            feature_row,
+            risk_flags=["疑似假图", "多人合照"],
+        )
+
+        self.assertGreater(trust.total, 5)
+        self.assertGreater(risk.total, 5)
+        self.assertIn("照片真实性需要再确认", risk.reasons)
+
+    def test_build_appearance_explanation_produces_summary_and_highlights(self):
+        explanation = build_appearance_explanation(
+            {
+                "appearance_score_global": 82,
+                "photo_quality_score": 84,
+                "photo_authenticity_score": 88,
+                "mature_score": 79,
+                "clean_score": 81,
+                "gentle_score": 58,
+                "sunny_score": 49,
+                "stylish_score": 63,
+                "appearance_summary": "偏成熟清爽。",
+            },
+            {
+                "preferred_mature_score": 80,
+                "preferred_clean_score": 75,
+                "preferred_gentle_score": 60,
+                "preferred_sunny_score": 44,
+                "preferred_stylish_score": 61,
+                "positive_sample_count": 10,
+                "negative_sample_count": 2,
+            },
+        )
+
+        self.assertTrue(explanation["summary"])
+        self.assertIn("长相类型贴近你最近常点喜欢的那一挂", explanation["highlights"])
+        self.assertEqual(explanation["stage"], "stable_preference")
+
+    def test_global_appearance_scorer_uses_existing_or_fallback_formula(self):
+        self.assertEqual(
+            GlobalAppearanceScorer.score({"appearance_score_global": 86}),
+            86.0,
+        )
+        self.assertGreater(
+            GlobalAppearanceScorer.score(
+                {
+                    "photo_quality_score": 80,
+                    "photo_authenticity_score": 70,
+                    "face_score_global": 75,
+                }
+            ),
+            70,
+        )
+
     def test_build_photo_feature_patch_returns_done_payload(self):
         patch = build_photo_feature_patch(
             profile_row={"id": 12, "age": 31, "photo_verification_level": "id"},
@@ -141,6 +281,52 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertEqual(result["negative_sample_count"], 1)
         self.assertGreater(result["preferred_mature_score"], 50)
         self.assertIn("更容易被这类风格吸引", result["appearance_preference_summary"])
+        self.assertTrue(saved_rows)
+
+    def test_rebuild_user_preference_from_history_uses_engagement_metrics_signal(self):
+        feature_row = {
+            "mature_score": 78,
+            "clean_score": 72,
+            "gentle_score": 61,
+            "sunny_score": 48,
+            "stylish_score": 55,
+            "appearance_summary": "成熟清爽风格。",
+        }
+        saved_rows: list[dict[str, object]] = []
+
+        def fake_upsert(**kwargs):
+            saved_rows.append(dict(kwargs["patch"]))
+            return {"user_key": kwargs["user_key"], **kwargs["patch"]}
+
+        with (
+            mock.patch("match_domain.appearance_features.list_appearance_feedback_events", return_value=[
+                {
+                    "candidate_profile_id": 18,
+                    "event_type": "engagement_metrics",
+                    "event_weight": 0.0,
+                    "metadata": {
+                        "detail_view_duration_ms": 9200,
+                        "card_visible_duration_ms": 2600,
+                        "photo_swipe_count": 2,
+                        "return_view_count": 1,
+                        "quick_bounce": False,
+                    },
+                },
+            ]),
+            mock.patch("match_domain.appearance_features.load_candidate_photo_features", return_value={18: feature_row}),
+            mock.patch("match_domain.appearance_features.upsert_user_appearance_preference", side_effect=fake_upsert),
+            mock.patch("match_domain.appearance_features.sync_user_appearance_preference_embedding", return_value={"saved": True}),
+            mock.patch("match_domain.appearance_features.load_requester_appearance_preference", return_value=None),
+        ):
+            result = rebuild_user_preference_from_history(
+                source_dsn="mysql://persona",
+                user_key="user-telemetry",
+                profile_id=12,
+                scene="discovery",
+            )
+
+        self.assertEqual(result["positive_sample_count"], 1)
+        self.assertGreater(result["preferred_mature_score"], 50)
         self.assertTrue(saved_rows)
 
     def test_backfill_profile_photo_features_processes_batches_and_skips_existing(self):

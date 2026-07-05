@@ -81,6 +81,43 @@ class PhotoBonusBreakdown:
         return round(self.quality_bonus + self.global_bonus + self.preference_bonus, 2)
 
 
+@dataclass(frozen=True)
+class TrustBonusBreakdown:
+    verified_bonus: float
+    photo_verification_bonus: float
+    authenticity_bonus: float
+    quality_bonus: float
+
+    @property
+    def total(self) -> float:
+        return round(
+            self.verified_bonus
+            + self.photo_verification_bonus
+            + self.authenticity_bonus
+            + self.quality_bonus,
+            2,
+        )
+
+
+@dataclass(frozen=True)
+class RiskPenaltyBreakdown:
+    authenticity_penalty: float
+    quality_penalty: float
+    explicit_flag_penalty: float
+    style_mismatch_penalty: float
+    reasons: list[str]
+
+    @property
+    def total(self) -> float:
+        return round(
+            self.authenticity_penalty
+            + self.quality_penalty
+            + self.explicit_flag_penalty
+            + self.style_mismatch_penalty,
+            2,
+        )
+
+
 def _clamp_score(value: Any, *, default: float = 50.0) -> float:
     try:
         numeric = float(value)
@@ -108,6 +145,77 @@ def _top_dimension_labels(feature_row: dict[str, Any], limit: int = 3) -> list[s
     return [label for label, _score in label_pairs[: max(1, limit)]]
 
 
+def _normalize_photo_sources(photo_entries: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(item.get("photo_source") or "").strip()
+        for item in photo_entries or []
+        if isinstance(item, dict) and str(item.get("photo_source") or "").strip()
+    ]
+
+
+def compute_cover_authenticity_score(
+    *,
+    profile_row: dict[str, Any] | None,
+    photo_entries: list[dict[str, Any]],
+) -> float:
+    normalized_profile = dict(profile_row or {})
+    photo_sources = _normalize_photo_sources(photo_entries)
+    if not photo_sources:
+        return 0.0
+    primary_source = photo_sources[0]
+    avatar_url = str(normalized_profile.get("avatar_url") or "").strip()
+    verified_level = str(
+        normalized_profile.get("photo_verification_level")
+        or normalized_profile.get("verified_level")
+        or ""
+    ).strip().lower()
+    verification_bonus = {
+        "offline": 18.0,
+        "id": 16.0,
+        "photo": 10.0,
+        "uploaded": 6.0,
+        "basic": 3.0,
+    }.get(verified_level, 0.0)
+    same_as_avatar_bonus = 8.0 if avatar_url and avatar_url == primary_source else 0.0
+    photo_count_bonus = min(12.0, max(0, len(photo_sources) - 1) * 3.0)
+    source_penalty = 0.0
+    if any("filter" in source.lower() or "beauty" in source.lower() for source in photo_sources[:1]):
+        source_penalty += 8.0
+    score_seed = f"{normalized_profile.get('id') or ''}|{primary_source}|cover_auth"
+    score = 46.0 + verification_bonus + same_as_avatar_bonus + photo_count_bonus - source_penalty
+    score += _stable_bucket(score_seed, salt="cover_auth", lower=0, upper=16)
+    return round(max(0.0, min(100.0, score)), 2)
+
+
+def compute_cover_detail_consistency_score(photo_entries: list[dict[str, Any]]) -> float:
+    photo_sources = _normalize_photo_sources(photo_entries)
+    if not photo_sources:
+        return 0.0
+    if len(photo_sources) == 1:
+        return 58.0
+    primary_source = photo_sources[0]
+    primary_tokens = {
+        token
+        for token in primary_source.lower().replace("://", "/").replace("?", "/").replace("&", "/").split("/")
+        if token and len(token) >= 3
+    }
+    overlap_scores: list[float] = []
+    for source in photo_sources[1:]:
+        tokens = {
+            token
+            for token in source.lower().replace("://", "/").replace("?", "/").replace("&", "/").split("/")
+            if token and len(token) >= 3
+        }
+        if not tokens or not primary_tokens:
+            overlap_scores.append(0.45)
+            continue
+        union_size = len(primary_tokens | tokens)
+        overlap_scores.append(len(primary_tokens & tokens) / union_size if union_size else 0.45)
+    average_overlap = sum(overlap_scores) / max(1, len(overlap_scores))
+    score = 42.0 + (average_overlap * 42.0) + min(12.0, len(photo_sources[1:]) * 4.0)
+    return round(max(0.0, min(100.0, score)), 2)
+
+
 def _run_async(coro):
     try:
         asyncio.get_running_loop()
@@ -123,6 +231,29 @@ def _score_to_bonus(value: Any, *, max_bonus: float) -> float:
         return 0.0
     numeric = max(0.0, min(100.0, numeric))
     return round((numeric / 100.0) * max_bonus, 2)
+
+
+def _safe_float(value: Any, *, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def resolve_preference_weight_multiplier(user_appearance_preference: dict[str, Any] | None) -> float:
+    preference_row = dict(user_appearance_preference or {})
+    positive_count = max(0, int(_safe_float(preference_row.get("positive_sample_count"), default=0.0)))
+    negative_count = max(0, int(_safe_float(preference_row.get("negative_sample_count"), default=0.0)))
+    total_count = positive_count + negative_count
+    if total_count <= 0:
+        return 1.0
+    if total_count < 3:
+        return 0.45
+    if total_count < 8:
+        return 0.75
+    if total_count < 20:
+        return 1.0
+    return 1.15
 
 
 def _coerce_datetime(value: Any) -> datetime | None:
@@ -167,7 +298,10 @@ def compute_photo_bonus_breakdown(
         + _score_to_bonus(feature_row.get("photo_authenticity_score"), max_bonus=3.0),
         2,
     )
-    global_bonus = _score_to_bonus(feature_row.get("appearance_score_global"), max_bonus=15.0)
+    global_bonus = _score_to_bonus(
+        GlobalAppearanceScorer.score(feature_row),
+        max_bonus=15.0,
+    )
 
     preference_bonus = 0.0
     matched_dimensions = 0
@@ -186,13 +320,220 @@ def compute_photo_bonus_breakdown(
 
     if matched_dimensions > 0:
         average_similarity = total_similarity / matched_dimensions
-        preference_bonus = round((average_similarity * 30.0) - 10.0, 2)
+        preference_bonus = round(
+            ((average_similarity * 30.0) - 10.0)
+            * resolve_preference_weight_multiplier(preference_row),
+            2,
+        )
 
     return PhotoBonusBreakdown(
         quality_bonus=quality_bonus,
         global_bonus=global_bonus,
         preference_bonus=preference_bonus,
     )
+
+
+def compute_trust_bonus_breakdown(
+    profile_row: dict[str, Any] | None,
+    candidate_photo_features: dict[str, Any] | None,
+) -> TrustBonusBreakdown:
+    normalized_profile = dict(profile_row or {})
+    feature_row = dict(candidate_photo_features or {})
+    verified_level = str(
+        normalized_profile.get("verified_level")
+        or normalized_profile.get("photo_verification_level")
+        or ""
+    ).strip().lower()
+    photo_level = str(
+        normalized_profile.get("photo_verification_level")
+        or feature_row.get("photo_verification_level")
+        or ""
+    ).strip().lower()
+    verified_bonus = {
+        "offline": 4.0,
+        "id": 3.2,
+        "photo": 2.2,
+        "uploaded": 1.0,
+        "basic": 0.8,
+    }.get(verified_level, 0.0)
+    photo_verification_bonus = {
+        "offline_verified": 3.0,
+        "live_video_verified": 2.8,
+        "human_verified": 2.2,
+        "photo": 1.6,
+        "uploaded": 0.6,
+    }.get(photo_level, 0.0)
+    authenticity_score = _clamp_score(feature_row.get("photo_authenticity_score"), default=0.0)
+    quality_score = _clamp_score(feature_row.get("photo_quality_score"), default=0.0)
+    authenticity_bonus = round(max(0.0, min(3.5, (authenticity_score - 60.0) / 12.0)), 2)
+    quality_bonus = round(max(0.0, min(2.5, (quality_score - 65.0) / 14.0)), 2)
+    return TrustBonusBreakdown(
+        verified_bonus=verified_bonus,
+        photo_verification_bonus=photo_verification_bonus,
+        authenticity_bonus=authenticity_bonus,
+        quality_bonus=quality_bonus,
+    )
+
+
+def compute_risk_penalty_breakdown(
+    profile_row: dict[str, Any] | None,
+    candidate_photo_features: dict[str, Any] | None,
+    *,
+    risk_flags: Iterable[Any] | None = None,
+) -> RiskPenaltyBreakdown:
+    del profile_row
+    feature_row = dict(candidate_photo_features or {})
+    normalized_flags = [str(item or "").strip() for item in risk_flags or [] if str(item or "").strip()]
+    authenticity_score = _clamp_score(feature_row.get("photo_authenticity_score"), default=0.0)
+    quality_score = _clamp_score(feature_row.get("photo_quality_score"), default=0.0)
+
+    authenticity_penalty = round(max(0.0, min(6.0, (55.0 - authenticity_score) / 7.5)), 2)
+    quality_penalty = round(max(0.0, min(3.5, (45.0 - quality_score) / 8.0)), 2)
+    explicit_flag_penalty = 0.0
+    reasons: list[str] = []
+
+    joined_flags = "；".join(normalized_flags)
+    if any(token in joined_flags for token in ("假图", "修图", "滤镜", "AI 图", "P 图")):
+        explicit_flag_penalty += 4.0
+        reasons.append("照片真实性需要再确认")
+    if any(token in joined_flags for token in ("多人", "合照", "看不清", "遮挡")):
+        explicit_flag_penalty += 2.5
+        reasons.append("主图辨识度一般，最好多看几张")
+
+    style_mismatch_penalty = 0.0
+    if any("长相类型和你的偏好有一定偏差" in flag for flag in normalized_flags):
+        style_mismatch_penalty = 1.8
+        reasons.append("长相风格和你常点开的类型有点偏差")
+
+    if authenticity_penalty >= 3.0 and "照片真实性需要再确认" not in reasons:
+        reasons.append("照片可信度暂时偏弱")
+    if quality_penalty >= 2.0 and "主图辨识度一般，最好多看几张" not in reasons:
+        reasons.append("主图信息量偏少，建议点开详情再看")
+
+    return RiskPenaltyBreakdown(
+        authenticity_penalty=authenticity_penalty,
+        quality_penalty=quality_penalty,
+        explicit_flag_penalty=round(explicit_flag_penalty, 2),
+        style_mismatch_penalty=style_mismatch_penalty,
+        reasons=reasons[:3],
+    )
+
+
+def build_appearance_explanation(
+    candidate_photo_features: dict[str, Any] | None,
+    user_appearance_preference: dict[str, Any] | None = None,
+    *,
+    trust_bonus: TrustBonusBreakdown | None = None,
+    risk_penalty: RiskPenaltyBreakdown | None = None,
+) -> dict[str, Any]:
+    feature_row = dict(candidate_photo_features or {})
+    preference_row = dict(user_appearance_preference or {})
+    if not feature_row:
+        return {"summary": "", "highlights": [], "stage": "unknown"}
+
+    photo_bonus = compute_photo_bonus_breakdown(feature_row, preference_row)
+    trust = trust_bonus or compute_trust_bonus_breakdown({}, feature_row)
+    risk = risk_penalty or compute_risk_penalty_breakdown({}, feature_row)
+    top_labels = _top_dimension_labels(feature_row, limit=2)
+    highlights: list[str] = []
+
+    if top_labels:
+        highlights.append(f"照片整体更偏{top_labels[0]}")
+    if len(top_labels) > 1:
+        highlights.append(f"第一眼会觉得更{top_labels[1]}")
+    if photo_bonus.global_bonus >= 8.0:
+        highlights.append("第一眼眼缘会更强")
+    elif photo_bonus.global_bonus >= 4.0:
+        highlights.append("照片整体比较顺眼")
+
+    if photo_bonus.preference_bonus >= 8.0:
+        highlights.append("长相类型贴近你最近常点喜欢的那一挂")
+    elif photo_bonus.preference_bonus >= 3.0:
+        highlights.append("气质方向和你的偏好比较接近")
+    elif photo_bonus.preference_bonus <= -5.0:
+        highlights.append("长相风格和你平时会点开的类型有点偏差")
+
+    if trust.total >= 5.0:
+        highlights.append("资料和照片可信度都更稳")
+    elif trust.total >= 2.5:
+        highlights.append("照片可信度相对不错")
+
+    summary_parts: list[str] = []
+    if photo_bonus.global_bonus >= 8.0:
+        summary_parts.append("第一眼眼缘会更强")
+    elif photo_bonus.global_bonus >= 4.0:
+        summary_parts.append("照片整体比较顺眼")
+    if photo_bonus.preference_bonus >= 8.0:
+        summary_parts.append("长相类型也更贴近你的偏好")
+    elif photo_bonus.preference_bonus >= 3.0:
+        summary_parts.append("气质方向和你的偏好比较接近")
+    elif top_labels:
+        summary_parts.append(f"整体偏{top_labels[0]}")
+    if trust.total >= 5.0:
+        summary_parts.append("资料和照片可信度也更稳")
+    elif risk.total >= 5.0:
+        summary_parts.append("但照片真实性最好再确认一下")
+
+    unique_highlights: list[str] = []
+    for item in highlights:
+        if item and item not in unique_highlights:
+            unique_highlights.append(item)
+
+    total_samples = max(
+        0,
+        int(_safe_float(preference_row.get("positive_sample_count"), default=0.0))
+        + int(_safe_float(preference_row.get("negative_sample_count"), default=0.0)),
+    )
+    stage = "new_user"
+    if total_samples >= 20:
+        stage = "high_preference_confidence"
+    elif total_samples >= 8:
+        stage = "stable_preference"
+    elif total_samples >= 3:
+        stage = "warming_up"
+
+    return {
+        "summary": "，".join(summary_parts[:3]) or str(feature_row.get("appearance_summary") or "").strip(),
+        "highlights": unique_highlights[:4],
+        "stage": stage,
+        "preference_weight_multiplier": resolve_preference_weight_multiplier(preference_row),
+    }
+
+
+class GlobalAppearanceScorer:
+    @staticmethod
+    def score(candidate_photo_features: dict[str, Any] | None) -> float:
+        feature_row = dict(candidate_photo_features or {})
+        if feature_row.get("appearance_score_global") not in (None, ""):
+            return round(_clamp_score(feature_row.get("appearance_score_global"), default=0.0), 2)
+        quality_score = _clamp_score(feature_row.get("photo_quality_score"), default=50.0)
+        authenticity_score = _clamp_score(feature_row.get("photo_authenticity_score"), default=50.0)
+        face_score = _clamp_score(feature_row.get("face_score_global"), default=50.0)
+        return round((quality_score * 0.22) + (authenticity_score * 0.18) + (face_score * 0.60), 2)
+
+
+class TrustBonusCalculator:
+    @staticmethod
+    def compute(
+        profile_row: dict[str, Any] | None,
+        candidate_photo_features: dict[str, Any] | None,
+    ) -> TrustBonusBreakdown:
+        return compute_trust_bonus_breakdown(profile_row, candidate_photo_features)
+
+
+class RiskPenaltyCalculator:
+    @staticmethod
+    def compute(
+        profile_row: dict[str, Any] | None,
+        candidate_photo_features: dict[str, Any] | None,
+        *,
+        risk_flags: Iterable[Any] | None = None,
+    ) -> RiskPenaltyBreakdown:
+        return compute_risk_penalty_breakdown(
+            profile_row,
+            candidate_photo_features,
+            risk_flags=risk_flags,
+        )
 
 
 def build_photo_feature_patch(
@@ -236,7 +577,19 @@ def build_photo_feature_patch(
     }.get(verified_level, 0.0)
     source_seed = f"{normalized_profile.get('id') or ''}|{primary_source}|{signature}"
     clean_score = min(100.0, 45.0 + verification_bonus + photo_count * 5.0 + _stable_bucket(source_seed, salt="clean", lower=0, upper=20))
-    authenticity_score = min(100.0, 42.0 + verification_bonus * 1.4 + photo_count * 4.0 + _stable_bucket(source_seed, salt="auth", lower=0, upper=18))
+    cover_authenticity_score = compute_cover_authenticity_score(
+        profile_row=normalized_profile,
+        photo_entries=normalized_entries,
+    )
+    cover_detail_consistency_score = compute_cover_detail_consistency_score(normalized_entries)
+    authenticity_score = min(
+        100.0,
+        (
+            (42.0 + verification_bonus * 1.4 + photo_count * 4.0 + _stable_bucket(source_seed, salt="auth", lower=0, upper=18)) * 0.45
+            + cover_authenticity_score * 0.30
+            + cover_detail_consistency_score * 0.25
+        ),
+    )
     quality_score = min(100.0, 48.0 + photo_count * 6.0 + verification_bonus * 0.7 + _stable_bucket(source_seed, salt="quality", lower=0, upper=16))
     mature_score = min(100.0, max(0.0, 38.0 + age_bias + _stable_bucket(source_seed, salt="mature", lower=0, upper=40)))
     gentle_score = min(100.0, 32.0 + _stable_bucket(source_seed, salt="gentle", lower=0, upper=45))
@@ -749,7 +1102,7 @@ def rebuild_user_preference_from_history(
         if not feature_row:
             continue
         event_type = str(event.get("event_type") or "").strip()
-        signed_weight = float(event.get("event_weight") or _DEFAULT_EVENT_WEIGHTS.get(event_type, 0.0))
+        signed_weight = _derive_event_weight(event)
         signed_weight *= _time_decay_multiplier(event.get("created_at"), now=now)
         if signed_weight == 0:
             continue
@@ -896,6 +1249,69 @@ class AppearanceInterestSignal:
     telemetry_weight: float
 
 
+def compute_detail_duration_strength(detail_view_duration_ms: int | float | None) -> float:
+    detail_ms = max(0.0, float(detail_view_duration_ms or 0.0))
+    if 0.0 < detail_ms < 2000.0:
+        return -2.0
+    if detail_ms >= 10000.0:
+        return 2.5
+    if detail_ms >= 6000.0:
+        return 1.8
+    if detail_ms >= 3000.0:
+        return 1.0
+    if detail_ms >= 2000.0:
+        return 0.4
+    return 0.0
+
+
+def classify_click_quality(
+    *,
+    detail_view_duration_ms: int | float | None = None,
+    card_visible_duration_ms: int | float | None = None,
+    photo_swipe_count: int | float | None = None,
+    return_view_count: int | float | None = None,
+    quick_bounce: bool | None = None,
+) -> str:
+    detail_ms = max(0.0, float(detail_view_duration_ms or 0.0))
+    visible_ms = max(0.0, float(card_visible_duration_ms or 0.0))
+    swipe_count = max(0.0, float(photo_swipe_count or 0.0))
+    revisit_count = max(0.0, float(return_view_count or 0.0))
+    if bool(quick_bounce) or (0.0 < detail_ms < 2000.0):
+        return "low"
+    if detail_ms >= 8000.0 or revisit_count > 0 or swipe_count >= 3:
+        return "high"
+    if detail_ms >= 3000.0 or visible_ms >= 1500.0 or swipe_count >= 1:
+        return "medium"
+    return "low"
+
+
+def apply_click_quality_correction(
+    *,
+    base_event_weight: float,
+    detail_view_duration_ms: int | float | None = None,
+    card_visible_duration_ms: int | float | None = None,
+    photo_swipe_count: int | float | None = None,
+    return_view_count: int | float | None = None,
+    quick_bounce: bool | None = None,
+) -> float:
+    quality = classify_click_quality(
+        detail_view_duration_ms=detail_view_duration_ms,
+        card_visible_duration_ms=card_visible_duration_ms,
+        photo_swipe_count=photo_swipe_count,
+        return_view_count=return_view_count,
+        quick_bounce=quick_bounce,
+    )
+    duration_strength = compute_detail_duration_strength(detail_view_duration_ms)
+    corrected = float(base_event_weight) + duration_strength
+    if quality == "high":
+        corrected += 1.5
+    elif quality == "medium":
+        corrected += 0.5
+    else:
+        corrected -= 1.0
+    return round(corrected, 4)
+
+
 def compute_appearance_interest_signal(
     *,
     event_weight: float = 0.0,
@@ -911,29 +1327,29 @@ def compute_appearance_interest_signal(
     revisit_count = max(0.0, float(return_view_count or 0.0))
     resolved_quick_bounce = bool(quick_bounce) or (0.0 < detail_ms < 2000.0)
 
-    telemetry_weight = 0.0
+    telemetry_weight = compute_detail_duration_strength(detail_ms)
     if visible_ms >= 1200.0:
         telemetry_weight += min(1.5, visible_ms / 4000.0)
-    if detail_ms >= 3000.0:
-        telemetry_weight += min(2.5, detail_ms / 5000.0)
-    elif detail_ms >= 2000.0:
-        telemetry_weight += 0.8
     if swipe_count > 0:
         telemetry_weight += min(1.2, swipe_count * 0.35)
     if revisit_count > 0:
         telemetry_weight += min(1.5, revisit_count * 0.75)
-    if resolved_quick_bounce:
-        telemetry_weight -= 2.0
-
-    total = float(event_weight) + telemetry_weight
-    if resolved_quick_bounce:
-        detail_quality = "low"
-    elif detail_ms >= 8000.0 or revisit_count > 0:
-        detail_quality = "high"
-    elif detail_ms >= 3000.0 or swipe_count >= 2:
-        detail_quality = "medium"
-    else:
-        detail_quality = "low"
+    detail_quality = classify_click_quality(
+        detail_view_duration_ms=detail_ms,
+        card_visible_duration_ms=visible_ms,
+        photo_swipe_count=swipe_count,
+        return_view_count=revisit_count,
+        quick_bounce=resolved_quick_bounce,
+    )
+    total = apply_click_quality_correction(
+        base_event_weight=float(event_weight) + telemetry_weight,
+        detail_view_duration_ms=detail_ms,
+        card_visible_duration_ms=visible_ms,
+        photo_swipe_count=swipe_count,
+        return_view_count=revisit_count,
+        quick_bounce=resolved_quick_bounce,
+    )
+    telemetry_weight = round(total - float(event_weight), 4)
 
     return AppearanceInterestSignal(
         positive_signal=max(0.0, round(total, 4)),
@@ -945,6 +1361,32 @@ def compute_appearance_interest_signal(
     )
 
 
+def _derive_event_weight(event: dict[str, Any]) -> float:
+    event_type = str(event.get("event_type") or "").strip()
+    metadata = dict(event.get("metadata") or {})
+    base_weight = float(event.get("event_weight") or _DEFAULT_EVENT_WEIGHTS.get(event_type, 0.0))
+    if event_type == "engagement_metrics":
+        signal = compute_appearance_interest_signal(
+            event_weight=0.0,
+            detail_view_duration_ms=metadata.get("detail_view_duration_ms"),
+            card_visible_duration_ms=metadata.get("card_visible_duration_ms"),
+            photo_swipe_count=metadata.get("photo_swipe_count"),
+            return_view_count=metadata.get("return_view_count"),
+            quick_bounce=metadata.get("quick_bounce"),
+        )
+        return signal.net_signal
+    if event_type == "detail_view":
+        return apply_click_quality_correction(
+            base_event_weight=base_weight,
+            detail_view_duration_ms=metadata.get("detail_view_duration_ms"),
+            card_visible_duration_ms=metadata.get("card_visible_duration_ms"),
+            photo_swipe_count=metadata.get("photo_swipe_count"),
+            return_view_count=metadata.get("return_view_count"),
+            quick_bounce=metadata.get("quick_bounce"),
+        )
+    return base_weight
+
+
 __all__ = [
     "APPEARANCE_PREFERENCE_VECTOR_TYPE",
     "APPEARANCE_PROFILE_VECTOR_TYPE",
@@ -952,11 +1394,19 @@ __all__ = [
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
+    "GlobalAppearanceScorer",
     "PhotoBonusBreakdown",
+    "RiskPenaltyBreakdown",
+    "RiskPenaltyCalculator",
+    "TrustBonusBreakdown",
+    "TrustBonusCalculator",
     "backfill_profile_photo_features",
+    "build_appearance_explanation",
     "build_photo_feature_patch",
     "compute_appearance_interest_signal",
     "compute_photo_bonus_breakdown",
+    "compute_risk_penalty_breakdown",
+    "compute_trust_bonus_breakdown",
     "load_candidate_photo_features",
     "load_requester_appearance_preference",
     "backfill_user_appearance_preferences",
@@ -965,5 +1415,6 @@ __all__ = [
     "rebuild_user_preference_from_history",
     "refresh_profile_photo_features",
     "refresh_profile_photo_features_from_record",
+    "resolve_preference_weight_multiplier",
     "sync_user_appearance_preference_embedding",
 ]

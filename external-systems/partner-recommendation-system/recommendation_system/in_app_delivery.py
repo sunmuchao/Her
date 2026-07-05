@@ -172,6 +172,8 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
     payload = recommendation.get("latest_payload") or {}
     profile = payload.get("profile") or {}
     matched_on = payload.get("matched_on") or []
+    match_explanation = payload.get("match_explanation") or {}
+    appearance_reasoning = payload.get("appearance_reasoning") or {}
     risk_flags = payload.get("risk_flags") or []
     follow_up_questions = payload.get("follow_up_questions") or []
     caution_items = payload.get("caution_items") or []
@@ -201,6 +203,10 @@ def build_in_app_card(recommendation: dict[str, Any], subscription_title: str) -
         body_lines.append("谨慎点：" + "；".join(str(item) for item in caution_items[:2]))
     if matched_on:
         body_lines.append("匹配点：" + "；".join(matched_on[:3]))
+    else:
+        explanation_summary = str(match_explanation.get("summary") or appearance_reasoning.get("summary") or "").strip()
+        if explanation_summary:
+            body_lines.append("眼缘点：" + explanation_summary)
     if risk_flags:
         body_lines.append("风险点：" + "；".join(risk_flags[:2]))
     if follow_up_questions:

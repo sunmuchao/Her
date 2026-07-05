@@ -1395,6 +1395,7 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertEqual(cards[0]["reason_summary"], "职业方向更贴近，生活节奏也更稳")
         self.assertEqual(cards[1]["profile_id"], 3002)
 
+
     def test_search_partner_candidates_with_adds_personality_bonus_and_trace(self) -> None:
         # ✅ Agent Native 改进：测试现在验证性格特质数据是否正确返回
         # 而不是验证性格排序和性格加分（这些由 Agent 自主决定）

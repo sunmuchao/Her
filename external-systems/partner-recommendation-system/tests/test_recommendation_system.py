@@ -200,6 +200,7 @@ class RecommendationSystemTests(unittest.TestCase):
         base.update(overrides)
         return create_subscription(self.conn, **base)
 
+
     def test_refresh_due_subscriptions_queues_new_candidates_and_calls_partner_search(self):
         subscription = self.create_active_subscription()
         called = {}

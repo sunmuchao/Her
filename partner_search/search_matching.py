@@ -9,7 +9,12 @@ from typing import Any, Callable, Sequence
 
 from partner_search.search_profile_utils import has_explicit_field_value as _has_explicit_field_value
 from match_domain.onboarding_search import genders_match_for_search
-from match_domain.appearance_features import compute_photo_bonus_breakdown
+from match_domain.appearance_features import (
+    RiskPenaltyCalculator,
+    TrustBonusCalculator,
+    build_appearance_explanation,
+    compute_photo_bonus_breakdown,
+)
 
 
 @dataclass(frozen=True)
@@ -1901,6 +1906,7 @@ def evaluate_candidate(
         _photo_feature_summary(record),
         appearance_preference,
     )
+    trust_bonus = TrustBonusCalculator.compute(record, _photo_feature_summary(record))
     if photo_bonus.quality_bonus > 0:
         reasons.append("照片质量较好")
     if photo_bonus.global_bonus >= 8:
@@ -1911,7 +1917,33 @@ def evaluate_candidate(
         reasons.append("长相类型更贴近你的偏好")
     elif photo_bonus.preference_bonus <= -5:
         risk_flags.append("长相类型和你的偏好有一定偏差")
-    score = round(score + photo_bonus.total, 2)
+    risk_penalty = RiskPenaltyCalculator.compute(
+        record,
+        _photo_feature_summary(record),
+        risk_flags=risk_flags,
+    )
+    appearance_reasoning = build_appearance_explanation(
+        _photo_feature_summary(record),
+        appearance_preference,
+        trust_bonus=trust_bonus,
+        risk_penalty=risk_penalty,
+    )
+    for item in list(appearance_reasoning.get("highlights") or [])[:2]:
+        if item not in reasons:
+            reasons.append(item)
+    for item in list(risk_penalty.reasons or []):
+        if item not in risk_flags:
+            risk_flags.append(item)
+
+    adjusted_risk_score = int(round(risk_score + risk_penalty.total))
+    score = round(
+        fit_score
+        + confidence_score
+        - adjusted_risk_score
+        + photo_bonus.total
+        + trust_bonus.total,
+        2,
+    )
 
     follow_up_questions = build_follow_up_questions(
         runtime,
@@ -1928,7 +1960,7 @@ def evaluate_candidate(
         score=score,
         fit_score=fit_score,
         confidence_score=confidence_score,
-        risk_score=risk_score,
+        risk_score=adjusted_risk_score,
         matched_on=runtime.unique_ordered(reasons),
         reciprocal_on=runtime.unique_ordered(reciprocal_reasons),
         missing_fields=candidate_missing_fields,
@@ -1954,6 +1986,26 @@ def evaluate_candidate(
         "global_bonus": photo_bonus.global_bonus,
         "preference_bonus": photo_bonus.preference_bonus,
         "total_bonus": photo_bonus.total,
+    }
+    result["trust_bonus_breakdown"] = {
+        "verified_bonus": trust_bonus.verified_bonus,
+        "photo_verification_bonus": trust_bonus.photo_verification_bonus,
+        "authenticity_bonus": trust_bonus.authenticity_bonus,
+        "quality_bonus": trust_bonus.quality_bonus,
+        "total_bonus": trust_bonus.total,
+    }
+    result["risk_penalty_breakdown"] = {
+        "authenticity_penalty": risk_penalty.authenticity_penalty,
+        "quality_penalty": risk_penalty.quality_penalty,
+        "explicit_flag_penalty": risk_penalty.explicit_flag_penalty,
+        "style_mismatch_penalty": risk_penalty.style_mismatch_penalty,
+        "total_penalty": risk_penalty.total,
+        "reasons": list(risk_penalty.reasons),
+    }
+    result["appearance_reasoning"] = appearance_reasoning
+    result["match_explanation"] = {
+        "summary": str(appearance_reasoning.get("summary") or "").strip(),
+        "highlights": list(appearance_reasoning.get("highlights") or [])[:4],
     }
     if not diagnostics:
         result.pop("matched", None)
