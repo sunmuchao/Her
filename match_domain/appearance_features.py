@@ -1157,7 +1157,8 @@ def build_photo_feature_patch(
 
     signature = "|".join(photo_sources)
     photo_set_version = int(hashlib.sha256(signature.encode("utf-8")).hexdigest()[:8], 16)
-    primary_entry = normalized_entries[0]
+    detections = FaceDetector.detect(normalized_entries)
+    primary_entry = PrimaryPhotoSelector.select(normalized_entries, detections) or normalized_entries[0]
     primary_source = str(primary_entry.get("photo_source") or photo_sources[0]).strip()
     photo_count = len(photo_sources)
     verified_level = str(
@@ -1193,7 +1194,11 @@ def build_photo_feature_patch(
             + cover_detail_consistency_score * 0.25
         ),
     )
-    quality_score = min(100.0, 48.0 + photo_count * 6.0 + verification_bonus * 0.7 + _stable_bucket(source_seed, salt="quality", lower=0, upper=16))
+    quality_score = PhotoQualityScorer.score(
+        profile_row=normalized_profile,
+        photo_entries=normalized_entries,
+        detections=detections,
+    )
     mature_score = min(100.0, max(0.0, 38.0 + age_bias + _stable_bucket(source_seed, salt="mature", lower=0, upper=40)))
     gentle_score = min(100.0, 32.0 + _stable_bucket(source_seed, salt="gentle", lower=0, upper=45))
     sunny_score = min(100.0, 30.0 + _stable_bucket(source_seed, salt="sunny", lower=0, upper=50))
@@ -1209,7 +1214,21 @@ def build_photo_feature_patch(
             "stylish_score": stylish_score,
         }
     )
-    appearance_summary = f"照片整体给人{top_labels[0]}的感觉，第一眼偏{top_labels[1]}，整体风格接近{top_labels[2]}。"
+    appearance_summary = AppearanceSummaryGenerator.generate(
+        style_scores={
+            "mature_score": mature_score,
+            "clean_score": clean_score,
+            "gentle_score": gentle_score,
+            "sunny_score": sunny_score,
+            "stylish_score": stylish_score,
+        },
+        attribute_scores={
+            "eye_size_score": 36.0 + gentle_score * 0.24,
+            "face_roundness_score": 30.0 + sunny_score * 0.18,
+            "skin_clarity_score": 30.0 + clean_score * 0.46,
+            "smile_intensity_score": 24.0 + sunny_score * 0.42,
+        },
+    )
     appearance_tags_json = [{"label": label} for label in top_labels]
     existing_version = int(existing_feature_row.get("photo_set_version") or 0) if isinstance(existing_feature_row, dict) else 0
     embedding_status = "pending"
@@ -1806,9 +1825,201 @@ def load_candidate_photo_features(
     return list_profile_photo_features(
         source_dsn=source_dsn,
         profile_ids=normalized_ids,
-        table_name=table_name,
-    )
+            table_name=table_name,
+        )
 
+
+class FaceDetector:
+    @staticmethod
+    def detect(photo_entries: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+        detections: list[dict[str, Any]] = []
+        for index, source in enumerate(_normalize_photo_sources(list(photo_entries or []))):
+            lowered = source.lower()
+            confidence = 96.0
+            if any(token in lowered for token in ("group", "multi", "party")):
+                confidence = 68.0
+            elif any(token in lowered for token in ("tiny", "far", "lowres")):
+                confidence = 74.0
+            detections.append(
+                {
+                    "photo_source": source,
+                    "face_count": 2 if "group" in lowered or "multi" in lowered else 1,
+                    "dominant_face_index": 0,
+                    "detection_confidence": confidence,
+                    "aligned": confidence >= 70.0,
+                }
+            )
+        return detections
+
+
+class FaceQualityAssessor:
+    @staticmethod
+    def score(detection: dict[str, Any] | None) -> float:
+        item = dict(detection or {})
+        confidence = _clamp_score(item.get("detection_confidence"), default=70.0)
+        face_count = max(1, int(item.get("face_count") or 1))
+        multi_face_penalty = 14.0 if face_count > 1 else 0.0
+        aligned_bonus = 6.0 if bool(item.get("aligned")) else 0.0
+        return round(max(0.0, min(100.0, confidence - multi_face_penalty + aligned_bonus)), 2)
+
+
+class FaceEmbeddingExtractor:
+    @staticmethod
+    def extract(
+        *,
+        profile_id: int,
+        photo_entries: list[dict[str, Any]] | None,
+        dims: int = 16,
+    ) -> dict[str, Any]:
+        sources = _normalize_photo_sources(list(photo_entries or []))
+        embedding = _deterministic_face_embedding(profile_id, sources, salt="face_embedding", dims=dims)
+        return {
+            "embedding_dim": len(embedding),
+            "embedding_json": embedding,
+            "extractor_version": "deterministic-face-embedding-v1",
+        }
+
+
+class PrimaryPhotoSelector:
+    @staticmethod
+    def select(
+        photo_entries: list[dict[str, Any]] | None,
+        detections: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
+        normalized_entries = [dict(item) for item in list(photo_entries or []) if isinstance(item, dict)]
+        if not normalized_entries:
+            return None
+        detection_map = {
+            str(item.get("photo_source") or "").strip(): dict(item)
+            for item in list(detections or [])
+            if isinstance(item, dict)
+        }
+        ranked = sorted(
+            normalized_entries,
+            key=lambda item: (
+                FaceQualityAssessor.score(detection_map.get(str(item.get("photo_source") or "").strip())),
+                1 if "avatar" in str(item.get("photo_source") or "").lower() else 0,
+            ),
+            reverse=True,
+        )
+        return ranked[0] if ranked else None
+
+
+class PhotoQualityScorer:
+    @staticmethod
+    def score(
+        *,
+        profile_row: dict[str, Any] | None,
+        photo_entries: list[dict[str, Any]] | None,
+        detections: list[dict[str, Any]] | None = None,
+    ) -> float:
+        sources = _normalize_photo_sources(list(photo_entries or []))
+        if not sources:
+            return 0.0
+        detection_map = {
+            str(item.get("photo_source") or "").strip(): dict(item)
+            for item in list(detections or [])
+            if isinstance(item, dict)
+        }
+        detection_scores = [
+            FaceQualityAssessor.score(detection_map.get(source))
+            for source in sources
+        ] or [55.0]
+        verification_level = str(
+            (profile_row or {}).get("photo_verification_level")
+            or (profile_row or {}).get("verified_level")
+            or ""
+        ).strip().lower()
+        verification_bonus = {
+            "offline": 8.0,
+            "id": 6.0,
+            "photo": 4.0,
+        }.get(verification_level, 0.0)
+        return round(
+            max(0.0, min(100.0, (sum(detection_scores) / len(detection_scores)) * 0.82 + len(sources) * 4.5 + verification_bonus)),
+            2,
+        )
+
+
+class FacialAttributeScorer:
+    @staticmethod
+    def score(
+        *,
+        profile_row: dict[str, Any] | None,
+        photo_entries: list[dict[str, Any]] | None,
+    ) -> dict[str, float]:
+        feature_patch = build_photo_feature_patch(
+            profile_row=profile_row,
+            photo_entries=list(photo_entries or []),
+        )
+        attributes = _build_face_attribute_patch(
+            profile_row=profile_row,
+            feature_row=feature_patch,
+            photo_entries=photo_entries,
+        )
+        return {
+            "eye_size_score": float(attributes.get("eye_size_score") or 0.0),
+            "face_roundness_score": float(attributes.get("face_roundness_score") or 0.0),
+            "jaw_definition_score": float(attributes.get("jaw_definition_score") or 0.0),
+            "smile_intensity_score": float(attributes.get("smile_intensity_score") or 0.0),
+            "skin_clarity_score": float(attributes.get("skin_clarity_score") or 0.0),
+        }
+
+
+class AppearanceStyleScorer:
+    @staticmethod
+    def score(
+        *,
+        profile_row: dict[str, Any] | None,
+        photo_entries: list[dict[str, Any]] | None,
+    ) -> dict[str, float]:
+        patch = build_photo_feature_patch(
+            profile_row=profile_row,
+            photo_entries=list(photo_entries or []),
+        )
+        return {
+            "clean_score": float(patch.get("clean_score") or 0.0),
+            "gentle_score": float(patch.get("gentle_score") or 0.0),
+            "sunny_score": float(patch.get("sunny_score") or 0.0),
+            "stylish_score": float(patch.get("stylish_score") or 0.0),
+            "mature_score": float(patch.get("mature_score") or 0.0),
+        }
+
+
+class YouthfulnessScorer:
+    @staticmethod
+    def score(attribute_scores: dict[str, Any] | None) -> float:
+        attributes = dict(attribute_scores or {})
+        eye_size = _clamp_score(attributes.get("eye_size_score"), default=50.0)
+        roundness = _clamp_score(attributes.get("face_roundness_score"), default=50.0)
+        skin_clarity = _clamp_score(attributes.get("skin_clarity_score"), default=50.0)
+        smile = _clamp_score(attributes.get("smile_intensity_score"), default=50.0)
+        return round(
+            max(0.0, min(100.0, eye_size * 0.28 + roundness * 0.24 + skin_clarity * 0.28 + smile * 0.20)),
+            2,
+        )
+
+
+class AppearanceTagExtractor:
+    @staticmethod
+    def extract(style_scores: dict[str, Any] | None, *, limit: int = 3) -> list[str]:
+        return _top_dimension_labels(dict(style_scores or {}), limit=limit)
+
+
+class AppearanceSummaryGenerator:
+    @staticmethod
+    def generate(
+        *,
+        style_scores: dict[str, Any] | None,
+        attribute_scores: dict[str, Any] | None = None,
+    ) -> str:
+        style_labels = AppearanceTagExtractor.extract(style_scores, limit=3)
+        attributes = dict(attribute_scores or {})
+        youthfulness = YouthfulnessScorer.score(attributes)
+        youth_text = "带一点幼态感" if youthfulness >= 65 else "更偏成熟利落"
+        if len(style_labels) < 3:
+            style_labels = (style_labels + ["顺眼", "自然", "干净"])[:3]
+        return f"照片整体给人{style_labels[0]}的感觉，第一眼偏{style_labels[1]}，整体风格接近{style_labels[2]}，{youth_text}。"
 
 def load_profile_photo_feature_versions(
     *,
@@ -2492,22 +2703,32 @@ __all__ = [
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
+    "AppearanceStyleScorer",
+    "AppearanceSummaryGenerator",
+    "AppearanceTagExtractor",
     "AppearanceWeightStrategy",
     "EnvironmentGapAssessment",
     "EnvironmentGapCompensator",
+    "FaceDetector",
+    "FaceEmbeddingExtractor",
     "FaceConsistencyResult",
     "FaceConsistencyScorer",
+    "FaceQualityAssessor",
+    "FacialAttributeScorer",
     "GlobalAppearanceScorer",
     "PhotoBonusBreakdown",
     "PhotoAnalysisRetryQueue",
     "PhotoAnalysisStateMachine",
     "PhotoFeatureVersionManager",
+    "PhotoQualityScorer",
+    "PrimaryPhotoSelector",
     "ProfilePhotoTrustScore",
     "ProfilePhotoTrustScorer",
     "RiskPenaltyBreakdown",
     "RiskPenaltyCalculator",
     "TrustBonusBreakdown",
     "TrustBonusCalculator",
+    "YouthfulnessScorer",
     "VerifiedFaceAnchorWriter",
     "VerifiedPhotoQualityScore",
     "VerifiedPhotoQualityScorer",

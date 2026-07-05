@@ -169,6 +169,38 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertEqual(result, {"status": "ok"})
         mocked.assert_called_once_with(request)
 
+    def test_publish_photo_change_event_classifies_replace_delete_and_upload(self):
+        published = []
+
+        def fake_publish(event):
+            published.append(event)
+
+        with (
+            mock.patch("match_domain.photo_event_bus.publish_photo_analysis_event", side_effect=fake_publish),
+            mock.patch("match_domain.photo_event_bus.ensure_photo_analysis_async_subscription"),
+        ):
+            replaced = profile_service_api._publish_photo_change_event(
+                persona_source_dsn="mysql://persona",
+                profile_source_dsn="mysql://profiles",
+                source_table_name="profiles",
+                profile_id=12,
+                updated_fields=["avatar_url"],
+                updates={"avatar_url": "https://img.her.local/a.jpg"},
+            )
+            deleted = profile_service_api._publish_photo_change_event(
+                persona_source_dsn="mysql://persona",
+                profile_source_dsn="mysql://profiles",
+                source_table_name="profiles",
+                profile_id=12,
+                updated_fields=["cover_url"],
+                updates={"cover_url": ""},
+            )
+
+        self.assertTrue(replaced["published"])
+        self.assertEqual(replaced["event_type"], "photo_replaced")
+        self.assertEqual(deleted["event_type"], "photo_deleted")
+        self.assertEqual(len(published), 2)
+
     def test_render_public_profile_delegates_to_persona_engine(self):
         request = {"profile_id": 42, "write_profile": True}
         fake_persona_api = types.SimpleNamespace(
@@ -194,6 +226,26 @@ class ProfileServiceTests(unittest.TestCase):
         fake_persona_api.coerce_render_request.assert_called_once_with(request)
         fake_persona_engine.execute_render_public_profile.assert_called_once_with("render-request")
         self.assertEqual(result["profile_id"], 42)
+
+    def test_create_profile_row_publishes_photo_event_when_avatar_present(self):
+        fake_result = types.SimpleNamespace(lastrowid=12)
+        fake_conn = _FakeConnection(responses=[fake_result])
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api.schema, "column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+            mock.patch.object(profile_service_api, "_clear_partner_search_cache"),
+            mock.patch.object(profile_service_api, "_publish_photo_change_event", return_value={"published": True}) as mocked_publish,
+        ):
+            new_id = profile_service_api.create_profile_row(
+                source_dsn="mysql://profiles",
+                source_table_name="profiles",
+                fields={"name": "Alice", "avatar_url": "https://img.her.local/a.jpg"},
+            )
+
+        self.assertEqual(new_id, 12)
+        mocked_publish.assert_called_once()
 
     def test_get_profile_loads_single_profile_row(self):
         fake_conn = _FakeConnection(
@@ -242,6 +294,32 @@ class ProfileServiceTests(unittest.TestCase):
 
         self.assertEqual(result[12]["appearance_score_global"], 80)
         self.assertEqual(result[18]["photo_quality_score"], 70)
+
+    def test_apply_profile_updates_publishes_photo_event_for_avatar_update(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(rowcount=1),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api.schema, "column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+            mock.patch.object(profile_service_api, "_clear_partner_search_cache"),
+            mock.patch.object(profile_service_api, "_publish_photo_change_event", return_value={"published": True}) as mocked_publish,
+            mock.patch("match_domain.appearance_features.refresh_profile_photo_features", return_value={"analysis_status": "done"}),
+        ):
+            result = profile_service_api.apply_profile_updates(
+                source_dsn="mysql://profiles",
+                source_table_name="profiles",
+                profile_id=12,
+                updates={"avatar_url": "https://img.her.local/new.jpg"},
+            )
+
+        self.assertEqual(result["status"], "synced")
+        self.assertTrue(result["photo_event"]["published"])
+        mocked_publish.assert_called_once()
 
     def test_upsert_user_appearance_preference_inserts_row(self):
         fake_conn = _FakeConnection(

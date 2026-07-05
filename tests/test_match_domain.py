@@ -5,6 +5,7 @@ import pathlib
 import sys
 import unittest
 from datetime import datetime
+from unittest import mock
 
 import os
 
@@ -17,6 +18,9 @@ from match_domain import (  # noqa: E402
     AGGREGATE_CASE,
     AGGREGATE_RELATION,
     CASE_EVENT_PAYLOAD_SCHEMA,
+    PHOTO_ANALYSIS_JOB_TYPE,
+    PHOTO_EVENT_TYPE_DELETED,
+    PHOTO_EVENT_TYPE_REPLACED,
     RULE_PROVENANCE_SCHEMA,
     build_subscription_refresh_provenance,
     CaseStatus,
@@ -24,32 +28,40 @@ from match_domain import (  # noqa: E402
     InMemoryLedgerStore,
     MatchEvent,
     PairStatus,
+    PhotoAnalysisEvent,
     ProfileRef,
     RelationStatus,
     SyncEventBus,
+    build_photo_analysis_event,
     build_canonical_event,
     build_case_aggregate_event,
     bundle_matchmaking_case_entities,
     bundle_proxy_intro_case_entities,
     case_event_time_bucket,
+    clear_photo_analysis_subscribers,
     correlation_case_event,
     correlation_relation_action,
+    enqueue_photo_analysis_job_from_event,
     entity_id_case,
     entity_id_pair,
     entity_id_profile,
     entity_id_recommendation,
     entity_id_relation,
+    ensure_photo_analysis_async_subscription,
     match_event_from_merged_action_payload,
     match_events_from_action_rows,
     match_events_from_case_event_rows,
     merge_payload_with_event,
     pair_key,
+    publish_photo_analysis_event,
     reduce_case_ledger,
     reduce_relation_ledger,
     relation_key,
     reset_trace_id,
+    run_photo_analysis_job_worker,
     set_trace_id,
     sort_ledger_events,
+    subscribe_photo_analysis_events,
 )
 
 
@@ -415,6 +427,69 @@ class MatchDomainTests(unittest.TestCase):
         )
         bus.publish(evt)
         self.assertEqual(seen, ["case_created"])
+
+    def test_photo_event_bus_publish_and_enqueue_flow(self):
+        clear_photo_analysis_subscribers()
+        seen: list[PhotoAnalysisEvent] = []
+        subscribe_photo_analysis_events(lambda event: seen.append(event))
+        event = build_photo_analysis_event(
+            event_type=PHOTO_EVENT_TYPE_REPLACED,
+            profile_id=12,
+            persona_source_dsn="mysql://persona",
+            profile_source_dsn="mysql://profiles",
+            source_table_name="profiles",
+            trigger_fields=["avatar_url"],
+        )
+        with mock.patch("match_domain.photo_event_bus.ensure_photo_analysis_async_subscription"):
+            publish_photo_analysis_event(event)
+
+        self.assertEqual(len(seen), 1)
+        self.assertEqual(seen[0].event_type, PHOTO_EVENT_TYPE_REPLACED)
+        clear_photo_analysis_subscribers()
+
+    def test_enqueue_photo_analysis_job_from_event_uses_async_jobs(self):
+        event = build_photo_analysis_event(
+            event_type=PHOTO_EVENT_TYPE_DELETED,
+            profile_id=18,
+            persona_source_dsn="mysql://persona",
+            profile_source_dsn="mysql://profiles",
+            source_table_name="profiles",
+        )
+        fake_conn = mock.Mock()
+        fake_conn.close = mock.Mock()
+
+        with (
+            mock.patch("match_domain.photo_event_bus._connect_job_db", return_value=fake_conn),
+            mock.patch("match_domain.photo_event_bus.enqueue_async_job", return_value={"job_type": PHOTO_ANALYSIS_JOB_TYPE}) as mocked_enqueue,
+        ):
+            result = enqueue_photo_analysis_job_from_event(event)
+
+        mocked_enqueue.assert_called_once()
+        self.assertEqual(result["job_type"], PHOTO_ANALYSIS_JOB_TYPE)
+
+    def test_run_photo_analysis_job_worker_delegates_to_async_worker(self):
+        fake_conn = mock.Mock()
+        fake_conn.close = mock.Mock()
+
+        with (
+            mock.patch("match_domain.photo_event_bus._connect_job_db", return_value=fake_conn),
+            mock.patch(
+                "match_domain.photo_event_bus.run_async_job_worker",
+                return_value={"processed": [{"job_type": PHOTO_ANALYSIS_JOB_TYPE}]},
+            ) as mocked_worker,
+        ):
+            result = run_photo_analysis_job_worker(source_dsn="mysql://persona", limit=2)
+
+        mocked_worker.assert_called_once()
+        self.assertEqual(result["processed"][0]["job_type"], PHOTO_ANALYSIS_JOB_TYPE)
+
+    def test_ensure_photo_analysis_async_subscription_is_idempotent(self):
+        clear_photo_analysis_subscribers()
+        with mock.patch("match_domain.photo_event_bus.subscribe_photo_analysis_events") as mocked_subscribe:
+            ensure_photo_analysis_async_subscription()
+            ensure_photo_analysis_async_subscription()
+        mocked_subscribe.assert_called_once()
+        clear_photo_analysis_subscribers()
 
     def test_subscription_refresh_provenance_pins_rule_sets_and_fingerprints(self):
         prov = build_subscription_refresh_provenance(

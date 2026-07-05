@@ -6,17 +6,27 @@ from unittest import mock
 
 from match_domain.appearance_features import (
     AppearanceInterestSignal,
+    AppearanceStyleScorer,
     AppearanceWeightStrategy,
+    AppearanceSummaryGenerator,
+    AppearanceTagExtractor,
     EnvironmentGapCompensator,
+    FaceDetector,
+    FaceEmbeddingExtractor,
     FaceConsistencyScorer,
+    FaceQualityAssessor,
+    FacialAttributeScorer,
     GlobalAppearanceScorer,
+    PrimaryPhotoSelector,
     ProfilePhotoTrustScore,
     ProfilePhotoTrustScorer,
     PhotoAnalysisRetryQueue,
     PhotoAnalysisStateMachine,
     PhotoFeatureVersionManager,
+    PhotoQualityScorer,
     RiskPenaltyCalculator,
     TrustBonusCalculator,
+    YouthfulnessScorer,
     apply_click_quality_correction,
     backfill_profile_photo_features,
     backfill_user_appearance_preferences,
@@ -317,6 +327,41 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertLessEqual(result.threshold, 78)
         self.assertTrue(result.risk_level in {"low", "medium", "high"})
         self.assertIsInstance(result.risk_flags, list)
+
+    def test_face_detector_quality_embedding_and_primary_selector(self):
+        photos = [
+            {"photo_source": "https://img.her.local/group-shot.jpg"},
+            {"photo_source": "https://img.her.local/avatar.jpg"},
+        ]
+        detections = FaceDetector.detect(photos)
+        selected = PrimaryPhotoSelector.select(photos, detections)
+        embedding = FaceEmbeddingExtractor.extract(profile_id=12, photo_entries=photos)
+
+        self.assertEqual(detections[0]["face_count"], 2)
+        self.assertEqual(selected["photo_source"], "https://img.her.local/avatar.jpg")
+        self.assertEqual(embedding["embedding_dim"], 16)
+        self.assertGreater(FaceQualityAssessor.score(detections[1]), FaceQualityAssessor.score(detections[0]))
+
+    def test_photo_quality_and_attribute_style_scorers(self):
+        profile = {"id": 12, "age": 29, "photo_verification_level": "id"}
+        photos = [
+            {"photo_source": "https://img.her.local/avatar.jpg"},
+            {"photo_source": "https://img.her.local/gallery.jpg"},
+        ]
+        detections = FaceDetector.detect(photos)
+        quality = PhotoQualityScorer.score(profile_row=profile, photo_entries=photos, detections=detections)
+        attributes = FacialAttributeScorer.score(profile_row=profile, photo_entries=photos)
+        styles = AppearanceStyleScorer.score(profile_row=profile, photo_entries=photos)
+        tags = AppearanceTagExtractor.extract(styles)
+        summary = AppearanceSummaryGenerator.generate(style_scores=styles, attribute_scores=attributes)
+        youthfulness = YouthfulnessScorer.score(attributes)
+
+        self.assertGreater(quality, 60)
+        self.assertIn("eye_size_score", attributes)
+        self.assertIn("clean_score", styles)
+        self.assertTrue(tags)
+        self.assertTrue(summary)
+        self.assertGreaterEqual(youthfulness, 0)
 
     def test_build_appearance_explanation_produces_summary_and_highlights(self):
         explanation = build_appearance_explanation(

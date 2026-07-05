@@ -26,6 +26,7 @@ DEFAULT_FACE_CONSISTENCY_SCORES_TABLE = "face_consistency_scores"
 DEFAULT_REFERENCE_FACE_SEARCH_JOBS_TABLE = "reference_face_search_jobs"
 DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
+_PHOTO_RELATED_FIELDS = frozenset({"avatar_url", "photo_url", "cover_url"})
 PROFILE_TABLE_DETECTION_ALIASES = {
     "id": {"id", "编号"},
     "name": {"name", "姓名", "昵称"},
@@ -284,6 +285,46 @@ def release_profile_connection(source_dsn: str, conn: MySQLCompatConnection) -> 
 
 def _normalize_column_key(value: Any) -> str:
     return re.sub(r"[\s\-]+", "_", str(value or "").strip().lower())
+
+
+def _publish_photo_change_event(
+    *,
+    persona_source_dsn: str,
+    profile_source_dsn: str,
+    source_table_name: str,
+    profile_id: int,
+    updated_fields: Sequence[str],
+    updates: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    changed_photo_fields = [str(field) for field in updated_fields if str(field) in _PHOTO_RELATED_FIELDS]
+    if not changed_photo_fields:
+        return {"published": False, "reason": "no_photo_related_fields"}
+    normalized_updates = dict(updates or {})
+    event_type = "photo_uploaded"
+    if any(str(normalized_updates.get(field) or "").strip() == "" for field in changed_photo_fields):
+        event_type = "photo_deleted"
+    elif "avatar_url" in changed_photo_fields:
+        event_type = "photo_replaced"
+    try:
+        from match_domain.photo_event_bus import build_photo_analysis_event, publish_photo_analysis_event
+
+        event = build_photo_analysis_event(
+            event_type=event_type,
+            profile_id=int(profile_id),
+            persona_source_dsn=persona_source_dsn,
+            profile_source_dsn=profile_source_dsn,
+            source_table_name=source_table_name,
+            trigger_fields=changed_photo_fields,
+            metadata={"updates": {field: normalized_updates.get(field) for field in changed_photo_fields}},
+        )
+        publish_photo_analysis_event(event)
+        return {
+            "published": True,
+            "event_type": event_type,
+            "trigger_fields": changed_photo_fields,
+        }
+    except Exception as exc:
+        return {"published": False, "error": str(exc)[:200]}
 
 
 def _list_schema_tables(profile_conn: MySQLCompatConnection) -> list[str]:
@@ -1976,6 +2017,14 @@ def create_profile_row(
             if profile_id > 0:
                 profile_conn.commit()
                 _clear_partner_search_cache()
+                _publish_photo_change_event(
+                    persona_source_dsn=os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn,
+                    profile_source_dsn=source_dsn,
+                    source_table_name=source_table_name,
+                    profile_id=profile_id,
+                    updated_fields=columns,
+                    updates=insert_fields,
+                )
                 return profile_id
         except Exception:
             pass
@@ -1996,6 +2045,14 @@ def create_profile_row(
         )
         profile_conn.commit()
         _clear_partner_search_cache()
+        _publish_photo_change_event(
+            persona_source_dsn=os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn,
+            profile_source_dsn=source_dsn,
+            source_table_name=source_table_name,
+            profile_id=next_id,
+            updated_fields=columns,
+            updates=insert_fields,
+        )
         return next_id
     finally:
         release_profile_connection(source_dsn, profile_conn)
@@ -2080,6 +2137,15 @@ def apply_profile_updates(
             "table_name": source_table_name,
             "updated_fields": updated_fields,
         }
+        if any(field in _PHOTO_RELATED_FIELDS for field in updated_fields):
+            out["photo_event"] = _publish_photo_change_event(
+                persona_source_dsn=os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn,
+                profile_source_dsn=source_dsn,
+                source_table_name=source_table_name,
+                profile_id=int(profile_id),
+                updated_fields=updated_fields,
+                updates=updates,
+            )
         if any(field in {"avatar_url", "photo_url", "cover_url"} for field in updated_fields):
             try:
                 from match_domain.appearance_features import refresh_profile_photo_features
