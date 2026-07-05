@@ -10,10 +10,13 @@ from typing import Any, Callable, Sequence
 from partner_search.search_profile_utils import has_explicit_field_value as _has_explicit_field_value
 from match_domain.onboarding_search import genders_match_for_search
 from match_domain.appearance_features import (
+    AppearanceWeightStrategy,
     RiskPenaltyCalculator,
     TrustBonusCalculator,
     build_appearance_explanation,
+    build_match_explanation_payload,
     compute_photo_bonus_breakdown,
+    resolve_appearance_weight_strategy,
 )
 
 
@@ -1335,6 +1338,7 @@ def evaluate_candidate(
     confidence_score = 0
     self_profile = criteria.get("self_profile") or {}
     appearance_preference = criteria.get("appearance_preference") or {}
+    appearance_ranking_scene = str(criteria.get("appearance_ranking_scene") or "general").strip().lower()
     self_city = self_profile.get("city")
     lowered_self_city = runtime.as_lower(self_city) if self_city else ""
     # 性能优化：使用提前提取的 record_city
@@ -1922,6 +1926,10 @@ def evaluate_candidate(
         _photo_feature_summary(record),
         risk_flags=risk_flags,
     )
+    appearance_weight_strategy: AppearanceWeightStrategy = resolve_appearance_weight_strategy(
+        appearance_ranking_scene,
+        appearance_preference,
+    )
     appearance_reasoning = build_appearance_explanation(
         _photo_feature_summary(record),
         appearance_preference,
@@ -1935,13 +1943,20 @@ def evaluate_candidate(
         if item not in risk_flags:
             risk_flags.append(item)
 
-    adjusted_risk_score = int(round(risk_score + risk_penalty.total))
+    weighted_photo_bonus = round(
+        ((photo_bonus.quality_bonus + photo_bonus.global_bonus) * appearance_weight_strategy.base_weight)
+        + (photo_bonus.preference_bonus * appearance_weight_strategy.preference_weight),
+        2,
+    )
+    weighted_trust_bonus = round(trust_bonus.total * appearance_weight_strategy.trust_weight, 2)
+    weighted_risk_penalty = round(risk_penalty.total * appearance_weight_strategy.risk_weight, 2)
+    adjusted_risk_score = int(round(risk_score + weighted_risk_penalty))
     score = round(
         fit_score
         + confidence_score
         - adjusted_risk_score
-        + photo_bonus.total
-        + trust_bonus.total,
+        + weighted_photo_bonus
+        + weighted_trust_bonus,
         2,
     )
 
@@ -1986,6 +2001,7 @@ def evaluate_candidate(
         "global_bonus": photo_bonus.global_bonus,
         "preference_bonus": photo_bonus.preference_bonus,
         "total_bonus": photo_bonus.total,
+        "weighted_total_bonus": weighted_photo_bonus,
     }
     result["trust_bonus_breakdown"] = {
         "verified_bonus": trust_bonus.verified_bonus,
@@ -1993,6 +2009,7 @@ def evaluate_candidate(
         "authenticity_bonus": trust_bonus.authenticity_bonus,
         "quality_bonus": trust_bonus.quality_bonus,
         "total_bonus": trust_bonus.total,
+        "weighted_total_bonus": weighted_trust_bonus,
     }
     result["risk_penalty_breakdown"] = {
         "authenticity_penalty": risk_penalty.authenticity_penalty,
@@ -2000,13 +2017,23 @@ def evaluate_candidate(
         "explicit_flag_penalty": risk_penalty.explicit_flag_penalty,
         "style_mismatch_penalty": risk_penalty.style_mismatch_penalty,
         "total_penalty": risk_penalty.total,
+        "weighted_total_penalty": weighted_risk_penalty,
         "reasons": list(risk_penalty.reasons),
     }
-    result["appearance_reasoning"] = appearance_reasoning
-    result["match_explanation"] = {
-        "summary": str(appearance_reasoning.get("summary") or "").strip(),
-        "highlights": list(appearance_reasoning.get("highlights") or [])[:4],
+    result["appearance_weight_strategy"] = {
+        "scene": appearance_weight_strategy.scene,
+        "base_weight": appearance_weight_strategy.base_weight,
+        "preference_weight": appearance_weight_strategy.preference_weight,
+        "trust_weight": appearance_weight_strategy.trust_weight,
+        "risk_weight": appearance_weight_strategy.risk_weight,
+        "user_stage": appearance_weight_strategy.user_stage,
     }
+    result["appearance_reasoning"] = appearance_reasoning
+    result["match_explanation"] = build_match_explanation_payload(
+        matched_on=runtime.unique_ordered(reasons),
+        appearance_reasoning=appearance_reasoning,
+        trust_summary="；".join(list(risk_penalty.reasons or [])[:1]),
+    )
     if not diagnostics:
         result.pop("matched", None)
         result.pop("reject_reason", None)

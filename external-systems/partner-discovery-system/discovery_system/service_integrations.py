@@ -516,6 +516,9 @@ def search_partner_candidates_with(
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     vector_filter_json: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    criteria = dict(criteria or {})
+    criteria.setdefault("appearance_ranking_scene", "discovery")
+
     # ✅ 可观测性增强：入口日志
     _logger.info(
         "【搜索开始】session_id=%s criteria=%s limit=%s",

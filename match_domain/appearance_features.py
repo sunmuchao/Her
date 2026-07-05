@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
@@ -68,6 +69,12 @@ _DEFAULT_EVENT_WEIGHTS = {
     "explicit_dislike": -4.0,
 }
 _PREFERENCE_EVENT_HALF_LIFE_DAYS = 45.0
+EXPLANATION_TEMPLATE_LIBRARY = {
+    "base_only": "{base_summary}",
+    "appearance_only": "{appearance_summary}",
+    "base_plus_appearance": "{base_summary}，再加上{appearance_summary}",
+    "base_plus_trust": "{base_summary}，而且{trust_summary}",
+}
 
 
 @dataclass(frozen=True)
@@ -116,6 +123,16 @@ class RiskPenaltyBreakdown:
             + self.style_mismatch_penalty,
             2,
         )
+
+
+@dataclass(frozen=True)
+class AppearanceWeightStrategy:
+    scene: str
+    base_weight: float
+    preference_weight: float
+    trust_weight: float
+    risk_weight: float
+    user_stage: str
 
 
 def _clamp_score(value: Any, *, default: float = 50.0) -> float:
@@ -240,13 +257,35 @@ def _safe_float(value: Any, *, default: float = 0.0) -> float:
         return default
 
 
-def resolve_preference_weight_multiplier(user_appearance_preference: dict[str, Any] | None) -> float:
+def _preference_history_count(user_appearance_preference: dict[str, Any] | None) -> int:
     preference_row = dict(user_appearance_preference or {})
     positive_count = max(0, int(_safe_float(preference_row.get("positive_sample_count"), default=0.0)))
     negative_count = max(0, int(_safe_float(preference_row.get("negative_sample_count"), default=0.0)))
-    total_count = positive_count + negative_count
+    return positive_count + negative_count
+
+
+def calibrate_global_appearance_score(value: Any) -> float:
+    raw_score = _clamp_score(value, default=50.0)
+    normalized = (raw_score - 50.0) / 50.0
+    calibrated = 50.0 + (math.tanh(normalized * 1.15) * 30.0)
+    return round(max(0.0, min(100.0, calibrated)), 2)
+
+
+def resolve_global_bonus_multiplier(user_appearance_preference: dict[str, Any] | None) -> float:
+    total_count = _preference_history_count(user_appearance_preference)
     if total_count <= 0:
-        return 1.0
+        return 1.2
+    if total_count < 3:
+        return 1.15
+    if total_count < 8:
+        return 1.08
+    return 1.0
+
+
+def resolve_preference_weight_multiplier(user_appearance_preference: dict[str, Any] | None) -> float:
+    total_count = _preference_history_count(user_appearance_preference)
+    if total_count <= 0:
+        return 0.3
     if total_count < 3:
         return 0.45
     if total_count < 8:
@@ -298,9 +337,13 @@ def compute_photo_bonus_breakdown(
         + _score_to_bonus(feature_row.get("photo_authenticity_score"), max_bonus=3.0),
         2,
     )
-    global_bonus = _score_to_bonus(
-        GlobalAppearanceScorer.score(feature_row),
-        max_bonus=15.0,
+    global_bonus = round(
+        _score_to_bonus(
+            GlobalAppearanceScorer.score(feature_row),
+            max_bonus=15.0,
+        )
+        * resolve_global_bonus_multiplier(preference_row),
+        2,
     )
 
     preference_bonus = 0.0
@@ -500,16 +543,111 @@ def build_appearance_explanation(
     }
 
 
+def build_match_explanation_payload(
+    *,
+    matched_on: Iterable[Any] | None = None,
+    appearance_reasoning: dict[str, Any] | None = None,
+    trust_summary: str | None = None,
+) -> dict[str, Any]:
+    base_highlights = [str(item or "").strip() for item in list(matched_on or []) if str(item or "").strip()]
+    appearance_payload = dict(appearance_reasoning or {})
+    appearance_summary = str(appearance_payload.get("summary") or "").strip()
+    appearance_highlights = [
+        str(item or "").strip()
+        for item in list(appearance_payload.get("highlights") or [])
+        if str(item or "").strip()
+    ]
+    trust_text = str(trust_summary or "").strip()
+
+    base_summary = "、".join(base_highlights[:2])
+    template_key = "base_only"
+    if base_summary and appearance_summary:
+        template_key = "base_plus_appearance"
+    elif base_summary and trust_text:
+        template_key = "base_plus_trust"
+    elif appearance_summary:
+        template_key = "appearance_only"
+
+    summary = EXPLANATION_TEMPLATE_LIBRARY[template_key].format(
+        base_summary=base_summary,
+        appearance_summary=appearance_summary,
+        trust_summary=trust_text,
+    ).strip("， ")
+
+    highlights: list[str] = []
+    for item in base_highlights[:2] + appearance_highlights[:2]:
+        if item and item not in highlights:
+            highlights.append(item)
+    if not highlights and summary:
+        highlights.append(summary)
+
+    return {
+        "template_key": template_key,
+        "summary": summary,
+        "highlights": highlights[:4],
+    }
+
+
 class GlobalAppearanceScorer:
     @staticmethod
     def score(candidate_photo_features: dict[str, Any] | None) -> float:
         feature_row = dict(candidate_photo_features or {})
         if feature_row.get("appearance_score_global") not in (None, ""):
-            return round(_clamp_score(feature_row.get("appearance_score_global"), default=0.0), 2)
+            return calibrate_global_appearance_score(feature_row.get("appearance_score_global"))
         quality_score = _clamp_score(feature_row.get("photo_quality_score"), default=50.0)
         authenticity_score = _clamp_score(feature_row.get("photo_authenticity_score"), default=50.0)
         face_score = _clamp_score(feature_row.get("face_score_global"), default=50.0)
-        return round((quality_score * 0.22) + (authenticity_score * 0.18) + (face_score * 0.60), 2)
+        raw_score = (quality_score * 0.22) + (authenticity_score * 0.18) + (face_score * 0.60)
+        return calibrate_global_appearance_score(raw_score)
+
+
+def resolve_appearance_weight_strategy(
+    scene: str | None,
+    user_appearance_preference: dict[str, Any] | None = None,
+) -> AppearanceWeightStrategy:
+    normalized_scene = str(scene or "general").strip().lower() or "general"
+    total_count = _preference_history_count(user_appearance_preference)
+    user_stage = "new_user"
+    if total_count >= 20:
+        user_stage = "high_preference_confidence"
+    elif total_count >= 8:
+        user_stage = "stable_preference"
+    elif total_count >= 3:
+        user_stage = "warming_up"
+
+    base_weight = 1.0
+    preference_weight = 1.0
+    trust_weight = 1.0
+    risk_weight = 1.0
+
+    if normalized_scene.startswith("discovery"):
+        base_weight = 1.12
+        preference_weight = 0.92
+        trust_weight = 0.95
+        risk_weight = 0.92
+    elif normalized_scene.startswith("recommendation"):
+        base_weight = 0.96
+        preference_weight = 1.08
+        trust_weight = 1.12
+        risk_weight = 1.08
+
+    if user_stage == "new_user":
+        base_weight += 0.18
+        preference_weight *= 0.45
+    elif user_stage == "warming_up":
+        base_weight += 0.08
+        preference_weight *= 0.82
+    elif user_stage == "high_preference_confidence":
+        preference_weight *= 1.08
+
+    return AppearanceWeightStrategy(
+        scene=normalized_scene,
+        base_weight=round(base_weight, 2),
+        preference_weight=round(preference_weight, 2),
+        trust_weight=round(trust_weight, 2),
+        risk_weight=round(risk_weight, 2),
+        user_stage=user_stage,
+    )
 
 
 class TrustBonusCalculator:
@@ -1394,6 +1532,7 @@ __all__ = [
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
+    "AppearanceWeightStrategy",
     "GlobalAppearanceScorer",
     "PhotoBonusBreakdown",
     "RiskPenaltyBreakdown",
@@ -1402,7 +1541,9 @@ __all__ = [
     "TrustBonusCalculator",
     "backfill_profile_photo_features",
     "build_appearance_explanation",
+    "build_match_explanation_payload",
     "build_photo_feature_patch",
+    "calibrate_global_appearance_score",
     "compute_appearance_interest_signal",
     "compute_photo_bonus_breakdown",
     "compute_risk_penalty_breakdown",
@@ -1415,6 +1556,8 @@ __all__ = [
     "rebuild_user_preference_from_history",
     "refresh_profile_photo_features",
     "refresh_profile_photo_features_from_record",
+    "resolve_appearance_weight_strategy",
+    "resolve_global_bonus_multiplier",
     "resolve_preference_weight_multiplier",
     "sync_user_appearance_preference_embedding",
 ]

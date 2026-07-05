@@ -6,6 +6,7 @@ from unittest import mock
 
 from match_domain.appearance_features import (
     AppearanceInterestSignal,
+    AppearanceWeightStrategy,
     GlobalAppearanceScorer,
     RiskPenaltyCalculator,
     TrustBonusCalculator,
@@ -13,7 +14,9 @@ from match_domain.appearance_features import (
     backfill_profile_photo_features,
     backfill_user_appearance_preferences,
     build_appearance_explanation,
+    build_match_explanation_payload,
     build_photo_feature_patch,
+    calibrate_global_appearance_score,
     classify_click_quality,
     compute_cover_authenticity_score,
     compute_cover_detail_consistency_score,
@@ -21,6 +24,8 @@ from match_domain.appearance_features import (
     compute_appearance_interest_signal,
     compute_photo_bonus_breakdown,
     rebuild_user_preference_from_history,
+    resolve_appearance_weight_strategy,
+    resolve_global_bonus_multiplier,
     resolve_preference_weight_multiplier,
 )
 
@@ -139,6 +144,8 @@ class AppearanceFeaturesTests(unittest.TestCase):
                 "preferred_gentle_score": 68,
                 "preferred_sunny_score": 43,
                 "preferred_stylish_score": 58,
+                "positive_sample_count": 18,
+                "negative_sample_count": 4,
             },
         )
 
@@ -158,6 +165,70 @@ class AppearanceFeaturesTests(unittest.TestCase):
             resolve_preference_weight_multiplier({"positive_sample_count": 12, "negative_sample_count": 10}),
             1.15,
         )
+
+    def test_global_score_calibration_and_new_user_multiplier(self):
+        self.assertLess(calibrate_global_appearance_score(95), 95)
+        self.assertGreater(calibrate_global_appearance_score(20), 20)
+        self.assertEqual(resolve_global_bonus_multiplier(None), 1.2)
+        self.assertEqual(
+            resolve_global_bonus_multiplier({"positive_sample_count": 10, "negative_sample_count": 3}),
+            1.0,
+        )
+
+    def test_compute_photo_bonus_breakdown_gives_new_users_more_base_and_less_preference(self):
+        feature_row = {
+            "appearance_score_global": 82,
+            "photo_quality_score": 85,
+            "photo_authenticity_score": 90,
+            "mature_score": 82,
+            "clean_score": 75,
+            "gentle_score": 65,
+            "sunny_score": 45,
+            "stylish_score": 60,
+        }
+        new_user_bonus = compute_photo_bonus_breakdown(
+            feature_row,
+            {
+                "preferred_mature_score": 80,
+                "preferred_clean_score": 72,
+                "preferred_gentle_score": 68,
+                "preferred_sunny_score": 43,
+                "preferred_stylish_score": 58,
+                "positive_sample_count": 1,
+                "negative_sample_count": 0,
+            },
+        )
+        old_user_bonus = compute_photo_bonus_breakdown(
+            feature_row,
+            {
+                "preferred_mature_score": 80,
+                "preferred_clean_score": 72,
+                "preferred_gentle_score": 68,
+                "preferred_sunny_score": 43,
+                "preferred_stylish_score": 58,
+                "positive_sample_count": 20,
+                "negative_sample_count": 4,
+            },
+        )
+
+        self.assertGreater(new_user_bonus.global_bonus, old_user_bonus.global_bonus)
+        self.assertLess(new_user_bonus.preference_bonus, old_user_bonus.preference_bonus)
+
+    def test_resolve_appearance_weight_strategy_differs_by_scene_and_stage(self):
+        discovery_new = resolve_appearance_weight_strategy(
+            "discovery",
+            {"positive_sample_count": 1, "negative_sample_count": 0},
+        )
+        recommendation_old = resolve_appearance_weight_strategy(
+            "recommendation",
+            {"positive_sample_count": 18, "negative_sample_count": 5},
+        )
+
+        self.assertIsInstance(discovery_new, AppearanceWeightStrategy)
+        self.assertEqual(discovery_new.user_stage, "new_user")
+        self.assertGreater(discovery_new.base_weight, recommendation_old.base_weight)
+        self.assertLess(discovery_new.preference_weight, recommendation_old.preference_weight)
+        self.assertGreater(recommendation_old.trust_weight, 1.0)
 
     def test_trust_and_risk_calculators_return_split_breakdowns(self):
         profile_row = {
@@ -207,11 +278,24 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertIn("长相类型贴近你最近常点喜欢的那一挂", explanation["highlights"])
         self.assertEqual(explanation["stage"], "stable_preference")
 
-    def test_global_appearance_scorer_uses_existing_or_fallback_formula(self):
-        self.assertEqual(
-            GlobalAppearanceScorer.score({"appearance_score_global": 86}),
-            86.0,
+    def test_build_match_explanation_payload_combines_base_and_appearance_templates(self):
+        payload = build_match_explanation_payload(
+            matched_on=["同城", "关系目标一致", "工作稳定"],
+            appearance_reasoning={
+                "summary": "第一眼眼缘会更强",
+                "highlights": ["照片整体比较顺眼"],
+            },
         )
+
+        self.assertEqual(payload["template_key"], "base_plus_appearance")
+        self.assertIn("同城、关系目标一致", payload["summary"])
+        self.assertIn("第一眼眼缘会更强", payload["summary"])
+        self.assertEqual(payload["highlights"][:2], ["同城", "关系目标一致"])
+
+    def test_global_appearance_scorer_uses_existing_or_fallback_formula(self):
+        calibrated = GlobalAppearanceScorer.score({"appearance_score_global": 86})
+        self.assertLess(calibrated, 86.0)
+        self.assertGreater(calibrated, 65.0)
         self.assertGreater(
             GlobalAppearanceScorer.score(
                 {
@@ -220,7 +304,7 @@ class AppearanceFeaturesTests(unittest.TestCase):
                     "face_score_global": 75,
                 }
             ),
-            70,
+            60,
         )
 
     def test_build_photo_feature_patch_returns_done_payload(self):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from match_domain.search_visibility import run_partner_search as _run_partner_search
@@ -9,4 +10,8 @@ from partner_search import search_profiles
 
 
 def run_partner_search(**kwargs: Any) -> dict[str, Any]:
-    return _run_partner_search(search_profiles, **kwargs)
+    request = dict(kwargs or {})
+    criteria = deepcopy(dict(request.get("criteria") or {}))
+    criteria.setdefault("appearance_ranking_scene", "recommendation")
+    request["criteria"] = criteria
+    return _run_partner_search(search_profiles, **request)
