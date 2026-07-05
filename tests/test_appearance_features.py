@@ -8,6 +8,11 @@ from match_domain.appearance_features import (
     AppearanceInterestSignal,
     AppearanceWeightStrategy,
     GlobalAppearanceScorer,
+    ProfilePhotoTrustScore,
+    ProfilePhotoTrustScorer,
+    PhotoAnalysisRetryQueue,
+    PhotoAnalysisStateMachine,
+    PhotoFeatureVersionManager,
     RiskPenaltyCalculator,
     TrustBonusCalculator,
     apply_click_quality_correction,
@@ -23,7 +28,9 @@ from match_domain.appearance_features import (
     compute_detail_duration_strength,
     compute_appearance_interest_signal,
     compute_photo_bonus_breakdown,
+    load_profile_photo_feature_versions,
     rebuild_user_preference_from_history,
+    retry_failed_profile_photo_features,
     resolve_appearance_weight_strategy,
     resolve_global_bonus_multiplier,
     resolve_preference_weight_multiplier,
@@ -250,6 +257,23 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertGreater(risk.total, 5)
         self.assertIn("照片真实性需要再确认", risk.reasons)
 
+    def test_profile_photo_trust_scorer_combines_bonus_penalty_and_confidence(self):
+        trust_score = ProfilePhotoTrustScorer.score(
+            {
+                "verified_level": "id",
+                "photo_verification_level": "live_video_verified",
+            },
+            {
+                "photo_authenticity_score": 84,
+                "photo_quality_score": 79,
+            },
+            risk_flags=[],
+        )
+        self.assertIsInstance(trust_score, ProfilePhotoTrustScore)
+        self.assertGreater(trust_score.score, 60)
+        self.assertEqual(trust_score.risk_level, "low")
+        self.assertTrue(trust_score.badges)
+
     def test_build_appearance_explanation_produces_summary_and_highlights(self):
         explanation = build_appearance_explanation(
             {
@@ -291,6 +315,80 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertIn("同城、关系目标一致", payload["summary"])
         self.assertIn("第一眼眼缘会更强", payload["summary"])
         self.assertEqual(payload["highlights"][:2], ["同城", "关系目标一致"])
+
+    def test_photo_analysis_state_machine_and_retry_queue(self):
+        processing_patch = PhotoAnalysisStateMachine.build_transition_patch(
+            {"analysis_status": "pending"},
+            next_status="processing",
+            embedding_status="pending",
+        )
+        self.assertEqual(processing_patch["analysis_status"], "processing")
+        retry_patch = PhotoAnalysisRetryQueue.build_retry_patch(
+            {"analysis_status": "failed", "retry_count": 1, "last_error": "timeout"},
+            max_retry_count=3,
+        )
+        self.assertEqual(retry_patch["analysis_status"], "retrying")
+        self.assertEqual(retry_patch["retry_count"], 2)
+        exhausted_patch = PhotoAnalysisRetryQueue.build_retry_patch(
+            {"analysis_status": "failed", "retry_count": 3, "last_error": "timeout"},
+            max_retry_count=3,
+        )
+        self.assertEqual(exhausted_patch["analysis_status"], "failed")
+
+    def test_photo_feature_version_manager_builds_snapshot(self):
+        snapshot = PhotoFeatureVersionManager.build_snapshot(
+            {
+                "profile_id": 12,
+                "photo_set_version": 3,
+                "analysis_status": "done",
+                "appearance_score_global": 82,
+                "last_error": None,
+            },
+            trigger_reason="analysis_completed",
+        )
+        self.assertEqual(snapshot["profile_id"], 12)
+        self.assertEqual(snapshot["trigger_reason"], "analysis_completed")
+
+    def test_load_profile_photo_feature_versions_delegates_to_profile_service(self):
+        with mock.patch(
+            "match_domain.appearance_features.list_profile_photo_feature_versions",
+            return_value=[{"profile_id": 12, "snapshot_json": {"analysis_status": "done"}}],
+        ) as mocked:
+            rows = load_profile_photo_feature_versions(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+        mocked.assert_called_once()
+        self.assertEqual(rows[0]["profile_id"], 12)
+
+    def test_retry_failed_profile_photo_features_retries_rows_until_done(self):
+        feature_row = {
+            "profile_id": 12,
+            "analysis_status": "failed",
+            "retry_count": 1,
+            "last_error": "timeout",
+        }
+        with (
+            mock.patch(
+                "match_domain.appearance_features.list_profile_photo_feature_rows",
+                return_value=[feature_row],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.upsert_profile_photo_features",
+                side_effect=[
+                    {"profile_id": 12, "analysis_status": "retrying", "retry_count": 2},
+                ],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.refresh_profile_photo_features",
+                return_value={"profile_id": 12, "analysis_status": "done"},
+            ),
+        ):
+            result = retry_failed_profile_photo_features(
+                source_dsn="mysql://persona",
+                max_retry_count=3,
+            )
+        self.assertEqual(result["retried_count"], 1)
 
     def test_global_appearance_scorer_uses_existing_or_fallback_formula(self):
         calibrated = GlobalAppearanceScorer.score({"appearance_score_global": 86})

@@ -18,6 +18,7 @@ from profile_source_refs import resolve_profile_source as _resolve_profile_sourc
 
 DEFAULT_PROFILE_PHOTOS_TABLE = "profile_photos"
 DEFAULT_PROFILE_PHOTO_FEATURES_TABLE = "profile_photo_features"
+DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE = "profile_photo_feature_versions"
 DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
 PROFILE_TABLE_DETECTION_ALIASES = {
@@ -814,6 +815,45 @@ def list_profile_photo_features(
         release_profile_connection(source_dsn, profile_conn)
 
 
+def list_profile_photo_feature_rows(
+    *,
+    source_dsn: str,
+    analysis_statuses: Sequence[str] | None = None,
+    limit: int = 100,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_limit = max(1, min(int(limit or 100), 1000))
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return []
+        clauses: list[str] = []
+        params: list[Any] = []
+        normalized_statuses = [
+            str(item or "").strip()
+            for item in list(analysis_statuses or [])
+            if str(item or "").strip()
+        ]
+        if normalized_statuses:
+            placeholders = ", ".join(["?"] * len(normalized_statuses))
+            clauses.append(f"{schema.quote_mysql_ident('analysis_status')} IN ({placeholders})")
+            params.extend(normalized_statuses)
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            {where_sql}
+            ORDER BY {schema.quote_mysql_ident('updated_at')} ASC, {schema.quote_mysql_ident('profile_id')} ASC
+            LIMIT ?
+            """,
+            tuple(params + [normalized_limit]),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
 def upsert_profile_photo_features(
     *,
     source_dsn: str,
@@ -882,6 +922,117 @@ def upsert_profile_photo_features(
             (normalized_profile_id,),
         ).fetchone()
         return dict(refreshed) if refreshed else {}
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def insert_profile_photo_feature_version(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    snapshot: Mapping[str, Any],
+    photo_set_version: int | None = None,
+    analysis_status: str | None = None,
+    trigger_reason: str | None = None,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        payload = dict(snapshot or {})
+        normalized_version = int(
+            photo_set_version
+            or payload.get("photo_set_version")
+            or 1
+        )
+        normalized_status = str(
+            analysis_status
+            or payload.get("analysis_status")
+            or "pending"
+        ).strip() or "pending"
+        profile_conn.execute(
+            f"""
+            INSERT INTO {schema.quote_mysql_ident(table_name)}
+            (
+              {schema.quote_mysql_ident('profile_id')},
+              {schema.quote_mysql_ident('photo_set_version')},
+              {schema.quote_mysql_ident('analysis_status')},
+              {schema.quote_mysql_ident('trigger_reason')},
+              {schema.quote_mysql_ident('snapshot_json')}
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_profile_id,
+                normalized_version,
+                normalized_status,
+                str(trigger_reason or "").strip() or None,
+                json.dumps(payload, ensure_ascii=False),
+            ),
+        )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            ORDER BY {schema.quote_mysql_ident('id')} DESC
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        result = dict(refreshed) if refreshed else {}
+        snapshot_raw = result.get("snapshot_json")
+        if isinstance(snapshot_raw, str) and snapshot_raw.strip():
+            try:
+                result["snapshot_json"] = json.loads(snapshot_raw)
+            except json.JSONDecodeError:
+                pass
+        return result
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def list_profile_photo_feature_versions(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    limit: int = 20,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        return []
+    normalized_limit = max(1, min(int(limit or 20), 200))
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return []
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            ORDER BY {schema.quote_mysql_ident('created_at')} DESC, {schema.quote_mysql_ident('id')} DESC
+            LIMIT ?
+            """,
+            (normalized_profile_id, normalized_limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            snapshot_raw = payload.get("snapshot_json")
+            if isinstance(snapshot_raw, str) and snapshot_raw.strip():
+                try:
+                    payload["snapshot_json"] = json.loads(snapshot_raw)
+                except json.JSONDecodeError:
+                    pass
+            out.append(payload)
+        return out
     finally:
         release_profile_connection(source_dsn, profile_conn)
 

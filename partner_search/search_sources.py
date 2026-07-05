@@ -292,7 +292,30 @@ def build_mysql_prefilter(
     add_exact("want_children", criteria.get("want_children"), allow_missing=True)
     add_exact("accept_partner_children", criteria.get("accept_partner_children"), allow_missing=True)
     add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)
-    add_in("profile_status", criteria.get("profile_statuses") or ["active"], allow_missing=True)
+    # ====================================================================
+    # 用户状态筛选逻辑（新设计：所有用户都能被搜索，但状态不同排名不同）
+    # ====================================================================
+    # 设计理念：
+    # - 旧逻辑：默认只查active状态的用户（paused/matched/inactive都被过滤掉）
+    # - 新逻辑：默认查所有状态的用户，但通过排序让active用户优先推荐
+    #
+    # 状态优先级（从高到低）：
+    # 1. active（活跃）：优先推荐（rank=2）
+    # 2. paused（暂停）：可以被搜索，但排名靠后（rank=1）
+    # 3. matched（已匹配）：可以被搜索，但排名靠后（rank=1）
+    # 4. inactive/archived（不活跃）：可以被搜索，但排名靠后（rank=0）
+    #
+    # 业务价值：
+    # - paused用户可能是"暂时不找对象"，但仍然可以被搜索和推荐
+    # - 避免因为状态限制导致候选人池过小
+    # - 给用户更多选择（即使对方暂时不活跃，也可以尝试联系）
+    #
+    # 技术实现：
+    # - 默认查所有状态（active + matched + paused + inactive + archived）
+    # - 如果用户明确指定了profile_statuses，则按用户指定的筛选
+    # ====================================================================
+    default_profile_statuses = ["active", "matched", "paused", "inactive", "archived"]
+    add_in("profile_status", criteria.get("profile_statuses") or default_profile_statuses, allow_missing=True)
     add_not_in("source_channel", criteria.get("exclude_source_channels"))
 
     # ====================================================================

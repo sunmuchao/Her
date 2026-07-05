@@ -445,11 +445,18 @@ PHOTO_VERIFICATION_LEVEL_ORDER = {
     "offline_verified": 4,
 }
 
-# 档案状态优先级排序（简化版：只有3个状态）
+# 档案状态优先级排序（完整版：包含所有状态）
+# 设计理念：所有用户都能被搜索，但状态不同排名不同
+# - active：活跃用户，排名最高（优先推荐）
+# - paused：暂停用户，排名中等（可以被搜索，但排名靠后）
+# - matched：已匹配用户，排名中等（可以被搜索，但排名靠后）
+# - inactive/archived：不活跃用户，排名最低（可以被搜索，但排名靠后）
 PROFILE_STATUS_ORDER = {
-    "inactive": 0,  # 最低优先级
-    "matched": 1,
-    "active": 2,    # 最高优先级
+    "inactive": 0,    # 最低优先级（不活跃）
+    "archived": 0,    # 最低优先级（已归档）
+    "matched": 1,     # 中等优先级（已匹配）
+    "paused": 1,      # 中等优先级（暂停状态）← 新增：暂停用户可以被搜索，但排名靠后
+    "active": 2,      # 最高优先级（活跃状态）← 优先推荐
 }
 
 EDUCATION_ORDER = {

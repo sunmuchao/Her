@@ -309,6 +309,82 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertEqual(result["profile_id"], 12)
         self.assertEqual(result["analysis_status"], "done")
 
+    def test_list_profile_photo_feature_rows_filters_by_status(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(
+                    fetchall_result=[
+                        {"profile_id": 12, "analysis_status": "failed", "retry_count": 1},
+                        {"profile_id": 18, "analysis_status": "failed", "retry_count": 2},
+                    ]
+                )
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.list_profile_photo_feature_rows(
+                source_dsn="mysql://persona",
+                analysis_statuses=["failed"],
+                limit=10,
+            )
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["analysis_status"], "failed")
+
+    def test_insert_and_list_profile_photo_feature_versions(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "id": 8,
+                        "profile_id": 12,
+                        "photo_set_version": 3,
+                        "analysis_status": "done",
+                        "trigger_reason": "analysis_completed",
+                        "snapshot_json": '{"analysis_status":"done","appearance_score_global":82}',
+                    }
+                ),
+                _FakeResult(
+                    fetchall_result=[
+                        {
+                            "id": 8,
+                            "profile_id": 12,
+                            "photo_set_version": 3,
+                            "analysis_status": "done",
+                            "trigger_reason": "analysis_completed",
+                            "snapshot_json": '{"analysis_status":"done","appearance_score_global":82}',
+                        }
+                    ]
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            inserted = profile_service_api.insert_profile_photo_feature_version(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                snapshot={"analysis_status": "done", "appearance_score_global": 82},
+                photo_set_version=3,
+                analysis_status="done",
+                trigger_reason="analysis_completed",
+            )
+            listed = profile_service_api.list_profile_photo_feature_versions(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+
+        self.assertEqual(inserted["snapshot_json"]["analysis_status"], "done")
+        self.assertEqual(listed[0]["snapshot_json"]["appearance_score_global"], 82)
+
     def test_list_appearance_feedback_events_decodes_metadata(self):
         fake_conn = _FakeConnection(
             responses=[

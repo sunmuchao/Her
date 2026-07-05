@@ -11,8 +11,11 @@ from typing import Any, Iterable
 
 from profile_service import (
     get_profile,
+    insert_profile_photo_feature_version,
     iter_profile_batches,
     list_appearance_feedback_events,
+    list_profile_photo_feature_rows,
+    list_profile_photo_feature_versions,
     list_profile_photos,
     list_profile_photo_features,
     load_user_appearance_preference,
@@ -24,6 +27,7 @@ from profile_service import (
 
 
 DEFAULT_PROFILE_PHOTO_FEATURES_TABLE = "profile_photo_features"
+DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE = "profile_photo_feature_versions"
 DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
 APPEARANCE_PROFILE_VECTOR_TYPE = "appearance_profile"
@@ -133,6 +137,138 @@ class AppearanceWeightStrategy:
     trust_weight: float
     risk_weight: float
     user_stage: str
+
+
+@dataclass(frozen=True)
+class ProfilePhotoTrustScore:
+    score: float
+    confidence_weight: float
+    risk_level: str
+    badges: list[str]
+
+
+class PhotoAnalysisStateMachine:
+    _ALLOWED_TRANSITIONS = {
+        "pending": {"processing", "failed"},
+        "processing": {"done", "failed", "retrying"},
+        "retrying": {"processing", "failed"},
+        "failed": {"retrying", "processing"},
+        "done": {"processing"},
+    }
+
+    @classmethod
+    def can_transition(cls, current_status: str | None, next_status: str) -> bool:
+        current = str(current_status or "pending").strip().lower() or "pending"
+        target = str(next_status or "").strip().lower()
+        if not target:
+            return False
+        if current == target:
+            return True
+        return target in cls._ALLOWED_TRANSITIONS.get(current, set())
+
+    @classmethod
+    def build_transition_patch(
+        cls,
+        existing_row: dict[str, Any] | None,
+        *,
+        next_status: str,
+        error_message: str | None = None,
+        retry_count: int | None = None,
+        embedding_status: str | None = None,
+    ) -> dict[str, Any]:
+        current_status = str((existing_row or {}).get("analysis_status") or "pending").strip().lower()
+        target_status = str(next_status or "").strip().lower() or current_status or "pending"
+        if not cls.can_transition(current_status, target_status):
+            raise ValueError(f"invalid_photo_analysis_transition:{current_status}->{target_status}")
+        patch: dict[str, Any] = {
+            "analysis_status": target_status,
+            "last_transition_at": datetime.now(),
+        }
+        if embedding_status is not None:
+            patch["embedding_status"] = embedding_status
+        if retry_count is not None:
+            patch["retry_count"] = max(0, int(retry_count))
+        if target_status in {"processing", "done"}:
+            patch["last_error"] = None
+        elif error_message:
+            patch["last_error"] = str(error_message)[:255]
+        return patch
+
+
+class PhotoAnalysisRetryQueue:
+    @staticmethod
+    def current_retry_count(feature_row: dict[str, Any] | None) -> int:
+        return max(0, int(_safe_float((feature_row or {}).get("retry_count"), default=0.0)))
+
+    @classmethod
+    def should_retry(cls, feature_row: dict[str, Any] | None, *, max_retry_count: int = 3) -> bool:
+        return cls.current_retry_count(feature_row) < max(1, int(max_retry_count))
+
+    @classmethod
+    def build_retry_patch(
+        cls,
+        feature_row: dict[str, Any] | None,
+        *,
+        max_retry_count: int = 3,
+    ) -> dict[str, Any]:
+        current_retry_count = cls.current_retry_count(feature_row)
+        if current_retry_count >= max(1, int(max_retry_count)):
+            return PhotoAnalysisStateMachine.build_transition_patch(
+                feature_row,
+                next_status="failed",
+                error_message=(feature_row or {}).get("last_error") or "photo_analysis_retry_exhausted",
+                retry_count=current_retry_count,
+            )
+        return PhotoAnalysisStateMachine.build_transition_patch(
+            feature_row,
+            next_status="retrying",
+            error_message=(feature_row or {}).get("last_error"),
+            retry_count=current_retry_count + 1,
+            embedding_status="pending",
+        )
+
+
+class PhotoFeatureVersionManager:
+    SNAPSHOT_FIELDS = (
+        "profile_id",
+        "photo_set_version",
+        "analysis_status",
+        "embedding_status",
+        "retry_count",
+        "primary_photo_id",
+        "face_score_global",
+        "appearance_score_global",
+        "photo_quality_score",
+        "photo_authenticity_score",
+        "mature_score",
+        "clean_score",
+        "gentle_score",
+        "sunny_score",
+        "stylish_score",
+        "appearance_summary",
+        "appearance_tags_json",
+        "analysis_model",
+        "embedding_model",
+        "last_error",
+        "last_transition_at",
+        "updated_at",
+    )
+
+    @classmethod
+    def build_snapshot(
+        cls,
+        feature_row: dict[str, Any] | None,
+        *,
+        trigger_reason: str,
+    ) -> dict[str, Any]:
+        normalized = dict(feature_row or {})
+        snapshot = {
+            field_name: normalized.get(field_name)
+            for field_name in cls.SNAPSHOT_FIELDS
+            if field_name in normalized
+        }
+        snapshot["trigger_reason"] = str(trigger_reason or "").strip() or "unknown"
+        return snapshot
 
 
 def _clamp_score(value: Any, *, default: float = 50.0) -> float:
@@ -674,6 +810,65 @@ class RiskPenaltyCalculator:
         )
 
 
+class ProfilePhotoTrustScorer:
+    @staticmethod
+    def score(
+        profile_row: dict[str, Any] | None,
+        candidate_photo_features: dict[str, Any] | None,
+        *,
+        risk_flags: Iterable[Any] | None = None,
+    ) -> ProfilePhotoTrustScore:
+        feature_row = dict(candidate_photo_features or {})
+        trust_bonus = compute_trust_bonus_breakdown(profile_row, feature_row)
+        risk_penalty = compute_risk_penalty_breakdown(
+            profile_row,
+            feature_row,
+            risk_flags=risk_flags,
+        )
+        authenticity_score = _clamp_score(feature_row.get("photo_authenticity_score"), default=0.0)
+        quality_score = _clamp_score(feature_row.get("photo_quality_score"), default=0.0)
+        confidence_weight = round(
+            max(0.35, min(1.0, ((quality_score * 0.45) + (authenticity_score * 0.55)) / 100.0)),
+            2,
+        )
+        raw_score = 48.0 + (trust_bonus.total * 6.0) - (risk_penalty.total * 4.5)
+        weighted_score = round(max(0.0, min(100.0, raw_score * confidence_weight)), 2)
+        if weighted_score >= 72:
+            risk_level = "low"
+        elif weighted_score >= 48:
+            risk_level = "medium"
+        else:
+            risk_level = "high"
+
+        badges: list[str] = []
+        verified_level = str(
+            (profile_row or {}).get("verified_level")
+            or (profile_row or {}).get("photo_verification_level")
+            or ""
+        ).strip().lower()
+        if verified_level in {"offline", "id"}:
+            badges.append("认证信息较完整")
+        if authenticity_score >= 75:
+            badges.append("照片真人感较强")
+        elif authenticity_score >= 60:
+            badges.append("照片可信度尚可")
+        if quality_score >= 75:
+            badges.append("资料照质量较稳定")
+        if risk_penalty.reasons and risk_level != "low":
+            badges.append(risk_penalty.reasons[0])
+
+        deduped_badges: list[str] = []
+        for item in badges:
+            if item and item not in deduped_badges:
+                deduped_badges.append(item)
+        return ProfilePhotoTrustScore(
+            score=weighted_score,
+            confidence_weight=confidence_weight,
+            risk_level=risk_level,
+            badges=deduped_badges[:3],
+        )
+
+
 def build_photo_feature_patch(
     *,
     profile_row: dict[str, Any] | None,
@@ -802,6 +997,44 @@ def _save_text_embedding(*, subject_id: int, vector_type: str, text: str) -> dic
         vector_store.close()
 
 
+def _persist_photo_feature_version_snapshot(
+    *,
+    source_dsn: str | None,
+    feature_row: dict[str, Any] | None,
+    trigger_reason: str,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE,
+) -> dict[str, Any] | None:
+    normalized_row = dict(feature_row or {})
+    profile_id = int(normalized_row.get("profile_id") or 0)
+    if not source_dsn or profile_id <= 0:
+        return None
+    snapshot = PhotoFeatureVersionManager.build_snapshot(
+        normalized_row,
+        trigger_reason=trigger_reason,
+    )
+    try:
+        return insert_profile_photo_feature_version(
+            source_dsn=source_dsn,
+            profile_id=profile_id,
+            snapshot=snapshot,
+            photo_set_version=int(normalized_row.get("photo_set_version") or 1),
+            analysis_status=str(normalized_row.get("analysis_status") or "pending"),
+            trigger_reason=trigger_reason,
+            table_name=table_name,
+        )
+    except Exception:
+        return None
+
+
+def _merge_analysis_patch(
+    base_patch: dict[str, Any],
+    transition_patch: dict[str, Any],
+) -> dict[str, Any]:
+    merged = dict(base_patch)
+    merged.update(transition_patch)
+    return merged
+
+
 def refresh_profile_photo_features(
     *,
     source_dsn: str | None,
@@ -815,35 +1048,89 @@ def refresh_profile_photo_features(
     normalized_profile_id = int(profile_id or 0)
     if not source_dsn or normalized_profile_id <= 0:
         return {"saved": False, "error": "source_or_profile_missing"}
-    profile_source = str(profile_source_dsn or source_dsn or "").strip()
-    resolved_profile_source, resolved_table = resolve_profile_source(profile_source, source_table_name)
-    if not resolved_profile_source or not resolved_table:
-        return {"saved": False, "error": "profile_source_unresolved"}
-    profile_row = get_profile(
-        source_dsn=resolved_profile_source,
-        source_table_name=resolved_table,
-        profile_id=normalized_profile_id,
-    )
-    photo_entries = list_profile_photos(
-        source_dsn=resolved_profile_source,
-        source_table_name=resolved_table,
-        profile_id=normalized_profile_id,
-        photos_table_name=photos_table_name,
-    )
     existing_feature_row = load_candidate_photo_features(
         source_dsn=source_dsn,
         profile_ids=[normalized_profile_id],
         table_name=table_name,
     ).get(normalized_profile_id)
-    patch = build_photo_feature_patch(
-        profile_row=profile_row,
-        photo_entries=photo_entries,
-        existing_feature_row=existing_feature_row,
+    processing_patch = PhotoAnalysisStateMachine.build_transition_patch(
+        existing_feature_row,
+        next_status="processing",
+        embedding_status="pending",
+        retry_count=PhotoAnalysisRetryQueue.current_retry_count(existing_feature_row),
+    )
+    processing_row = upsert_profile_photo_features(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        patch=processing_patch,
+        table_name=table_name,
+    )
+    profile_source = str(profile_source_dsn or source_dsn or "").strip()
+    resolved_profile_source, resolved_table = resolve_profile_source(profile_source, source_table_name)
+    if not resolved_profile_source or not resolved_table:
+        failed = upsert_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            patch=PhotoAnalysisStateMachine.build_transition_patch(
+                processing_row,
+                next_status="failed",
+                error_message="profile_source_unresolved",
+                retry_count=PhotoAnalysisRetryQueue.current_retry_count(processing_row),
+            ),
+            table_name=table_name,
+        )
+        _persist_photo_feature_version_snapshot(
+            source_dsn=source_dsn,
+            feature_row=failed,
+            trigger_reason="analysis_failed",
+        )
+        return failed
+    try:
+        profile_row = get_profile(
+            source_dsn=resolved_profile_source,
+            source_table_name=resolved_table,
+            profile_id=normalized_profile_id,
+        )
+        photo_entries = list_profile_photos(
+            source_dsn=resolved_profile_source,
+            source_table_name=resolved_table,
+            profile_id=normalized_profile_id,
+            photos_table_name=photos_table_name,
+        )
+        patch = build_photo_feature_patch(
+            profile_row=profile_row,
+            photo_entries=photo_entries,
+            existing_feature_row=processing_row,
+        )
+    except Exception as exc:
+        failed = upsert_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            patch=PhotoAnalysisStateMachine.build_transition_patch(
+                processing_row,
+                next_status="failed",
+                error_message=f"photo_feature_refresh_failed:{str(exc)[:180]}",
+                retry_count=PhotoAnalysisRetryQueue.current_retry_count(processing_row),
+            ),
+            table_name=table_name,
+        )
+        _persist_photo_feature_version_snapshot(
+            source_dsn=source_dsn,
+            feature_row=failed,
+            trigger_reason="analysis_failed",
+        )
+        return failed
+    transition_patch = PhotoAnalysisStateMachine.build_transition_patch(
+        processing_row,
+        next_status=str(patch.get("analysis_status") or "failed"),
+        error_message=patch.get("last_error"),
+        retry_count=PhotoAnalysisRetryQueue.current_retry_count(processing_row),
+        embedding_status=patch.get("embedding_status"),
     )
     saved = upsert_profile_photo_features(
         source_dsn=source_dsn,
         profile_id=normalized_profile_id,
-        patch=patch,
+        patch=_merge_analysis_patch(patch, transition_patch),
         table_name=table_name,
     )
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
@@ -875,6 +1162,18 @@ def refresh_profile_photo_features(
                     "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
                 },
             )
+    _persist_photo_feature_version_snapshot(
+        source_dsn=source_dsn,
+        feature_row=saved,
+        trigger_reason=(
+            "analysis_completed"
+            if str(saved.get("analysis_status") or "").lower() == "done"
+            and str(saved.get("embedding_status") or "").lower() != "failed"
+            else "embedding_failed"
+            if str(saved.get("embedding_status") or "").lower() == "failed"
+            else "analysis_failed"
+        ),
+    )
     return saved
 
 
@@ -889,6 +1188,22 @@ def refresh_profile_photo_features_from_record(
     normalized_profile_id = int(normalized_record.get("id") or 0)
     if not source_dsn or normalized_profile_id <= 0:
         return {"saved": False, "error": "source_or_profile_missing"}
+    existing_feature_row = load_candidate_photo_features(
+        source_dsn=source_dsn,
+        profile_ids=[normalized_profile_id],
+        table_name=table_name,
+    ).get(normalized_profile_id)
+    processing_row = upsert_profile_photo_features(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        patch=PhotoAnalysisStateMachine.build_transition_patch(
+            existing_feature_row,
+            next_status="processing",
+            embedding_status="pending",
+            retry_count=PhotoAnalysisRetryQueue.current_retry_count(existing_feature_row),
+        ),
+        table_name=table_name,
+    )
     photo_entries: list[dict[str, Any]] = []
     for value in list(normalized_record.get("photo_preview") or []):
         photo_url = str(value or "").strip()
@@ -897,20 +1212,24 @@ def refresh_profile_photo_features_from_record(
     avatar_url = str(normalized_record.get("avatar_url") or "").strip()
     if avatar_url and avatar_url not in {item["photo_source"] for item in photo_entries}:
         photo_entries.insert(0, {"photo_source": avatar_url})
-    existing_feature_row = load_candidate_photo_features(
-        source_dsn=source_dsn,
-        profile_ids=[normalized_profile_id],
-        table_name=table_name,
-    ).get(normalized_profile_id)
     patch = build_photo_feature_patch(
         profile_row=normalized_record,
         photo_entries=photo_entries,
-        existing_feature_row=existing_feature_row,
+        existing_feature_row=processing_row,
     )
     saved = upsert_profile_photo_features(
         source_dsn=source_dsn,
         profile_id=normalized_profile_id,
-        patch=patch,
+        patch=_merge_analysis_patch(
+            patch,
+            PhotoAnalysisStateMachine.build_transition_patch(
+                processing_row,
+                next_status=str(patch.get("analysis_status") or "failed"),
+                error_message=patch.get("last_error"),
+                retry_count=PhotoAnalysisRetryQueue.current_retry_count(processing_row),
+                embedding_status=patch.get("embedding_status"),
+            ),
+        ),
         table_name=table_name,
     )
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
@@ -921,7 +1240,7 @@ def refresh_profile_photo_features_from_record(
                 text=str(saved.get("appearance_summary") or "").strip(),
             )
         except Exception as exc:
-            return upsert_profile_photo_features(
+            saved = upsert_profile_photo_features(
                 source_dsn=source_dsn,
                 profile_id=normalized_profile_id,
                 table_name=table_name,
@@ -931,7 +1250,13 @@ def refresh_profile_photo_features_from_record(
                     "last_error": f"appearance_profile_embedding_failed:{str(exc)[:180]}",
                 },
             )
-        return upsert_profile_photo_features(
+            _persist_photo_feature_version_snapshot(
+                source_dsn=source_dsn,
+                feature_row=saved,
+                trigger_reason="embedding_failed",
+            )
+            return saved
+        saved = upsert_profile_photo_features(
             source_dsn=source_dsn,
             profile_id=normalized_profile_id,
             table_name=table_name,
@@ -941,6 +1266,17 @@ def refresh_profile_photo_features_from_record(
                 "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
             },
         )
+        _persist_photo_feature_version_snapshot(
+            source_dsn=source_dsn,
+            feature_row=saved,
+            trigger_reason="analysis_completed" if embedding_out.get("saved") else "embedding_failed",
+        )
+        return saved
+    _persist_photo_feature_version_snapshot(
+        source_dsn=source_dsn,
+        feature_row=saved,
+        trigger_reason="analysis_completed" if str(saved.get("analysis_status") or "").lower() == "done" else "analysis_failed",
+    )
     return saved
 
 
@@ -1052,6 +1388,103 @@ def load_candidate_photo_features(
         profile_ids=normalized_ids,
         table_name=table_name,
     )
+
+
+def load_profile_photo_feature_versions(
+    *,
+    source_dsn: str | None,
+    profile_id: int,
+    limit: int = 20,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_profile_id = int(profile_id or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return []
+    return list_profile_photo_feature_versions(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        limit=limit,
+        table_name=table_name,
+    )
+
+
+def retry_failed_profile_photo_features(
+    *,
+    source_dsn: str | None,
+    profile_ids: Iterable[int] | None = None,
+    profile_source_dsn: str | None = None,
+    source_table_name: str | None = None,
+    photos_table_name: str | None = None,
+    limit: int = 100,
+    max_retry_count: int = 3,
+    sync_embedding: bool = False,
+    table_name: str = DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+) -> dict[str, Any]:
+    if not source_dsn:
+        return {"saved": False, "error": "source_not_configured"}
+    normalized_ids = [int(item) for item in list(profile_ids or []) if int(item) > 0]
+    if normalized_ids:
+        feature_rows = list(load_candidate_photo_features(
+            source_dsn=source_dsn,
+            profile_ids=normalized_ids,
+            table_name=table_name,
+        ).values())
+    else:
+        feature_rows = list_profile_photo_feature_rows(
+            source_dsn=source_dsn,
+            analysis_statuses=["failed"],
+            limit=limit,
+            table_name=table_name,
+        )
+    retried = 0
+    exhausted = 0
+    failed = 0
+    results: list[dict[str, Any]] = []
+    for feature_row in feature_rows[: max(1, int(limit or 100))]:
+        profile_id = int(feature_row.get("profile_id") or 0)
+        if profile_id <= 0:
+            continue
+        retry_patch = PhotoAnalysisRetryQueue.build_retry_patch(
+            feature_row,
+            max_retry_count=max_retry_count,
+        )
+        queued = upsert_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=profile_id,
+            patch=retry_patch,
+            table_name=table_name,
+        )
+        if str(queued.get("analysis_status") or "").lower() != "retrying":
+            exhausted += 1
+            _persist_photo_feature_version_snapshot(
+                source_dsn=source_dsn,
+                feature_row=queued,
+                trigger_reason="retry_exhausted",
+            )
+            results.append({"profile_id": profile_id, "status": "exhausted", "row": queued})
+            continue
+        refreshed = refresh_profile_photo_features(
+            source_dsn=source_dsn,
+            profile_id=profile_id,
+            profile_source_dsn=profile_source_dsn,
+            source_table_name=source_table_name,
+            photos_table_name=photos_table_name,
+            table_name=table_name,
+            sync_embedding=sync_embedding,
+        )
+        if str(refreshed.get("analysis_status") or "").lower() == "done":
+            retried += 1
+        else:
+            failed += 1
+        results.append({"profile_id": profile_id, "status": str(refreshed.get("analysis_status") or ""), "row": refreshed})
+    return {
+        "saved": True,
+        "processed": len(results),
+        "retried_count": retried,
+        "failed_count": failed,
+        "exhausted_count": exhausted,
+        "results": results,
+    }
 
 
 def load_requester_appearance_preference(
@@ -1535,6 +1968,11 @@ __all__ = [
     "AppearanceWeightStrategy",
     "GlobalAppearanceScorer",
     "PhotoBonusBreakdown",
+    "PhotoAnalysisRetryQueue",
+    "PhotoAnalysisStateMachine",
+    "PhotoFeatureVersionManager",
+    "ProfilePhotoTrustScore",
+    "ProfilePhotoTrustScorer",
     "RiskPenaltyBreakdown",
     "RiskPenaltyCalculator",
     "TrustBonusBreakdown",
@@ -1549,6 +1987,7 @@ __all__ = [
     "compute_risk_penalty_breakdown",
     "compute_trust_bonus_breakdown",
     "load_candidate_photo_features",
+    "load_profile_photo_feature_versions",
     "load_requester_appearance_preference",
     "backfill_user_appearance_preferences",
     "record_feedback_event",
@@ -1556,6 +1995,7 @@ __all__ = [
     "rebuild_user_preference_from_history",
     "refresh_profile_photo_features",
     "refresh_profile_photo_features_from_record",
+    "retry_failed_profile_photo_features",
     "resolve_appearance_weight_strategy",
     "resolve_global_bonus_multiplier",
     "resolve_preference_weight_multiplier",
