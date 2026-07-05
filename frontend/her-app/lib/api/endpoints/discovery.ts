@@ -1,5 +1,28 @@
 import { gatewayJson } from '@/lib/api/client'
+import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoverySessionResponse, DiscoverySessionListResponse } from '@/lib/types/discovery'
+
+export type DiscoveryPhotoSearchMode = 'face' | 'style' | 'celebrity'
+
+export type DiscoveryPhotoSearchResponse = {
+  trace_id?: string
+  task?: {
+    status?: 'succeeded' | 'failed'
+    stage?: string
+  }
+  intent?: {
+    mode?: DiscoveryPhotoSearchMode
+    intent_type?: string
+    query_text?: string
+    celebrity_name?: string | null
+    attribute_filters?: Record<string, unknown>
+  }
+  result_count?: number
+  search_type?: string
+  query_text?: string
+  image_source_present?: boolean
+  results?: CandidatePreview[]
+}
 
 export async function createDiscoverySession(params: { profileId: number }) {
   return gatewayJson<DiscoverySessionResponse>('/v1/discovery/sessions', {
@@ -132,4 +155,27 @@ export async function fetchDiscoverySessionList(params: {
   return gatewayJson<DiscoverySessionListResponse>(
     `/v1/discovery/sessions?profile_id=${encodeURIComponent(params.profileId)}&limit=${encodeURIComponent(limitParam)}`,
   )
+}
+
+export async function searchDiscoveryByPhoto(params: {
+  profileId: number
+  mode: DiscoveryPhotoSearchMode
+  imageSource?: string
+  queryText?: string
+  celebrityName?: string
+  topK?: number
+  attributeFilters?: Record<string, unknown>
+}) {
+  return gatewayJson<DiscoveryPhotoSearchResponse>('/v1/discovery/photo-search', {
+    method: 'POST',
+    body: JSON.stringify({
+      profile_id: params.profileId,
+      mode: params.mode,
+      image_source: params.imageSource,
+      query_text: params.queryText,
+      celebrity_name: params.celebrityName,
+      top_k: params.topK,
+      attribute_filters: params.attributeFilters,
+    }),
+  })
 }

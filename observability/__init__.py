@@ -130,8 +130,11 @@ CHAT_FUNNEL_OUTBOX_DISPATCHED = "outbox_dispatched"
 
 from .photo_search_metrics import (  # noqa: E402
     PHOTO_SEARCH_BUCKETS,
+    build_photo_search_dashboard,
     compare_photo_search_bucket_effect,
     emit_photo_search_event,
+    normalize_photo_search_rollout,
+    photo_search_rollout_from_env,
     resolve_photo_search_experiment_bucket,
     summarize_photo_search_events,
 )
@@ -157,11 +160,14 @@ __all__ = [
     "RECOMMENDATION_FUNNEL_REVIEW_PENDING",
     "alert_signal",
     "audit_event",
+    "build_photo_search_dashboard",
     "compare_photo_search_bucket_effect",
     "emit_photo_search_event",
     "emit_pipeline_record",
     "funnel_stage",
     "metric_gauge",
+    "normalize_photo_search_rollout",
+    "photo_search_rollout_from_env",
     "resolve_photo_search_experiment_bucket",
     "summarize_photo_search_events",
 ]

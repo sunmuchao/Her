@@ -26,6 +26,7 @@ import { useDiscoverySession } from '@/hooks/use-discovery-session'
 import { useVoiceInput } from '@/hooks/use-voice-input'
 import { DemoDataBanner } from './ui/demo-data-banner'
 import { ErrorState } from './ui/error-state'
+import { PhotoSearchPanel } from './photo-search-panel'
 import { XiaoyaRichText } from './ui/xiaoya-rich-text'
 import {
   answerAssessment,
@@ -407,6 +408,7 @@ export default function DiscoverPage({
   const [valuesAuctionCard, setValuesAuctionCard] = useState<ValuesAuctionCard | null>(null)
   const [valuesAuctionBusy, setValuesAuctionBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
+  const currentProfileId = typeof getProfileId() === 'number' ? (getProfileId() as number) : null
 
   const openAssessmentCard = async (
     assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love' = 'mbti_16'
@@ -575,6 +577,11 @@ export default function DiscoverPage({
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 py-4 space-y-4">
+          <PhotoSearchPanel
+            profileId={currentProfileId}
+            onViewCandidate={onViewCandidate}
+          />
+
           {showSessionLoading ? (
             <DiscoverPageSkeleton />
           ) : (

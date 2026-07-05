@@ -142,6 +142,14 @@ from .photo_intent_agent import (
     execute_photo_preference_search,
     translate_intent_to_search_plan,
 )
+from .photo_model_registry import (
+    PHOTO_MODEL_KEYS,
+    build_photo_feature_recompute_plan,
+    build_photo_model_rollout_plan,
+    evaluate_photo_model_candidate,
+    normalize_photo_model_versions,
+    trigger_photo_feature_recompute,
+)
 from her_runtime_context import (
     ActorContext,
     TRACE_ID_HEX_LEN,
@@ -292,12 +300,18 @@ __all__ = [
     "search_profiles_by_reference_image",
     "search_celebrity_face_candidates",
     "PhotoPreferenceIntent",
+    "PHOTO_MODEL_KEYS",
     "build_photo_recommendation_explanation",
+    "build_photo_feature_recompute_plan",
+    "build_photo_model_rollout_plan",
     "detect_photo_preference_intent",
+    "evaluate_photo_model_candidate",
     "execute_photo_preference_search",
+    "normalize_photo_model_versions",
     "search_similar_face_candidates",
     "search_style_candidates",
     "subscribe_photo_analysis_events",
+    "trigger_photo_feature_recompute",
     "translate_intent_to_search_plan",
     "extract_collected_statements",
     "extract_profile_facts",

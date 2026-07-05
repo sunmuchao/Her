@@ -13,8 +13,15 @@ import re
 from typing import Any, Protocol
 
 from discovery_system import DiscoveryServiceError  # type: ignore[import-untyped]
-from match_domain import get_trace_id  # noqa: E402
+from match_domain import (  # noqa: E402
+    PhotoPreferenceIntent,
+    build_photo_recommendation_explanation,
+    detect_photo_preference_intent,
+    execute_photo_preference_search,
+    get_trace_id,
+)
 from match_domain.principal import coalesce_profile_id_param
+from profile_service import list_profiles
 
 from .http_helpers import (  # noqa: E402
     _json_safe,
@@ -24,6 +31,7 @@ from .http_helpers import (  # noqa: E402
     _read_body,
 )
 from .input_validator import validate_id, ValidationError
+from .profile_source_defaults import default_profile_source
 
 
 class DiscoveryGateway(Protocol):
@@ -44,6 +52,214 @@ class DiscoveryGateway(Protocol):
         *,
         field_name: str,
     ) -> None: ...
+
+
+def _photo_search_error(message: str, *, code: str = "bad_request") -> tuple[int, dict[str, Any]]:
+    return 400, {
+        "error": {"code": code, "message": message},
+        "trace_id": get_trace_id(),
+    }
+
+
+def _pick_first_non_empty(row: dict[str, Any], field_names: tuple[str, ...]) -> Any:
+    for field_name in field_names:
+        value = row.get(field_name)
+        if isinstance(value, str):
+            if value.strip():
+                return value.strip()
+            continue
+        if value is not None:
+            return value
+    return None
+
+
+def _pick_profile_image(row: dict[str, Any]) -> str | None:
+    direct = _pick_first_non_empty(
+        row,
+        (
+            "avatar_url",
+            "photo_url",
+            "cover_url",
+            "image_url",
+            "head_img",
+            "headimgurl",
+        ),
+    )
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    return None
+
+
+def _build_photo_search_preview(
+    *,
+    ranked_result: dict[str, Any],
+    profile_row: dict[str, Any] | None,
+    intent: PhotoPreferenceIntent,
+) -> dict[str, Any]:
+    profile = dict(profile_row or {})
+    explanation = build_photo_recommendation_explanation(
+        intent=intent,
+        candidate_row={
+            **profile,
+            **ranked_result,
+        },
+    )
+    reasoning = dict(explanation.get("appearance_reasoning") or {})
+    highlights = [
+        str(item).strip()
+        for item in list(reasoning.get("highlights") or [])
+        if str(item).strip()
+    ]
+    verified_level = str(
+        profile.get("verified_level")
+        or profile.get("profile_verified_level")
+        or ""
+    ).strip()
+    return {
+        "id": str(ranked_result.get("profile_id") or profile.get("id") or ""),
+        "name": str(
+            _pick_first_non_empty(profile, ("display_name", "name", "nickname")) or "候选人"
+        ),
+        "age": _pick_first_non_empty(profile, ("age", "self_age")),
+        "city": _pick_first_non_empty(profile, ("city", "self_city", "current_city")),
+        "occupation": _pick_first_non_empty(profile, ("job", "occupation", "self_job")),
+        "education": _pick_first_non_empty(profile, ("education", "self_education")),
+        "verified": bool(verified_level and verified_level not in {"none", "unknown"}),
+        "matchScore": ranked_result.get("final_score") or ranked_result.get("base_score"),
+        "image": _pick_profile_image(profile),
+        "matchReason": str(reasoning.get("summary") or "").strip() or None,
+        "matchHighlights": highlights[:4],
+        "appearanceSummary": ranked_result.get("appearance_summary"),
+        "photoBonus": ranked_result.get("photo_bonus"),
+        "baseScore": ranked_result.get("base_score"),
+    }
+
+
+def _load_profile_rows_by_ids(
+    *,
+    source_dsn: str,
+    source_table_name: str,
+    profile_ids: list[int],
+) -> dict[int, dict[str, Any]]:
+    normalized_ids = [int(profile_id) for profile_id in profile_ids if int(profile_id) > 0]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join("?" for _ in normalized_ids)
+    rows = list_profiles(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        where_clause=f"`id` IN ({placeholders})",
+        params=tuple(normalized_ids),
+    )
+    return {
+        int(row.get("id")): dict(row)
+        for row in rows
+        if int(row.get("id") or 0) > 0
+    }
+
+
+def rest_discovery_photo_search(
+    gateway: DiscoveryGateway,
+    environ: dict[str, Any],
+    body: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    profile_id = gateway._resolve_int_actor_bound_id(
+        environ,
+        coalesce_profile_id_param(body.get("profile_id"), body.get("requester_id")),
+        field_name="profile_id",
+    )
+    mode = str(body.get("mode") or "").strip().lower()
+    image_source = str(body.get("image_source") or "").strip()
+    query_text = str(body.get("query_text") or "").strip()
+    celebrity_name = str(body.get("celebrity_name") or "").strip()
+    if mode not in {"face", "style", "celebrity", ""}:
+        return _photo_search_error("mode must be one of: face, style, celebrity")
+    if mode in {"face", "style"} and not image_source:
+        return _photo_search_error("image_source is required for face/style photo search")
+    if mode == "celebrity" and not (celebrity_name or query_text):
+        return _photo_search_error("celebrity_name or query_text is required for celebrity search")
+    try:
+        source_dsn, source_table_name = default_profile_source()
+    except ValueError as exc:
+        return _photo_search_error(str(exc), code="profile_source_missing")
+
+    raw_filters = body.get("attribute_filters")
+    attribute_filters = raw_filters if isinstance(raw_filters, dict) else {}
+    if mode == "face":
+        intent = PhotoPreferenceIntent(
+            intent_type="face_similarity_search",
+            mode="face",
+            query_text=query_text or "像这张脸",
+            attribute_filters=attribute_filters,
+            raw_text=query_text or "像这张脸",
+        )
+    elif mode == "celebrity":
+        normalized_name = celebrity_name or query_text
+        intent = PhotoPreferenceIntent(
+            intent_type="celebrity_face_search",
+            mode="celebrity",
+            query_text=normalized_name,
+            celebrity_name=normalized_name,
+            attribute_filters=attribute_filters,
+            raw_text=normalized_name,
+        )
+    elif mode == "style":
+        intent = PhotoPreferenceIntent(
+            intent_type="style_similarity_search",
+            mode="style",
+            query_text=query_text or "这种感觉",
+            attribute_filters=attribute_filters,
+            raw_text=query_text or "这种感觉",
+        )
+    else:
+        intent = detect_photo_preference_intent(query_text or celebrity_name or image_source)
+
+    top_k = max(1, min(int(body.get("top_k") or 12), 30))
+    result = execute_photo_preference_search(
+        source_dsn=source_dsn,
+        requester_user_key=str(profile_id),
+        intent=intent,
+        image_source=image_source or None,
+        requester_profile_id=profile_id,
+        top_k=top_k,
+    )
+    ranked_results = [
+        dict(item)
+        for item in list(result.get("results") or [])
+        if int(item.get("profile_id") or 0) > 0
+    ]
+    profile_map = _load_profile_rows_by_ids(
+        source_dsn=source_dsn,
+        source_table_name=source_table_name,
+        profile_ids=[int(item["profile_id"]) for item in ranked_results],
+    )
+    previews = [
+        _build_photo_search_preview(
+            ranked_result=item,
+            profile_row=profile_map.get(int(item["profile_id"])),
+            intent=intent,
+        )
+        for item in ranked_results
+    ]
+    return 200, {
+        "trace_id": get_trace_id(),
+        "task": {
+            "status": "succeeded" if result.get("saved") else "failed",
+            "stage": "results_ready" if result.get("saved") else "search_failed",
+        },
+        "intent": {
+            "mode": intent.mode,
+            "intent_type": intent.intent_type,
+            "query_text": intent.query_text,
+            "celebrity_name": intent.celebrity_name,
+            "attribute_filters": dict(intent.attribute_filters),
+        },
+        "result_count": len(previews),
+        "search_type": result.get("search_type") or intent.intent_type,
+        "query_text": query_text,
+        "image_source_present": bool(image_source),
+        "results": previews,
+    }
 
 
 def _discovery_error(exc: DiscoveryServiceError) -> tuple[int, dict[str, Any]]:
@@ -269,6 +485,13 @@ def dispatch_discovery_rest(
 
     if path == "/v1/discovery/sessions" and method == "GET":
         return rest_discovery_list_sessions(gateway, environ)
+
+    if path == "/v1/discovery/photo-search" and method == "POST":
+        return rest_discovery_photo_search(
+            gateway,
+            environ,
+            _parse_json_body(_read_body(environ)),
+        )
 
     match = re.fullmatch(r"/v1/discovery/sessions/([^/]+)/turns", path)
     if match and method == "POST":
