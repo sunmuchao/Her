@@ -185,6 +185,29 @@ class AppearanceSearchTests(unittest.TestCase):
         self.assertEqual(len(results), 2)
         self.assertIn("name", results[0])
 
+    def test_celebrity_reference_gallery_extracts_name_candidates(self):
+        candidates = CelebrityReferenceGallery.extract_name_candidates("我想找像迪丽热巴那种感觉")
+        self.assertIn("迪丽热巴", candidates)
+
+    def test_celebrity_reference_gallery_prefers_online_reference_when_available(self):
+        with mock.patch(
+            "match_domain.appearance_search.CelebrityReferenceGallery._online_reference_candidates",
+            return_value=[
+                {
+                    "name": "迪丽热巴",
+                    "source": "https://upload.wikimedia.org/fake/dilireba.jpg",
+                    "provider": "wikipedia_zh",
+                    "similarity": 1.0,
+                }
+            ],
+        ):
+            results = CelebrityReferenceGallery.search_by_name("迪丽热巴", top_k=1)
+            embedding = CelebrityReferenceGallery.reference_embedding_for_name("迪丽热巴")
+
+        self.assertEqual(results[0]["provider"], "wikipedia_zh")
+        self.assertEqual(results[0]["name"], "迪丽热巴")
+        self.assertEqual(len(embedding), 16)
+
 
 if __name__ == "__main__":
     unittest.main()

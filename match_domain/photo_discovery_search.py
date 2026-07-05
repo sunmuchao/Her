@@ -193,6 +193,7 @@ def search_celebrity_face_candidates(
     celebrity_name: str,
     requester_profile_id: int | None = None,
     top_k: int = 20,
+    attribute_filters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     references = CelebrityReferenceGallery.search_by_name(celebrity_name, top_k=1)
     reference_embedding = CelebrityReferenceGallery.reference_embedding_for_name(celebrity_name)
@@ -202,10 +203,22 @@ def search_celebrity_face_candidates(
         top_k=max(top_k * 2, 20),
         exclude_profile_ids=[int(requester_profile_id or 0)] if int(requester_profile_id or 0) > 0 else [],
     )
-    base_scores = {item.profile_id: item.similarity for item in face_results}
+    allowed_ids: set[int] | None = None
+    if attribute_filters:
+        filtered = AttributeFilterSearcher.search(
+            source_dsn=source_dsn,
+            filters=attribute_filters,
+            top_k=max(top_k * 3, 50),
+        )
+        allowed_ids = {int(item.get("profile_id") or 0) for item in filtered if int(item.get("profile_id") or 0) > 0}
+    base_scores = {
+        item.profile_id: item.similarity
+        for item in face_results
+        if allowed_ids is None or item.profile_id in allowed_ids
+    }
     reranked = _rerank_with_photo_bonus(
         source_dsn=source_dsn,
-        profile_ids=[item.profile_id for item in face_results],
+        profile_ids=list(base_scores.keys()),
         base_scores=base_scores,
     )[: max(1, int(top_k or 20))]
     out = {

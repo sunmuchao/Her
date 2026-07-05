@@ -50,27 +50,24 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
         attribute_filters["eye_size_score"] = {"min": 68}
         query_parts.append("眼睛大")
 
-    celebrity_name = None
-    for candidate in CelebrityReferenceGallery.DEFAULT_REFERENCES:
-        if candidate in normalized:
-            celebrity_name = candidate
-            break
+    celebrity_candidates = CelebrityReferenceGallery.extract_name_candidates(normalized)
+    celebrity_name = celebrity_candidates[0] if celebrity_candidates else None
 
+    if any(token in normalized for token in ("像这张脸", "像这个人", "同款脸")):
+        return PhotoPreferenceIntent(
+            intent_type="face_similarity_search",
+            mode="face",
+            query_text=normalized,
+            attribute_filters=attribute_filters,
+            hard_filters={},
+            raw_text=normalized,
+        )
     if celebrity_name:
         return PhotoPreferenceIntent(
             intent_type="celebrity_face_search",
             mode="celebrity",
             query_text=celebrity_name,
             celebrity_name=celebrity_name,
-            attribute_filters=attribute_filters,
-            hard_filters={},
-            raw_text=normalized,
-        )
-    if any(token in normalized for token in ("像这张脸", "像这个人", "找像", "同款脸")):
-        return PhotoPreferenceIntent(
-            intent_type="face_similarity_search",
-            mode="face",
-            query_text=normalized,
             attribute_filters=attribute_filters,
             hard_filters={},
             raw_text=normalized,
@@ -119,6 +116,7 @@ def execute_photo_preference_search(
             celebrity_name=str(intent.celebrity_name or intent.query_text),
             requester_profile_id=requester_profile_id,
             top_k=top_k,
+            attribute_filters=intent.attribute_filters,
         )
     if intent.mode == "face":
         return search_similar_face_candidates(
@@ -138,6 +136,59 @@ def execute_photo_preference_search(
     )
 
 
+def build_photo_recommendation_explanation_prompt(
+    *,
+    intent: PhotoPreferenceIntent,
+    candidate_row: Mapping[str, Any] | None,
+    matched_reasons: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    candidate = dict(candidate_row or {})
+    appearance_summary = str(candidate.get("appearance_summary") or "").strip() or "暂无外貌摘要"
+    candidate_name = str(
+        candidate.get("display_name")
+        or candidate.get("name")
+        or candidate.get("nickname")
+        or "候选人"
+    ).strip() or "候选人"
+    filter_hints = [
+        f"{field_name}:{value}"
+        for field_name, value in sorted(dict(intent.attribute_filters).items())
+    ]
+    hard_filter_hints = [
+        f"{field_name}:{value}"
+        for field_name, value in sorted(dict(intent.hard_filters).items())
+    ]
+    instructions = [
+        "你是发现页的外貌解释助手。",
+        "输出要自然、克制，不能直接断言对方真实长相，只能描述'更贴近用户偏好'。",
+        "优先解释整体感觉，再解释具体命中点，最后再补充基础匹配理由。",
+        "如果是明星参考，只能说'整体神态/氛围接近'，不能说'就是像本人'。",
+    ]
+    user_context = [
+        f"用户意图模式: {intent.mode}",
+        f"用户原始描述: {intent.raw_text or intent.query_text}",
+        f"外貌软条件: {', '.join(filter_hints) or '无'}",
+        f"硬条件: {', '.join(hard_filter_hints) or '无'}",
+        f"候选人: {candidate_name}",
+        f"候选人外貌摘要: {appearance_summary}",
+        f"基础匹配理由: {', '.join(str(item) for item in list(matched_reasons or [])) or '无'}",
+    ]
+    return {
+        "system_prompt": "\n".join(instructions),
+        "user_prompt": "\n".join(user_context),
+        "prompt_version": "photo-explanation-v1",
+        "facts": {
+            "intent_mode": intent.mode,
+            "intent_type": intent.intent_type,
+            "candidate_name": candidate_name,
+            "appearance_summary": appearance_summary,
+            "attribute_filters": dict(intent.attribute_filters),
+            "hard_filters": dict(intent.hard_filters),
+            "matched_reasons": list(matched_reasons or []),
+        },
+    }
+
+
 def build_photo_recommendation_explanation(
     *,
     intent: PhotoPreferenceIntent,
@@ -145,6 +196,11 @@ def build_photo_recommendation_explanation(
     matched_reasons: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     candidate = dict(candidate_row or {})
+    prompt_payload = build_photo_recommendation_explanation_prompt(
+        intent=intent,
+        candidate_row=candidate,
+        matched_reasons=matched_reasons,
+    )
     appearance_summary = str(candidate.get("appearance_summary") or "").strip()
     highlights: list[str] = []
     if intent.celebrity_name:
@@ -167,11 +223,13 @@ def build_photo_recommendation_explanation(
     )
     payload["intent_type"] = intent.intent_type
     payload["mode"] = intent.mode
+    payload["prompt"] = prompt_payload
     return payload
 
 
 __all__ = [
     "PhotoPreferenceIntent",
+    "build_photo_recommendation_explanation_prompt",
     "build_photo_recommendation_explanation",
     "detect_photo_preference_intent",
     "execute_photo_preference_search",

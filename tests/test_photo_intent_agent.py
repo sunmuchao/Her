@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from match_domain.photo_intent_agent import (
+    build_photo_recommendation_explanation_prompt,
     build_photo_recommendation_explanation,
     detect_photo_preference_intent,
     execute_photo_preference_search,
@@ -22,6 +23,12 @@ class PhotoIntentAgentTests(unittest.TestCase):
         intent = detect_photo_preference_intent("找像刘亦菲那种感觉")
         self.assertEqual(intent.mode, "celebrity")
         self.assertEqual(intent.celebrity_name, "刘亦菲")
+
+    def test_detect_photo_preference_intent_for_dynamic_celebrity_name(self):
+        intent = detect_photo_preference_intent("想找像迪丽热巴那种，眼睛大一点")
+        self.assertEqual(intent.mode, "celebrity")
+        self.assertEqual(intent.celebrity_name, "迪丽热巴")
+        self.assertIn("eye_size_score", intent.attribute_filters)
 
     def test_translate_intent_to_search_plan(self):
         intent = detect_photo_preference_intent("成熟型，眼睛大一点")
@@ -60,6 +67,7 @@ class PhotoIntentAgentTests(unittest.TestCase):
         mocked_celeb.assert_called_once()
         mocked_face.assert_called_once()
         mocked_style.assert_called_once()
+        self.assertIn("attribute_filters", mocked_celeb.call_args.kwargs)
         self.assertEqual(celeb_result["mode"], "celebrity")
         self.assertEqual(face_result["mode"], "face")
         self.assertEqual(style_result["mode"], "style")
@@ -73,6 +81,19 @@ class PhotoIntentAgentTests(unittest.TestCase):
         )
         self.assertEqual(payload["mode"], "style")
         self.assertIn("同城", payload["highlights"])
+        self.assertEqual(payload["prompt"]["prompt_version"], "photo-explanation-v1")
+
+    def test_build_photo_recommendation_explanation_prompt(self):
+        intent = detect_photo_preference_intent("想找像迪丽热巴那种，眼睛大一点")
+        prompt = build_photo_recommendation_explanation_prompt(
+            intent=intent,
+            candidate_row={"display_name": "周宁", "appearance_summary": "明艳大气，眼部存在感强。"},
+            matched_reasons=["同城"],
+        )
+        self.assertIn("外貌解释助手", prompt["system_prompt"])
+        self.assertIn("周宁", prompt["user_prompt"])
+        self.assertEqual(prompt["facts"]["candidate_name"], "周宁")
+        self.assertIn("eye_size_score", prompt["facts"]["attribute_filters"])
 
 
 if __name__ == "__main__":

@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
+import os
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 from profile_service import list_profile_photo_feature_rows
 
@@ -281,10 +287,115 @@ class CelebrityReferenceGallery:
         "田曦薇": "celebrity|tianxiwei|official",
         "周也": "celebrity|zhouye|official",
     }
+    _NAME_PATTERNS = (
+        re.compile(r"(?:像|找像|类似|同款|明星脸)\s*([\u4e00-\u9fffA-Za-z·]{2,12})"),
+        re.compile(r"([\u4e00-\u9fffA-Za-z·]{2,12})(?:那种|同款|风格|脸)"),
+    )
+    _NAME_SUFFIXES = ("那种感觉", "这种感觉", "那种", "这种", "风格", "同款", "脸")
+    _GENERIC_NAMES = {"这张", "这张脸", "这个人", "这种感觉", "那种感觉", "照片", "图片"}
+
+    @classmethod
+    def extract_name_candidates(cls, text: str) -> list[str]:
+        normalized = str(text or "").strip()
+        if not normalized:
+            return []
+        candidates: list[str] = []
+        for pattern in cls._NAME_PATTERNS:
+            for match in pattern.findall(normalized):
+                value = str(match or "").strip(" ，。！？,.!?、")
+                for suffix in cls._NAME_SUFFIXES:
+                    if value.endswith(suffix):
+                        value = value[: -len(suffix)].strip()
+                for prefix in ("我想找像", "想找像", "找像", "像"):
+                    if value.startswith(prefix):
+                        value = value[len(prefix):].strip()
+                if len(value) < 2:
+                    continue
+                if value in cls._GENERIC_NAMES:
+                    continue
+                if value not in candidates:
+                    candidates.append(value)
+        for celebrity_name in cls.DEFAULT_REFERENCES:
+            if celebrity_name in normalized and celebrity_name not in candidates:
+                candidates.insert(0, celebrity_name)
+        return candidates
+
+    @classmethod
+    def _online_lookup_enabled(cls) -> bool:
+        raw = str(os.environ.get("HER_ENABLE_ONLINE_CELEBRITY_REFERENCES", "1")).strip().lower()
+        return raw not in {"0", "false", "off", "no"}
+
+    @classmethod
+    def _http_json(cls, url: str, *, timeout: float = 2.5) -> dict[str, Any] | list[Any] | None:
+        request = urllib_request.Request(
+            url,
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "HerPhotoSearchBot/1.0",
+            },
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except (urllib_error.URLError, urllib_error.HTTPError, TimeoutError, json.JSONDecodeError, ValueError):
+            return None
+
+    @classmethod
+    def _summary_candidates_for_title(cls, title: str, *, lang: str) -> list[dict[str, Any]]:
+        encoded = urllib_parse.quote(str(title or "").strip())
+        if not encoded:
+            return []
+        payload = cls._http_json(
+            f"https://{lang}.wikipedia.org/api/rest_v1/page/summary/{encoded}"
+        )
+        if not isinstance(payload, Mapping):
+            return []
+        image_url = (
+            str((payload.get("originalimage") or {}).get("source") or "").strip()
+            or str((payload.get("thumbnail") or {}).get("source") or "").strip()
+        )
+        if not image_url:
+            return []
+        return [{
+            "name": str(payload.get("title") or title).strip() or str(title).strip(),
+            "source": image_url,
+            "summary": str(payload.get("extract") or "").strip() or None,
+            "provider": f"wikipedia_{lang}",
+            "similarity": 1.0,
+        }]
+
+    @classmethod
+    def _online_reference_candidates(cls, name: str, *, top_k: int = 3) -> list[dict[str, Any]]:
+        if not cls._online_lookup_enabled():
+            return []
+        normalized_name = str(name or "").strip()
+        if not normalized_name:
+            return []
+        candidates: list[dict[str, Any]] = []
+        for lang in ("zh", "en"):
+            candidates.extend(cls._summary_candidates_for_title(normalized_name, lang=lang))
+            if candidates:
+                break
+        if candidates:
+            return candidates[: max(1, int(top_k or 3))]
+        search_payload = cls._http_json(
+            "https://zh.wikipedia.org/w/api.php?action=opensearch"
+            f"&search={urllib_parse.quote(normalized_name)}&limit={max(1, int(top_k or 3))}"
+            "&namespace=0&format=json"
+        )
+        if isinstance(search_payload, list) and len(search_payload) >= 2:
+            for title in list(search_payload[1] or []):
+                candidates.extend(cls._summary_candidates_for_title(str(title), lang="zh"))
+                if len(candidates) >= max(1, int(top_k or 3)):
+                    break
+        return candidates[: max(1, int(top_k or 3))]
 
     @classmethod
     def search_by_name(cls, name: str, *, top_k: int = 3) -> list[dict[str, Any]]:
         normalized_name = str(name or "").strip()
+        online_results = cls._online_reference_candidates(normalized_name, top_k=top_k)
+        if online_results:
+            return online_results
         if normalized_name in cls.DEFAULT_REFERENCES:
             exact_source = cls.DEFAULT_REFERENCES[normalized_name]
             remaining = [
@@ -306,7 +417,11 @@ class CelebrityReferenceGallery:
 
     @classmethod
     def reference_embedding_for_name(cls, name: str) -> list[float]:
-        source = cls.DEFAULT_REFERENCES.get(str(name or "").strip(), str(name or "").strip())
+        resolved = cls.search_by_name(name, top_k=1)
+        source = (
+            str(resolved[0].get("source") or "").strip()
+            if resolved else cls.DEFAULT_REFERENCES.get(str(name or "").strip(), str(name or "").strip())
+        )
         return _stable_embedding_from_text(source, dims=16, salt="celebrity_face_reference")
 
 
