@@ -242,14 +242,24 @@ def _append_photo_search_to_discovery_session(
         else (
             "我按这张脸帮你找了一轮。"
             if mode == "face"
-            else "我按这张图的整体感觉帮你找了一轮。"
+            else (
+                "我先综合这张图里的脸和整体感觉帮你找了一轮。"
+                if mode == "hybrid"
+                else "我按这张图的整体感觉帮你找了一轮。"
+            )
         )
     )
     timeline = list(session.view.get("timeline") or [])
     user_text = (
         f"像 {query_text}"
         if mode == "celebrity"
-        else query_text or ("找像这张脸" if mode == "face" else "找这种感觉")
+        else query_text or (
+            "找像这张脸"
+            if mode == "face"
+            else "帮我看看这张图适合找什么人"
+            if mode == "hybrid"
+            else "找这种感觉"
+        )
     )
     user_metadata = None
     if image_source:
@@ -281,7 +291,7 @@ def _append_photo_search_to_discovery_session(
         title = (
             f"像 {query_text}"
             if mode == "celebrity"
-            else ("像这张脸" if mode == "face" else "这种感觉")
+            else ("像这张脸" if mode == "face" else "自动理解这张图" if mode == "hybrid" else "这种感觉")
         )
         timeline.append(
             result_group(
@@ -339,12 +349,14 @@ def rest_discovery_photo_search(
     query_text = str(body.get("query_text") or "").strip()
     celebrity_name = str(body.get("celebrity_name") or "").strip()
     session_id = str(body.get("session_id") or "").strip()
-    if mode not in {"face", "style", "celebrity", ""}:
-        return _photo_search_error("mode must be one of: face, style, celebrity")
+    if mode not in {"face", "style", "celebrity", "auto", ""}:
+        return _photo_search_error("mode must be one of: auto, face, style, celebrity")
     if mode in {"face", "style"} and not image_source:
         return _photo_search_error("image_source is required for face/style photo search")
     if mode == "celebrity" and not (celebrity_name or query_text):
         return _photo_search_error("celebrity_name or query_text is required for celebrity search")
+    if mode in {"auto", ""} and not (image_source or query_text or celebrity_name):
+        return _photo_search_error("image_source or query_text is required for auto photo search")
     try:
         source_dsn, source_table_name = default_profile_source()
     except ValueError as exc:
@@ -383,7 +395,10 @@ def rest_discovery_photo_search(
             raw_text=query_text or "这种感觉",
         )
     else:
-        intent = detect_photo_preference_intent(query_text or celebrity_name or image_source)
+        intent = detect_photo_preference_intent(
+            query_text or celebrity_name,
+            image_source=image_source or None,
+        )
         intent = PhotoPreferenceIntent(
             intent_type=intent.intent_type,
             mode=intent.mode,
@@ -392,6 +407,9 @@ def rest_discovery_photo_search(
             hard_filters=hard_filters,
             celebrity_name=intent.celebrity_name,
             raw_text=intent.raw_text,
+            confidence=intent.confidence,
+            routing_reasons=intent.routing_reasons,
+            image_understanding=intent.image_understanding,
         )
 
     top_k = max(1, min(int(body.get("top_k") or 12), 30))
@@ -458,6 +476,9 @@ def rest_discovery_photo_search(
             "celebrity_name": intent.celebrity_name,
             "attribute_filters": dict(intent.attribute_filters),
             "hard_filters": dict(intent.hard_filters),
+            "confidence": round(float(intent.confidence or 0.0), 4),
+            "routing_reasons": list(intent.routing_reasons),
+            "image_understanding": dict(intent.image_understanding),
         },
         "result_count": len(previews),
         "search_type": result.get("search_type") or intent.intent_type,

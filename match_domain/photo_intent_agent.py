@@ -9,6 +9,7 @@ from .appearance_features import build_match_explanation_payload
 from .appearance_search import CelebrityReferenceGallery
 from .photo_discovery_search import (
     search_celebrity_face_candidates,
+    search_hybrid_photo_candidates,
     search_similar_face_candidates,
     search_style_candidates,
 )
@@ -23,13 +24,53 @@ class PhotoPreferenceIntent:
     hard_filters: dict[str, Any] = field(default_factory=dict)
     celebrity_name: str | None = None
     raw_text: str = ""
+    confidence: float = 0.0
+    routing_reasons: list[str] = field(default_factory=list)
+    image_understanding: dict[str, Any] = field(default_factory=dict)
 
 
-def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
+def _infer_image_understanding(
+    *,
+    text: str,
+    image_source: str | None = None,
+) -> dict[str, Any]:
+    normalized = str(text or "").strip()
+    lowered = normalized.lower()
+    has_image = bool(str(image_source or "").strip())
+    likely_reference_role = "text_only"
+    if has_image and not normalized:
+        likely_reference_role = "image_reference_unknown_goal"
+    elif has_image and any(token in normalized for token in ("像这张脸", "五官", "脸型", "长相", "本人")):
+        likely_reference_role = "face_reference"
+    elif has_image and any(token in normalized for token in ("感觉", "风格", "气质", "穿搭", "氛围", "类型")):
+        likely_reference_role = "style_reference"
+    elif has_image:
+        likely_reference_role = "image_reference_need_agent_judgement"
+    text_signals = {
+        "mentions_face": any(token in normalized for token in ("脸", "五官", "脸型", "长相")),
+        "mentions_style": any(token in normalized for token in ("感觉", "风格", "气质", "氛围", "穿搭", "类型")),
+        "mentions_celebrity": bool(CelebrityReferenceGallery.extract_name_candidates(normalized)),
+        "mentions_comparison": any(token in lowered for token in ("像", "like", "similar")),
+    }
+    return {
+        "has_image": has_image,
+        "likely_reference_role": likely_reference_role,
+        "text_signals": text_signals,
+    }
+
+
+def detect_photo_preference_intent(
+    text: str,
+    *,
+    image_source: str | None = None,
+) -> PhotoPreferenceIntent:
     normalized = str(text or "").strip()
     lowered = normalized.lower()
     attribute_filters: dict[str, Any] = {}
     query_parts: list[str] = []
+    routing_reasons: list[str] = []
+    image_understanding = _infer_image_understanding(text=normalized, image_source=image_source)
+    has_image = bool(str(image_source or "").strip())
 
     if "阳光" in normalized or "sunny" in lowered:
         attribute_filters["sunny_score"] = {"min": 65}
@@ -52,8 +93,10 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
 
     celebrity_candidates = CelebrityReferenceGallery.extract_name_candidates(normalized)
     celebrity_name = celebrity_candidates[0] if celebrity_candidates else None
-
+    if celebrity_name:
+        routing_reasons.append("text_contains_celebrity_reference")
     if any(token in normalized for token in ("像这张脸", "像这个人", "同款脸")):
+        routing_reasons.append("text_explicitly_requests_face_match")
         return PhotoPreferenceIntent(
             intent_type="face_similarity_search",
             mode="face",
@@ -61,8 +104,11 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
             attribute_filters=attribute_filters,
             hard_filters={},
             raw_text=normalized,
+            confidence=0.96,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
         )
-    if celebrity_name:
+    if celebrity_name and not has_image:
         return PhotoPreferenceIntent(
             intent_type="celebrity_face_search",
             mode="celebrity",
@@ -71,7 +117,67 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
             attribute_filters=attribute_filters,
             hard_filters={},
             raw_text=normalized,
+            confidence=0.94,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
         )
+    if celebrity_name and has_image:
+        routing_reasons.append("image_plus_celebrity_text_needs_hybrid_reference")
+        return PhotoPreferenceIntent(
+            intent_type="hybrid_photo_search",
+            mode="hybrid",
+            query_text=normalized or celebrity_name,
+            celebrity_name=celebrity_name,
+            attribute_filters=attribute_filters,
+            hard_filters={},
+            raw_text=normalized,
+            confidence=0.86,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
+        )
+
+    explicit_face_request = any(token in normalized for token in ("五官", "脸型", "长相", "像本人"))
+    explicit_style_request = any(token in normalized for token in ("感觉", "风格", "气质", "氛围", "穿搭", "类型"))
+    if explicit_face_request and not explicit_style_request:
+        routing_reasons.append("text_emphasizes_face_features")
+        return PhotoPreferenceIntent(
+            intent_type="face_similarity_search",
+            mode="face",
+            query_text=normalized,
+            attribute_filters=attribute_filters,
+            hard_filters={},
+            raw_text=normalized,
+            confidence=0.88,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
+        )
+    if has_image and (explicit_style_request or attribute_filters):
+        routing_reasons.append("image_with_style_or_attribute_constraints")
+        return PhotoPreferenceIntent(
+            intent_type="style_similarity_search" if explicit_style_request else "hybrid_photo_search",
+            mode="style" if explicit_style_request else "hybrid",
+            query_text=" ".join(query_parts) or normalized or "自然 顺眼",
+            attribute_filters=attribute_filters,
+            hard_filters={},
+            raw_text=normalized,
+            confidence=0.78 if explicit_style_request else 0.7,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
+        )
+    if has_image:
+        routing_reasons.append("image_attached_without_explicit_mode_use_agent_auto_judgement")
+        return PhotoPreferenceIntent(
+            intent_type="hybrid_photo_search",
+            mode="hybrid",
+            query_text=normalized or "自动理解这张图",
+            attribute_filters=attribute_filters,
+            hard_filters={},
+            raw_text=normalized,
+            confidence=0.62,
+            routing_reasons=routing_reasons,
+            image_understanding=image_understanding,
+        )
+    routing_reasons.append("fallback_to_style_text_search")
     return PhotoPreferenceIntent(
         intent_type="style_similarity_search",
         mode="style",
@@ -79,6 +185,9 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
         attribute_filters=attribute_filters,
         hard_filters={},
         raw_text=normalized,
+        confidence=0.58 if normalized else 0.4,
+        routing_reasons=routing_reasons,
+        image_understanding=image_understanding,
     )
 
 
@@ -89,6 +198,9 @@ def translate_intent_to_search_plan(intent: PhotoPreferenceIntent) -> dict[str, 
         "query_text": intent.query_text,
         "attribute_filters": dict(intent.attribute_filters),
         "hard_filters": dict(intent.hard_filters),
+        "confidence": round(float(intent.confidence or 0.0), 4),
+        "routing_reasons": list(intent.routing_reasons),
+        "image_understanding": dict(intent.image_understanding),
     }
     if intent.celebrity_name:
         payload["celebrity_name"] = intent.celebrity_name
@@ -96,6 +208,8 @@ def translate_intent_to_search_plan(intent: PhotoPreferenceIntent) -> dict[str, 
         payload["search_strategy"] = "appearance_vector_plus_tags"
     elif intent.mode == "celebrity":
         payload["search_strategy"] = "celebrity_reference_face"
+    elif intent.mode == "hybrid":
+        payload["search_strategy"] = "face_plus_style_hybrid"
     else:
         payload["search_strategy"] = "reference_face_similarity"
     return payload
@@ -117,6 +231,16 @@ def execute_photo_preference_search(
             requester_profile_id=requester_profile_id,
             top_k=top_k,
             attribute_filters=intent.attribute_filters,
+        )
+    if intent.mode == "hybrid":
+        return search_hybrid_photo_candidates(
+            source_dsn=source_dsn,
+            requester_user_key=requester_user_key,
+            image_source=str(image_source or "").strip() or intent.query_text,
+            requester_profile_id=requester_profile_id,
+            top_k=top_k,
+            attribute_filters=intent.attribute_filters,
+            query_text=intent.query_text,
         )
     if intent.mode == "face":
         return search_similar_face_candidates(
@@ -167,6 +291,8 @@ def build_photo_recommendation_explanation_prompt(
     user_context = [
         f"用户意图模式: {intent.mode}",
         f"用户原始描述: {intent.raw_text or intent.query_text}",
+        f"Agent 置信度: {round(float(intent.confidence or 0.0), 3)}",
+        f"Agent 路由原因: {', '.join(intent.routing_reasons) or '无'}",
         f"外貌软条件: {', '.join(filter_hints) or '无'}",
         f"硬条件: {', '.join(hard_filter_hints) or '无'}",
         f"候选人: {candidate_name}",
@@ -184,6 +310,9 @@ def build_photo_recommendation_explanation_prompt(
             "appearance_summary": appearance_summary,
             "attribute_filters": dict(intent.attribute_filters),
             "hard_filters": dict(intent.hard_filters),
+            "confidence": round(float(intent.confidence or 0.0), 4),
+            "routing_reasons": list(intent.routing_reasons),
+            "image_understanding": dict(intent.image_understanding),
             "matched_reasons": list(matched_reasons or []),
         },
     }

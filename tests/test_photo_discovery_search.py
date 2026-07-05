@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from match_domain.photo_discovery_search import (
+    search_hybrid_photo_candidates,
     search_celebrity_face_candidates,
     search_similar_face_candidates,
     search_style_candidates,
@@ -87,6 +88,41 @@ class PhotoDiscoverySearchTests(unittest.TestCase):
         self.assertTrue(result["saved"])
         self.assertEqual(result["celebrity_reference"]["name"], "刘亦菲")
         self.assertEqual(result["results"][0]["profile_id"], 12)
+
+    def test_search_hybrid_photo_candidates_merges_face_and_style(self):
+        with (
+            mock.patch(
+                "match_domain.photo_discovery_search.search_similar_face_candidates",
+                return_value={
+                    "saved": True,
+                    "results": [
+                        {"profile_id": 12, "final_score": 1.31, "base_score": 0.91, "photo_bonus": 12.0},
+                    ],
+                },
+            ),
+            mock.patch(
+                "match_domain.photo_discovery_search.search_style_candidates",
+                return_value={
+                    "saved": True,
+                    "query_text": "清爽自然",
+                    "results": [
+                        {"profile_id": 12, "final_score": 1.24, "base_score": 0.82, "photo_bonus": 10.0},
+                        {"profile_id": 18, "final_score": 1.11, "base_score": 0.76, "photo_bonus": 9.0},
+                    ],
+                },
+            ),
+        ):
+            result = search_hybrid_photo_candidates(
+                source_dsn="mysql://persona",
+                requester_user_key="user-1",
+                image_source="https://img.her.local/reference.jpg",
+                query_text="我喜欢这种感觉",
+            )
+
+        self.assertTrue(result["saved"])
+        self.assertEqual(result["search_type"], "hybrid_photo_similarity")
+        self.assertEqual(result["results"][0]["profile_id"], 12)
+        self.assertIn("face_similarity", result["results"][0]["search_sources"])
 
 
 if __name__ == "__main__":

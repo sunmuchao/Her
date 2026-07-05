@@ -28,6 +28,7 @@ from gateway.discovery_routes import (
     dispatch_discovery_rest,
     _discovery_error,
 )
+from match_domain.photo_intent_agent import PhotoPreferenceIntent
 from discovery_system.service import DiscoveryService, DiscoverySessionNotFoundError
 from discovery_system.storage import InMemoryDiscoveryStorage
 from discovery_system.agent_runtime import (
@@ -421,6 +422,71 @@ class TestDiscoveryPhotoSearchAPI(unittest.TestCase):
         self.assertEqual(response["intent"]["mode"], "face")
         self.assertEqual(response["results"][0]["name"], "周宁")
         self.assertTrue(response["results"][0]["verified"])
+
+    def test_photo_search_auto_mode_uses_agent_detected_intent(self):
+        with (
+            mock.patch(
+                "gateway.discovery_routes.default_profile_source",
+                return_value=("mysql://example/her", "profiles"),
+            ),
+            mock.patch(
+                "gateway.discovery_routes.detect_photo_preference_intent",
+                return_value=PhotoPreferenceIntent(
+                    intent_type="hybrid_photo_search",
+                    mode="hybrid",
+                    query_text="帮我看看这张图适合找什么人",
+                    attribute_filters={},
+                    hard_filters={},
+                    raw_text="帮我看看这张图适合找什么人",
+                    confidence=0.72,
+                    routing_reasons=["image_attached_without_explicit_mode_use_agent_auto_judgement"],
+                    image_understanding={"has_image": True},
+                ),
+            ),
+            mock.patch(
+                "gateway.discovery_routes.execute_photo_preference_search",
+                return_value={
+                    "saved": True,
+                    "search_type": "hybrid_photo_similarity",
+                    "results": [
+                        {
+                            "profile_id": 20001,
+                            "final_score": 1.52,
+                            "appearance_summary": "笑起来很自然",
+                        }
+                    ],
+                },
+            ),
+            mock.patch(
+                "gateway.discovery_routes.list_profiles",
+                return_value=[
+                    {
+                        "id": 20001,
+                        "display_name": "周宁",
+                        "age": 28,
+                        "city": "杭州",
+                        "avatar_url": "https://cdn.her.local/profiles/20001/avatar.jpg",
+                        "verified_level": "offline",
+                    }
+                ],
+            ),
+        ):
+            status, response = rest_discovery_photo_search(
+                self.gateway,
+                {},
+                {
+                    "profile_id": 10001,
+                    "mode": "auto",
+                    "image_source": "data:image/jpeg;base64,abc",
+                    "query_text": "帮我看看这张图适合找什么人",
+                },
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(response["intent"]["mode"], "hybrid")
+        self.assertEqual(response["search_type"], "hybrid_photo_similarity")
+        self.assertGreater(response["intent"]["confidence"], 0.7)
+        self.assertIn("routing_reasons", response["intent"])
 
     def test_photo_search_applies_hard_filters(self):
         with (

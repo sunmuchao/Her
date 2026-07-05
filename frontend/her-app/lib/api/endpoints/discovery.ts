@@ -2,7 +2,7 @@ import { gatewayJson } from '@/lib/api/client'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import type { DiscoverySessionResponse, DiscoverySessionListResponse } from '@/lib/types/discovery'
 
-export type DiscoveryPhotoSearchMode = 'face' | 'style' | 'celebrity'
+export type DiscoveryPhotoSearchMode = 'auto' | 'face' | 'style' | 'celebrity' | 'hybrid'
 
 export type DiscoveryPhotoSearchResponse = {
   trace_id?: string
@@ -16,6 +16,10 @@ export type DiscoveryPhotoSearchResponse = {
     query_text?: string
     celebrity_name?: string | null
     attribute_filters?: Record<string, unknown>
+    hard_filters?: Record<string, unknown>
+    confidence?: number
+    routing_reasons?: string[]
+    image_understanding?: Record<string, unknown>
   }
   result_count?: number
   search_type?: string
@@ -165,7 +169,7 @@ export async function fetchDiscoverySessionList(params: {
 
 export async function searchDiscoveryByPhoto(params: {
   profileId: number
-  mode: DiscoveryPhotoSearchMode
+  mode?: DiscoveryPhotoSearchMode
   sessionId?: string
   imageSource?: string
   queryText?: string

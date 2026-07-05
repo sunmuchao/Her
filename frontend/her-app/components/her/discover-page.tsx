@@ -445,7 +445,7 @@ export default function DiscoverPage({
   const [showActionMenu, setShowActionMenu] = useState(false)
   const [showPhotoModes, setShowPhotoModes] = useState(false)
   const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
-  const [photoSearchMode, setPhotoSearchMode] = useState<DiscoveryPhotoSearchMode>('face')
+  const [photoSearchMode, setPhotoSearchMode] = useState<DiscoveryPhotoSearchMode>('auto')
   const [photoSearchCaption, setPhotoSearchCaption] = useState('')
   const [photoAttachmentSource, setPhotoAttachmentSource] = useState('')
   const [photoAttachmentPreview, setPhotoAttachmentPreview] = useState('')
@@ -468,18 +468,22 @@ export default function DiscoverPage({
     setPhotoSearchCaption('')
     setIsPhotoSearchSending(false)
     setShowPhotoModes(false)
-    setPhotoSearchMode('face')
+    setPhotoSearchMode('auto')
   }
 
   const photoModeLabel =
-    photoSearchMode === 'face'
+    photoSearchMode === 'auto'
+      ? '让小雅自己判断'
+      : photoSearchMode === 'face'
       ? '找像这张脸'
       : photoSearchMode === 'style'
         ? '找这种感觉'
         : '像某明星'
 
   const photoComposerPlaceholder =
-    photoSearchMode === 'face'
+    photoSearchMode === 'auto'
+      ? '可以补一句，比如 我喜欢这种感觉 / 帮我找像这张的'
+      : photoSearchMode === 'face'
       ? '再补一句，比如 笑起来像这张'
       : photoSearchMode === 'style'
         ? '再补一句，比如 清爽、自然、温柔'
@@ -577,7 +581,7 @@ export default function DiscoverPage({
       const compressed = await compressPhotoSearchImage(file)
       setPhotoAttachmentSource(compressed)
       setPhotoAttachmentPreview(compressed)
-      setPhotoSearchMode((prev) => (prev === 'celebrity' ? 'face' : prev))
+      setPhotoSearchMode((prev) => (prev === 'celebrity' ? 'auto' : prev))
       setShowPhotoModes(true)
     } catch (error) {
       notifyError(error, '图片处理失败')
@@ -610,7 +614,7 @@ export default function DiscoverPage({
       content:
         photoSearchMode === 'celebrity'
           ? `想找像 ${normalizedCaption} 的人`
-          : normalizedCaption || photoModeLabel,
+          : normalizedCaption || (photoSearchMode === 'auto' ? '帮我看看这张图适合找什么人' : photoModeLabel),
       timestamp: '刚刚',
       mediaType: photoSearchMode === 'celebrity' ? undefined : 'image',
       mediaUrl: photoAttachmentPreview || photoAttachmentSource || undefined,
@@ -621,7 +625,9 @@ export default function DiscoverPage({
       id: progressId,
       type: 'matchmaker',
       content:
-        photoSearchMode === 'face'
+        photoSearchMode === 'auto'
+          ? '收到这张图了，我先自己判断你更想按脸、按感觉，还是按某个参考人物的方向去找。'
+          : photoSearchMode === 'face'
           ? '收到这张图了，我先按脸型和五官去帮你找相似的人。'
           : photoSearchMode === 'style'
             ? '收到这张图了，我先按整体感觉和氛围去帮你找。'
@@ -648,20 +654,23 @@ export default function DiscoverPage({
           type: 'matchmaker',
           content:
             response.result_count && response.result_count > 0
-              ? `先帮你捞到了 ${response.result_count} 个方向比较贴近的人，你往下看。`
+              ? `我先帮你捞到了 ${response.result_count} 个比较贴近的人，下面是这轮最合适的结果。`
               : '这次我还没找到特别贴的，你可以换张图，或者补一句更明确的描述。',
           timestamp: '刚刚',
         })
+        const resolvedMode = response.intent?.mode || photoSearchMode
         if ((response.results || []).length > 0) {
           addTimelineItem({
             kind: 'result_group',
             id: resultId,
             title:
-              photoSearchMode === 'face'
+              resolvedMode === 'face'
                 ? '按这张脸找'
-                : photoSearchMode === 'style'
+                : resolvedMode === 'style'
                   ? '按这种感觉找'
-                  : `按 ${normalizedCaption} 找`,
+                  : resolvedMode === 'celebrity'
+                    ? `按 ${normalizedCaption || response.intent?.celebrity_name || '某明星'} 找`
+                    : '小雅自动理解这张图',
             candidates: response.results || [],
           })
         }
@@ -1192,6 +1201,7 @@ export default function DiscoverPage({
           <div className="mb-2 space-y-2">
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
               {[
+                { key: 'auto' as const, label: '让小雅判断', icon: Brain },
                 { key: 'face' as const, label: '找像这张脸', icon: UserRoundSearch },
                 { key: 'style' as const, label: '找这种感觉', icon: Sparkles },
                 { key: 'celebrity' as const, label: '像某明星', icon: Star },
@@ -1235,7 +1245,11 @@ export default function DiscoverPage({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">{photoModeLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">图片已经挂进对话框了，可以直接发送，也可以补一句话。</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {photoSearchMode === 'auto'
+                          ? '图片已经挂进对话框了。你可以直接发，让小雅自己判断你是想按脸找、按感觉找，还是按某个参考人物找。'
+                          : '图片已经挂进对话框了，可以直接发送，也可以补一句话。'}
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -1256,7 +1270,7 @@ export default function DiscoverPage({
                       type="button"
                       onClick={() => {
                         setShowPhotoModes(false)
-                        setPhotoSearchMode('face')
+                        setPhotoSearchMode('auto')
                         setPhotoSearchCaption('')
                       }}
                       className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
@@ -1282,7 +1296,7 @@ export default function DiscoverPage({
           onDragOver={(event) => {
             event.preventDefault()
             if (photoSearchMode === 'celebrity') {
-              setPhotoSearchMode('face')
+              setPhotoSearchMode('auto')
             }
             setIsPhotoDragActive(true)
             setShowPhotoModes(true)
@@ -1337,7 +1351,7 @@ export default function DiscoverPage({
               if (!file) return
               event.preventDefault()
               if (photoSearchMode === 'celebrity') {
-                setPhotoSearchMode('face')
+                setPhotoSearchMode('auto')
               }
               setShowPhotoModes(true)
               void processPhotoFile(file)

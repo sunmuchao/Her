@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from .appearance_features import compute_photo_bonus_breakdown, load_candidate_photo_features
 from .appearance_search import (
@@ -43,6 +43,57 @@ def _rerank_with_photo_bonus(
         )
     reranked.sort(key=lambda item: float(item.get("final_score") or 0.0), reverse=True)
     return reranked
+
+
+def _merge_ranked_candidate_groups(
+    *,
+    groups: Iterable[tuple[str, Iterable[Mapping[str, Any]]]],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    merged: dict[int, dict[str, Any]] = {}
+    for source_name, rows in groups:
+        for row in list(rows or []):
+            payload = dict(row)
+            profile_id = int(payload.get("profile_id") or 0)
+            if profile_id <= 0:
+                continue
+            score = float(
+                payload.get("final_score")
+                or payload.get("similarity")
+                or payload.get("base_score")
+                or 0.0
+            )
+            current = merged.get(profile_id)
+            if current is None:
+                merged[profile_id] = {
+                    **payload,
+                    "profile_id": profile_id,
+                    "final_score": round(score, 4),
+                    "search_sources": [source_name],
+                }
+                continue
+            current_score = float(current.get("final_score") or 0.0)
+            averaged = round((current_score + score) / 2.0, 4)
+            current["final_score"] = max(current_score, averaged, round(score, 4))
+            current["base_score"] = round(
+                max(float(current.get("base_score") or 0.0), float(payload.get("base_score") or 0.0)),
+                4,
+            )
+            current["photo_bonus"] = round(
+                max(float(current.get("photo_bonus") or 0.0), float(payload.get("photo_bonus") or 0.0)),
+                2,
+            )
+            current["appearance_summary"] = current.get("appearance_summary") or payload.get("appearance_summary")
+            sources = [str(item).strip() for item in list(current.get("search_sources") or []) if str(item).strip()]
+            if source_name not in sources:
+                sources.append(source_name)
+            current["search_sources"] = sources
+    ranked = sorted(
+        merged.values(),
+        key=lambda item: float(item.get("final_score") or 0.0),
+        reverse=True,
+    )
+    return ranked[: max(1, int(top_k or 20))]
 
 
 def search_similar_face_candidates(
@@ -135,15 +186,16 @@ def search_style_candidates(
     requester_profile_id: int | None = None,
     top_k: int = 20,
     attribute_filters: dict[str, Any] | None = None,
+    query_text: str | None = None,
 ) -> dict[str, Any]:
     _ = UploadedReferenceFaceProcessor.process(
         image_source=image_source,
         requester_profile_id=requester_profile_id,
     )
-    query_text = _style_query_from_image_source(image_source)
+    resolved_query_text = str(query_text or "").strip() or _style_query_from_image_source(image_source)
     base_results = AppearanceStyleSearcher.search_by_text(
         source_dsn=source_dsn,
-        query_text=query_text,
+        query_text=resolved_query_text,
         top_k=max(top_k * 2, 20),
         exclude_profile_ids=[int(requester_profile_id or 0)] if int(requester_profile_id or 0) > 0 else [],
     )
@@ -173,7 +225,7 @@ def search_style_candidates(
     out = {
         "saved": True,
         "search_type": "style_similarity",
-        "query_text": query_text,
+        "query_text": resolved_query_text,
         "result_count": len(reranked),
         "results": reranked,
     }
@@ -185,6 +237,66 @@ def search_style_candidates(
         success=True,
     )
     return out
+
+
+def search_hybrid_photo_candidates(
+    *,
+    source_dsn: str | None,
+    requester_user_key: str,
+    image_source: str,
+    requester_profile_id: int | None = None,
+    top_k: int = 20,
+    attribute_filters: dict[str, Any] | None = None,
+    query_text: str | None = None,
+) -> dict[str, Any]:
+    face_result = search_similar_face_candidates(
+        source_dsn=source_dsn,
+        requester_user_key=requester_user_key,
+        image_source=image_source,
+        requester_profile_id=requester_profile_id,
+        top_k=max(top_k, 12),
+        attribute_filters=attribute_filters,
+    )
+    style_result = search_style_candidates(
+        source_dsn=source_dsn,
+        image_source=image_source,
+        requester_profile_id=requester_profile_id,
+        top_k=max(top_k, 12),
+        attribute_filters=attribute_filters,
+        query_text=query_text,
+    )
+    merged_results = _merge_ranked_candidate_groups(
+        groups=[
+            ("face_similarity", face_result.get("results") or []),
+            ("style_similarity", style_result.get("results") or []),
+        ],
+        top_k=top_k,
+    )
+    saved = bool(face_result.get("saved")) or bool(style_result.get("saved"))
+    emit_photo_search_event(
+        user_key=requester_user_key,
+        search_type="hybrid_photo_similarity",
+        stage="search_completed" if saved else "search_failed",
+        result_count=len(merged_results),
+        success=saved,
+    )
+    return {
+        "saved": saved,
+        "search_type": "hybrid_photo_similarity",
+        "result_count": len(merged_results),
+        "query_text": str(query_text or "").strip() or style_result.get("query_text") or "自动理解",
+        "results": merged_results,
+        "subsearches": {
+            "face": {
+                "saved": bool(face_result.get("saved")),
+                "result_count": int(face_result.get("result_count") or 0),
+            },
+            "style": {
+                "saved": bool(style_result.get("saved")),
+                "result_count": int(style_result.get("result_count") or 0),
+            },
+        },
+    }
 
 
 def search_celebrity_face_candidates(
@@ -239,6 +351,7 @@ def search_celebrity_face_candidates(
 
 
 __all__ = [
+    "search_hybrid_photo_candidates",
     "search_celebrity_face_candidates",
     "search_similar_face_candidates",
     "search_style_candidates",
