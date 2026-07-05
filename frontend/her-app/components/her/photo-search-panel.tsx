@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import Image from 'next/image'
-import { Camera, Loader2, Sparkles, Star, Upload, UserRoundSearch } from 'lucide-react'
+import { Camera, ImagePlus, Loader2, Send, Sparkles, Star, UserRoundSearch, X } from 'lucide-react'
 
 import { DiscoveryCandidateCard } from './discovery-candidate-card'
 import { searchDiscoveryByPhoto, type DiscoveryPhotoSearchMode } from '@/lib/api/endpoints/discovery'
@@ -99,7 +99,7 @@ export function PhotoSearchPanel({ profileId, onViewCandidate }: PhotoSearchPane
       setImageSource(compressed)
       setImagePreview(compressed)
       setStage('idle')
-      setStatusText('图片准备好了，可以开始搜索')
+      setStatusText('图片已经选好，像微信发图一样，点右侧发送就行')
     } catch (error) {
       setStage('error')
       setStatusText(error instanceof Error ? error.message : '图片处理失败')
@@ -144,14 +144,29 @@ export function PhotoSearchPanel({ profileId, onViewCandidate }: PhotoSearchPane
     }
   }
 
+  const clearSelectedImage = () => {
+    setImageSource('')
+    setImagePreview('')
+    setResults([])
+    setStage('idle')
+    setStatusText('重新选一张图，或者换个模式再发一次。')
+  }
+
+  const composerPlaceholder =
+    mode === 'face'
+      ? '补一句，比如 笑起来像这张、五官更清秀'
+      : mode === 'style'
+        ? '补一句，比如 清爽、自然、温柔、有少年感'
+        : '输入明星名字，比如 刘亦菲、田曦薇'
+
   return (
-    <section className="rounded-3xl border border-border/70 bg-card/95 p-4 shadow-sm">
+    <section className="rounded-[2rem] border border-border/70 bg-[linear-gradient(180deg,rgba(253,242,248,0.96),rgba(255,255,255,0.98))] p-4 shadow-[0_18px_40px_rgba(131,24,67,0.08)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-foreground">上传图片搜索</p>
+          <p className="text-sm font-medium text-foreground">发一张图搜人</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{statusText}</p>
         </div>
-        <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+        <div className="rounded-2xl bg-primary/10 p-2 text-primary shadow-sm">
           <Camera className="h-4 w-4" />
         </div>
       </div>
@@ -167,13 +182,13 @@ export function PhotoSearchPanel({ profileId, onViewCandidate }: PhotoSearchPane
               onClick={() => {
                 setMode(item.key)
                 setResults([])
-                setStatusText('模式已切换，继续补图片或文字描述就行。')
+                setStatusText(item.key === 'celebrity' ? '直接输入明星名字再发送。' : '继续选图，像发微信图片一样发出去。')
               }}
               className={cn(
                 'rounded-2xl border px-3 py-2 text-left transition-colors',
                 active
-                  ? 'border-primary/40 bg-primary/10 text-primary'
-                  : 'border-border bg-background text-muted-foreground',
+                  ? 'border-primary/40 bg-white/90 text-primary shadow-sm'
+                  : 'border-white/80 bg-white/55 text-muted-foreground',
               )}
             >
               <Icon className="h-4 w-4" />
@@ -183,71 +198,114 @@ export function PhotoSearchPanel({ profileId, onViewCandidate }: PhotoSearchPane
         })}
       </div>
 
-      <div className="mt-4 space-y-3">
+      <input
+        ref={fileInputRef}
+        id={inputId}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      <div className="mt-4 rounded-[1.75rem] border border-white/80 bg-white/80 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
         {mode !== 'celebrity' ? (
           <>
-            <div className="flex items-center gap-3">
-              <input
-                ref={fileInputRef}
-                id={inputId}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/*"
-                className="hidden"
-                onChange={handleFileChange}
-              />
+            {imagePreview ? (
+              <div className="mb-3 flex items-start gap-3 rounded-3xl bg-secondary/40 p-2.5">
+                <div className="relative h-16 w-16 overflow-hidden rounded-2xl border border-white/80 bg-white">
+                  <Image src={imagePreview} alt="已选参考图" fill className="object-cover" unoptimized />
+                </div>
+                <div className="min-w-0 flex-1 pt-1">
+                  <p className="text-sm font-medium text-foreground">已选参考图</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    这一步就像微信里图片已经挂在输入框上，补一句话再发送即可。
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelectedImage}
+                  className="rounded-full bg-white p-2 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="移除已选图片"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-dashed border-primary/35 bg-primary/5 px-3 py-2 text-sm text-primary"
+                className="mb-3 flex w-full items-center gap-3 rounded-3xl border border-dashed border-primary/30 bg-primary/5 px-4 py-3 text-left transition-colors hover:bg-primary/10"
               >
-                <Upload className="h-4 w-4" />
-                选一张图片
+                <div className="rounded-2xl bg-white p-2 text-primary shadow-sm">
+                  <ImagePlus className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">选一张参考图</p>
+                  <p className="mt-1 text-xs text-muted-foreground">支持 JPG / PNG / WEBP，选完后会先压缩再发送</p>
+                </div>
               </button>
-              <span className="text-xs text-muted-foreground">支持 JPG / PNG / WEBP，自动压缩</span>
-            </div>
-
-            {imagePreview ? (
-              <div className="relative h-40 overflow-hidden rounded-2xl border border-border bg-secondary/40">
-                <Image src={imagePreview} alt="已上传参考图" fill className="object-cover" unoptimized />
-              </div>
-            ) : null}
-
-            <label className="block">
-              <span className="mb-1 block text-xs text-muted-foreground">或者直接贴图片地址</span>
-              <input
-                value={imageSource}
-                onChange={(event) => {
-                  setImageSource(event.target.value)
-                  if (!imagePreview) setStatusText('已填图片地址，可以直接开始搜索')
-                }}
-                placeholder="https://..."
-                className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-xs text-muted-foreground">
-                {mode === 'face' ? '补充说明，可不填' : '再说一下你想找的感觉，可不填'}
-              </span>
-              <input
-                value={queryText}
-                onChange={(event) => setQueryText(event.target.value)}
-                placeholder={mode === 'face' ? '比如：笑起来像这张、五官更清秀' : '比如：清爽、自然、温柔、有少年感'}
-                className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40"
-              />
-            </label>
+            )}
           </>
-        ) : (
-          <label className="block">
-            <span className="mb-1 block text-xs text-muted-foreground">输入明星名字</span>
-            <input
-              value={celebrityName}
-              onChange={(event) => setCelebrityName(event.target.value)}
-              placeholder="比如：刘亦菲、田曦薇、金城武"
-              className="w-full rounded-2xl border border-border bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-primary/40"
-            />
-          </label>
-        )}
+        ) : null}
+
+        <div className="flex items-center gap-2 rounded-[1.5rem] bg-[#fff7fb] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+          {mode !== 'celebrity' ? (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-sm transition-transform hover:scale-[1.03]"
+              aria-label="选择图片"
+            >
+              <ImagePlus className="h-5 w-5" />
+            </button>
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-primary shadow-sm">
+              <Star className="h-5 w-5" />
+            </div>
+          )}
+
+          <input
+            value={mode === 'celebrity' ? celebrityName : queryText}
+            onChange={(event) => {
+              if (mode === 'celebrity') {
+                setCelebrityName(event.target.value)
+                return
+              }
+              setQueryText(event.target.value)
+            }}
+            placeholder={composerPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          />
+
+          <button
+            type="button"
+            disabled={!canSearch || stage === 'searching'}
+            onClick={() => void handleSearch()}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full bg-primary px-4 text-sm font-medium text-primary-foreground shadow-sm transition-transform disabled:opacity-50"
+          >
+            {stage === 'searching' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <span className="hidden sm:inline">{mode === 'celebrity' ? '发送名字' : '发送图片'}</span>
+          </button>
+        </div>
+
+        {mode !== 'celebrity' ? (
+          <div className="mt-2 px-1 text-[11px] leading-5 text-muted-foreground">
+            也可以直接贴图片地址：
+            <button
+              type="button"
+              onClick={() => {
+                const next = window.prompt('贴入图片地址')
+                if (!next) return
+                setImageSource(next)
+                setImagePreview('')
+                setStatusText('图片地址已经挂上，点发送开始搜索。')
+              }}
+              className="ml-1 text-primary underline underline-offset-2"
+            >
+              粘贴 URL
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-4 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -267,17 +325,11 @@ export function PhotoSearchPanel({ profileId, onViewCandidate }: PhotoSearchPane
 
       <div className="mt-4 flex items-center justify-between gap-3">
         <div className="text-xs text-muted-foreground">
-          {mode === 'face' ? '更适合找“长得像”' : mode === 'style' ? '更适合找“感觉像”' : '更适合找“像某明星”'}
+          {mode === 'face' ? '像发一张脸照去找相似款' : mode === 'style' ? '像发一张氛围图去找同感觉' : '直接输入名字找明星脸'}
         </div>
-        <button
-          type="button"
-          disabled={!canSearch || stage === 'searching'}
-          onClick={() => void handleSearch()}
-          className="inline-flex min-w-28 items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
-        >
-          {stage === 'searching' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          开始搜索
-        </button>
+        <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] text-primary shadow-sm">
+          微信式发图交互
+        </span>
       </div>
 
       {results.length > 0 ? (

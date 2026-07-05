@@ -577,11 +577,6 @@ export default function DiscoverPage({
 
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-4 py-4 space-y-4">
-          <PhotoSearchPanel
-            profileId={currentProfileId}
-            onViewCandidate={onViewCandidate}
-          />
-
           {showSessionLoading ? (
             <DiscoverPageSkeleton />
           ) : (
@@ -866,6 +861,13 @@ export default function DiscoverPage({
 
       {/* Input pinned below scrollable messages; app shell bottom nav is outside this column */}
       <div className="flex-shrink-0 px-4 py-3 bg-background border-t border-border safe-area-bottom">
+        <div className="mb-3">
+          <PhotoSearchPanel
+            profileId={currentProfileId}
+            onViewCandidate={onViewCandidate}
+          />
+        </div>
+
         {showActionMenu && (
           <div
             className="mb-2 rounded-2xl bg-background animate-fade-in-up"
