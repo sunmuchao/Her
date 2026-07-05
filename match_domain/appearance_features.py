@@ -1454,6 +1454,58 @@ def _merge_analysis_patch(
     return merged
 
 
+def _sync_profile_vector_indexes(
+    *,
+    source_dsn: str | None,
+    profile_id: int,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return {
+            "triggered": False,
+            "saved": False,
+            "error": "source_or_profile_missing",
+            "indexes": [],
+        }
+
+    from .appearance_search import AppearanceStyleIndexBuilder, FaceVectorIndexBuilder
+
+    results: list[dict[str, Any]] = []
+    saved_any = False
+    for index_name, builder in (
+        ("face_embedding", FaceVectorIndexBuilder),
+        ("appearance_profile", AppearanceStyleIndexBuilder),
+    ):
+        try:
+            result = dict(
+                builder.build_profile_index(
+                    source_dsn=source_dsn,
+                    profile_id=normalized_profile_id,
+                )
+            )
+        except Exception as exc:
+            result = {
+                "saved": False,
+                "error": f"index_sync_failed:{str(exc)[:180]}",
+            }
+        result.setdefault("index_name", index_name)
+        saved_any = saved_any or bool(result.get("saved"))
+        results.append(result)
+
+    failed_indexes = [
+        str(item.get("index_name") or "unknown")
+        for item in results
+        if not bool(item.get("saved"))
+    ]
+    return {
+        "triggered": True,
+        "saved": saved_any,
+        "profile_id": normalized_profile_id,
+        "indexes": results,
+        "failed_indexes": failed_indexes,
+    }
+
+
 def refresh_profile_photo_features(
     *,
     source_dsn: str | None,
@@ -1562,6 +1614,7 @@ def refresh_profile_photo_features(
             )
         except Exception:
             pass
+    index_sync: dict[str, Any] | None = None
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
         try:
             embedding_out = _save_text_embedding(
@@ -1591,6 +1644,11 @@ def refresh_profile_photo_features(
                     "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
                 },
             )
+    if str(saved.get("analysis_status") or "").lower() == "done":
+        index_sync = _sync_profile_vector_indexes(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+        )
     _persist_photo_feature_version_snapshot(
         source_dsn=source_dsn,
         feature_row=saved,
@@ -1603,6 +1661,11 @@ def refresh_profile_photo_features(
             else "analysis_failed"
         ),
     )
+    if index_sync is not None:
+        saved = {
+            **saved,
+            "index_sync": index_sync,
+        }
     return saved
 
 
@@ -1671,6 +1734,7 @@ def refresh_profile_photo_features_from_record(
             )
         except Exception:
             pass
+    index_sync: dict[str, Any] | None = None
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
         try:
             embedding_out = _save_text_embedding(
@@ -1705,17 +1769,34 @@ def refresh_profile_photo_features_from_record(
                 "last_error": None if embedding_out.get("saved") else "appearance_profile_embedding_failed",
             },
         )
+        index_sync = _sync_profile_vector_indexes(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+        )
         _persist_photo_feature_version_snapshot(
             source_dsn=source_dsn,
             feature_row=saved,
             trigger_reason="analysis_completed" if embedding_out.get("saved") else "embedding_failed",
         )
-        return saved
+        return {
+            **saved,
+            "index_sync": index_sync,
+        }
+    if str(saved.get("analysis_status") or "").lower() == "done":
+        index_sync = _sync_profile_vector_indexes(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+        )
     _persist_photo_feature_version_snapshot(
         source_dsn=source_dsn,
         feature_row=saved,
         trigger_reason="analysis_completed" if str(saved.get("analysis_status") or "").lower() == "done" else "analysis_failed",
     )
+    if index_sync is not None:
+        saved = {
+            **saved,
+            "index_sync": index_sync,
+        }
     return saved
 
 

@@ -44,6 +44,8 @@ from match_domain.appearance_features import (
     load_profile_photo_feature_versions,
     load_verified_face_anchors,
     load_face_consistency_score,
+    refresh_profile_photo_features,
+    refresh_profile_photo_features_from_record,
     rebuild_user_preference_from_history,
     retry_failed_profile_photo_features,
     resolve_appearance_weight_strategy,
@@ -549,6 +551,117 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertIn("appearance_summary", patch)
         self.assertGreater(patch["appearance_score_global"], 0)
         self.assertEqual(patch["analysis_model"], "deterministic-photo-feature-v1")
+
+    def test_refresh_profile_photo_features_triggers_index_sync_best_effort(self):
+        with (
+            mock.patch(
+                "match_domain.appearance_features.load_candidate_photo_features",
+                return_value={"profile_id": 12, "analysis_status": "pending"},
+            ),
+            mock.patch(
+                "match_domain.appearance_features.upsert_profile_photo_features",
+                side_effect=[
+                    {"profile_id": 12, "analysis_status": "processing", "retry_count": 0},
+                    {"profile_id": 12, "analysis_status": "done", "appearance_summary": "成熟清爽"},
+                    {
+                        "profile_id": 12,
+                        "analysis_status": "done",
+                        "appearance_summary": "成熟清爽",
+                        "embedding_status": "done",
+                    },
+                ],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.resolve_profile_source",
+                return_value=("mysql://profiles", "profiles"),
+            ),
+            mock.patch(
+                "match_domain.appearance_features.get_profile",
+                return_value={"id": 12, "age": 29},
+            ),
+            mock.patch(
+                "match_domain.appearance_features.list_profile_photos",
+                return_value=[{"photo_source": "https://img.her.local/12.jpg"}],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.build_photo_feature_patch",
+                return_value={
+                    "analysis_status": "done",
+                    "appearance_summary": "成熟清爽",
+                    "embedding_status": "pending",
+                },
+            ),
+            mock.patch("match_domain.appearance_features._sync_profile_face_side_tables"),
+            mock.patch(
+                "match_domain.appearance_features._save_text_embedding",
+                return_value={"saved": True},
+            ),
+            mock.patch(
+                "match_domain.appearance_features._persist_photo_feature_version_snapshot",
+            ),
+            mock.patch(
+                "match_domain.appearance_search.FaceVectorIndexBuilder.build_profile_index",
+                return_value={"saved": True, "version": 3},
+            ) as mocked_face_index,
+            mock.patch(
+                "match_domain.appearance_search.AppearanceStyleIndexBuilder.build_profile_index",
+                side_effect=RuntimeError("vector_store_down"),
+            ) as mocked_style_index,
+        ):
+            result = refresh_profile_photo_features(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                sync_embedding=True,
+            )
+
+        mocked_face_index.assert_called_once()
+        mocked_style_index.assert_called_once()
+        self.assertEqual(result["index_sync"]["profile_id"], 12)
+        self.assertTrue(result["index_sync"]["saved"])
+        self.assertEqual(result["index_sync"]["failed_indexes"], ["appearance_profile"])
+
+    def test_refresh_profile_photo_features_from_record_returns_index_sync(self):
+        with (
+            mock.patch(
+                "match_domain.appearance_features.load_candidate_photo_features",
+                return_value={"profile_id": 18, "analysis_status": "pending"},
+            ),
+            mock.patch(
+                "match_domain.appearance_features.upsert_profile_photo_features",
+                side_effect=[
+                    {"profile_id": 18, "analysis_status": "processing", "retry_count": 0},
+                    {"profile_id": 18, "analysis_status": "done", "appearance_summary": "阳光自然"},
+                ],
+            ),
+            mock.patch(
+                "match_domain.appearance_features.build_photo_feature_patch",
+                return_value={
+                    "analysis_status": "done",
+                    "appearance_summary": "阳光自然",
+                    "embedding_status": "pending",
+                },
+            ),
+            mock.patch("match_domain.appearance_features._sync_profile_face_side_tables"),
+            mock.patch(
+                "match_domain.appearance_features._persist_photo_feature_version_snapshot",
+            ),
+            mock.patch(
+                "match_domain.appearance_features._sync_profile_vector_indexes",
+                return_value={"triggered": True, "saved": True, "indexes": []},
+            ) as mocked_sync,
+        ):
+            result = refresh_profile_photo_features_from_record(
+                source_dsn="mysql://persona",
+                record={
+                    "id": 18,
+                    "avatar_url": "https://img.her.local/18.jpg",
+                },
+                sync_embedding=False,
+            )
+
+        mocked_sync.assert_called_once_with(source_dsn="mysql://persona", profile_id=18)
+        self.assertIn("index_sync", result)
+        self.assertTrue(result["index_sync"]["saved"])
 
     def test_rebuild_user_preference_from_history_uses_signed_events(self):
         feature_row = {

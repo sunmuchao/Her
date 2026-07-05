@@ -422,6 +422,67 @@ class TestDiscoveryPhotoSearchAPI(unittest.TestCase):
         self.assertEqual(response["results"][0]["name"], "周宁")
         self.assertTrue(response["results"][0]["verified"])
 
+    def test_photo_search_applies_hard_filters(self):
+        with (
+            mock.patch(
+                "gateway.discovery_routes.default_profile_source",
+                return_value=("mysql://example/her", "profiles"),
+            ),
+            mock.patch(
+                "gateway.discovery_routes.execute_photo_preference_search",
+                return_value={
+                    "saved": True,
+                    "search_type": "style_similarity",
+                    "results": [
+                        {"profile_id": 20001, "final_score": 1.52, "appearance_summary": "清爽自然"},
+                        {"profile_id": 20002, "final_score": 1.48, "appearance_summary": "成熟温柔"},
+                    ],
+                },
+            ),
+            mock.patch(
+                "gateway.discovery_routes.list_profiles",
+                return_value=[
+                    {
+                        "id": 20001,
+                        "display_name": "周宁",
+                        "age": 28,
+                        "city": "杭州",
+                        "verified_level": "offline",
+                        "avatar_url": "https://cdn.her.local/profiles/20001/avatar.jpg",
+                    },
+                    {
+                        "id": 20002,
+                        "display_name": "林夏",
+                        "age": 24,
+                        "city": "北京",
+                        "verified_level": "none",
+                        "avatar_url": "https://cdn.her.local/profiles/20002/avatar.jpg",
+                    },
+                ],
+            ),
+        ):
+            status, response = rest_discovery_photo_search(
+                self.gateway,
+                {},
+                {
+                    "profile_id": 10001,
+                    "mode": "style",
+                    "image_source": "data:image/jpeg;base64,abc",
+                    "hard_filters": {
+                        "age_min": 26,
+                        "age_max": 30,
+                        "city": ["杭州"],
+                        "verified_only": True,
+                    },
+                },
+            )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(response["result_count"], 1)
+        self.assertEqual(response["results"][0]["name"], "周宁")
+        self.assertEqual(response["intent"]["hard_filters"]["age_min"], 26)
+        self.assertTrue(response["intent"]["hard_filters"]["verified_only"])
+
 
 if __name__ == "__main__":
     unittest.main()

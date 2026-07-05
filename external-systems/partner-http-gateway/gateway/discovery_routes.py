@@ -26,6 +26,7 @@ from profile_service import list_profiles
 from .http_helpers import (  # noqa: E402
     _json_safe,
     _parse_json_body,
+    _parse_optional_int,
     _parse_optional_now,
     _query_dict,
     _read_body,
@@ -133,6 +134,74 @@ def _build_photo_search_preview(
         "photoBonus": ranked_result.get("photo_bonus"),
         "baseScore": ranked_result.get("base_score"),
     }
+
+
+def _normalize_photo_search_hard_filters(body: Mapping[str, Any]) -> dict[str, Any]:
+    raw = body.get("hard_filters")
+    if not isinstance(raw, Mapping):
+        return {}
+    normalized: dict[str, Any] = {}
+    age_min = _parse_optional_int(raw.get("age_min"))
+    age_max = _parse_optional_int(raw.get("age_max"))
+    if age_min is not None and age_min > 0:
+        normalized["age_min"] = age_min
+    if age_max is not None and age_max > 0:
+        normalized["age_max"] = age_max
+    raw_cities = raw.get("cities") or raw.get("city")
+    cities: list[str] = []
+    if isinstance(raw_cities, str):
+        cities = [item.strip() for item in raw_cities.split(",") if item.strip()]
+    elif isinstance(raw_cities, Sequence):
+        cities = [str(item).strip() for item in raw_cities if str(item).strip()]
+    if cities:
+        normalized["cities"] = cities
+    if bool(raw.get("verified_only")):
+        normalized["verified_only"] = True
+    return normalized
+
+
+def _profile_matches_photo_search_hard_filters(
+    *,
+    profile_row: Mapping[str, Any] | None,
+    hard_filters: Mapping[str, Any] | None,
+) -> bool:
+    profile = dict(profile_row or {})
+    filters = dict(hard_filters or {})
+    if not filters:
+        return True
+    if not profile:
+        return False
+    age_value = _pick_first_non_empty(profile, ("age", "self_age"))
+    if filters.get("age_min") is not None:
+        try:
+            if int(age_value) < int(filters["age_min"]):
+                return False
+        except (TypeError, ValueError):
+            return False
+    if filters.get("age_max") is not None:
+        try:
+            if int(age_value) > int(filters["age_max"]):
+                return False
+        except (TypeError, ValueError):
+            return False
+    cities = {
+        str(item).strip().lower()
+        for item in list(filters.get("cities") or [])
+        if str(item).strip()
+    }
+    if cities:
+        city_value = str(_pick_first_non_empty(profile, ("city", "self_city", "current_city")) or "").strip().lower()
+        if not city_value or city_value not in cities:
+            return False
+    if bool(filters.get("verified_only")):
+        verified_level = str(
+            profile.get("verified_level")
+            or profile.get("profile_verified_level")
+            or ""
+        ).strip().lower()
+        if verified_level in {"", "none", "unknown"}:
+            return False
+    return True
 
 
 def _build_discovery_photo_search_card(preview: Mapping[str, Any]) -> dict[str, Any]:
@@ -283,12 +352,14 @@ def rest_discovery_photo_search(
 
     raw_filters = body.get("attribute_filters")
     attribute_filters = raw_filters if isinstance(raw_filters, dict) else {}
+    hard_filters = _normalize_photo_search_hard_filters(body)
     if mode == "face":
         intent = PhotoPreferenceIntent(
             intent_type="face_similarity_search",
             mode="face",
             query_text=query_text or "像这张脸",
             attribute_filters=attribute_filters,
+            hard_filters=hard_filters,
             raw_text=query_text or "像这张脸",
         )
     elif mode == "celebrity":
@@ -299,6 +370,7 @@ def rest_discovery_photo_search(
             query_text=normalized_name,
             celebrity_name=normalized_name,
             attribute_filters=attribute_filters,
+            hard_filters=hard_filters,
             raw_text=normalized_name,
         )
     elif mode == "style":
@@ -307,10 +379,20 @@ def rest_discovery_photo_search(
             mode="style",
             query_text=query_text or "这种感觉",
             attribute_filters=attribute_filters,
+            hard_filters=hard_filters,
             raw_text=query_text or "这种感觉",
         )
     else:
         intent = detect_photo_preference_intent(query_text or celebrity_name or image_source)
+        intent = PhotoPreferenceIntent(
+            intent_type=intent.intent_type,
+            mode=intent.mode,
+            query_text=intent.query_text,
+            attribute_filters=intent.attribute_filters,
+            hard_filters=hard_filters,
+            celebrity_name=intent.celebrity_name,
+            raw_text=intent.raw_text,
+        )
 
     top_k = max(1, min(int(body.get("top_k") or 12), 30))
     result = execute_photo_preference_search(
@@ -331,13 +413,21 @@ def rest_discovery_photo_search(
         source_table_name=source_table_name,
         profile_ids=[int(item["profile_id"]) for item in ranked_results],
     )
+    filtered_ranked_results = [
+        item
+        for item in ranked_results
+        if _profile_matches_photo_search_hard_filters(
+            profile_row=profile_map.get(int(item["profile_id"])),
+            hard_filters=hard_filters,
+        )
+    ]
     previews = [
         _build_photo_search_preview(
             ranked_result=item,
             profile_row=profile_map.get(int(item["profile_id"])),
             intent=intent,
         )
-        for item in ranked_results
+        for item in filtered_ranked_results
     ]
     session_sync: dict[str, Any] | None = None
     if session_id:
@@ -367,6 +457,7 @@ def rest_discovery_photo_search(
             "query_text": intent.query_text,
             "celebrity_name": intent.celebrity_name,
             "attribute_filters": dict(intent.attribute_filters),
+            "hard_filters": dict(intent.hard_filters),
         },
         "result_count": len(previews),
         "search_type": result.get("search_type") or intent.intent_type,

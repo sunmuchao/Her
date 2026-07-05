@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from .appearance_features import build_match_explanation_payload
@@ -20,6 +20,7 @@ class PhotoPreferenceIntent:
     mode: str
     query_text: str
     attribute_filters: dict[str, Any]
+    hard_filters: dict[str, Any] = field(default_factory=dict)
     celebrity_name: str | None = None
     raw_text: str = ""
 
@@ -62,6 +63,7 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
             query_text=celebrity_name,
             celebrity_name=celebrity_name,
             attribute_filters=attribute_filters,
+            hard_filters={},
             raw_text=normalized,
         )
     if any(token in normalized for token in ("像这张脸", "像这个人", "找像", "同款脸")):
@@ -70,6 +72,7 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
             mode="face",
             query_text=normalized,
             attribute_filters=attribute_filters,
+            hard_filters={},
             raw_text=normalized,
         )
     return PhotoPreferenceIntent(
@@ -77,6 +80,7 @@ def detect_photo_preference_intent(text: str) -> PhotoPreferenceIntent:
         mode="style",
         query_text=" ".join(query_parts) or normalized or "自然 顺眼",
         attribute_filters=attribute_filters,
+        hard_filters={},
         raw_text=normalized,
     )
 
@@ -87,6 +91,7 @@ def translate_intent_to_search_plan(intent: PhotoPreferenceIntent) -> dict[str, 
         "mode": intent.mode,
         "query_text": intent.query_text,
         "attribute_filters": dict(intent.attribute_filters),
+        "hard_filters": dict(intent.hard_filters),
     }
     if intent.celebrity_name:
         payload["celebrity_name"] = intent.celebrity_name
