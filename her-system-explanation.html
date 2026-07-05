@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Her系统四大核心逻辑 - 直白解释版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            line-height: 1.8;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+
+        .meta-info {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: inline-block;
+        }
+
+        .system-section {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 40px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 3px solid #f0f0f0;
+        }
+
+        .section-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-right: 20px;
+            flex-shrink: 0;
+        }
+
+        .icon-discovery { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+        .icon-persona { background: linear-gradient(135deg, #f093fb, #f5576c); color: white; }
+        .icon-photo { background: linear-gradient(135deg, #4facfe, #00f2fe); color: white; }
+        .icon-auth { background: linear-gradient(135deg, #43e97b, #38f9d7); color: white; }
+
+        h2 {
+            font-size: 32px;
+            color: #1d1d1f;
+        }
+
+        .section-subtitle {
+            font-size: 16px;
+            color: #86868b;
+            margin-top: 5px;
+        }
+
+        h3 {
+            font-size: 24px;
+            color: #1d1d1f;
+            margin: 30px 0 20px 0;
+            padding-left: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        h4 {
+            font-size: 20px;
+            color: #1d1d1f;
+            margin: 25px 0 15px 0;
+        }
+
+        .flow-diagram {
+            background: #f5f5f7;
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: white;
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .flow-step:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #667eea;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex-grow: 1;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 5px;
+        }
+
+        .step-desc {
+            font-size: 14px;
+            color: #86868b;
+        }
+
+        .arrow {
+            text-align: center;
+            font-size: 24px;
+            color: #667eea;
+            padding: 5px 0;
+        }
+
+        .db-table {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 2px solid #f0f0f0;
+        }
+
+        .table-header {
+            font-weight: 700;
+            font-size: 18px;
+            color: #667eea;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .field-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 15px;
+            margin: 8px 0;
+            background: #f5f5f7;
+            border-radius: 8px;
+        }
+
+        .field-name {
+            font-weight: 600;
+            color: #1d1d1f;
+        }
+
+        .field-desc {
+            color: #86868b;
+            font-size: 14px;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, #fff5eb, #fff);
+            border-left: 4px solid #ff9500;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+
+        .highlight-title {
+            font-weight: 700;
+            color: #ff9500;
+            margin-bottom: 10px;
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #e8f4f8, #fff);
+            border-left: 4px solid #007aff;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+
+        .warning-box {
+            background: linear-gradient(135deg, #ffebee, #fff);
+            border-left: 4px solid #ff3b30;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+
+        .success-box {
+            background: linear-gradient(135deg, #e8f5e9, #fff);
+            border-left: 4px solid #34c759;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+        }
+
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .comparison-table th {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        .comparison-table td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .comparison-table tr:hover td {
+            background: #f5f5f7;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 40px;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding: 20px;
+            margin: 20px 0;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #f0f0f0;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -45px;
+            top: 25px;
+            width: 20px;
+            height: 20px;
+            background: #667eea;
+            border-radius: 50%;
+        }
+
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: -35px;
+            top: 45px;
+            width: 2px;
+            height: calc(100% + 20px);
+            background: #f0f0f0;
+        }
+
+        .timeline-item:last-child::after {
+            display: none;
+        }
+
+        .tag {
+            display: inline-block;
+            padding: 5px 12px;
+            margin: 5px;
+            background: #667eea;
+            color: white;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+
+        .tag-container {
+            margin: 15px 0;
+        }
+
+        .visual-diagram {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .visual-box {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid #f0f0f0;
+            text-align: center;
+        }
+
+        .visual-box-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .visual-box-title {
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .visual-box-desc {
+            font-size: 13px;
+            color: #86868b;
+        }
+
+        .emoji-bullet {
+            margin-right: 10px;
+        }
+
+        .summary-card {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            border: 1px solid #f0f0f0;
+        }
+
+        .card-title {
+            font-weight: 700;
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .card-content {
+            font-size: 15px;
+            color: #86868b;
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 20px;
+            background: #1d1d1f;
+            color: #f5f5f7;
+            border-radius: 20px;
+            margin-top: 40px;
+        }
+
+        .key-point {
+            background: #667eea;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 5px;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 32px; }
+            h2 { font-size: 24px; }
+            h3 { font-size: 20px; }
+            .system-section { padding: 25px; }
+            .section-icon { width: 50px; height: 50px; font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 Her系统四大核心逻辑</h1>
+            <div class="subtitle">让复杂的系统变得简单易懂</div>
+            <div class="meta-info">
+                📅 文档版本: 2026-07-05 | 📚 涵盖范围: 发现页、画像、照片、认证
+            </div>
+        </header>
+
+        <!-- 一、发现页推荐搜索 -->
+        <section class="system-section">
+            <div class="section-header">
+                <div class="section-icon icon-discovery">🔍</div>
+                <div>
+                    <h2>一、发现页推荐搜索系统</h2>
+                    <div class="section-subtitle">帮你找到最合适的人</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">💡 核心任务</div>
+                <p>当你在发现页说"我想找个温柔、年龄25-30岁的女生"时，系统要理解你的需求，从海量用户中筛选出最匹配的人推荐给你。</p>
+            </div>
+
+            <h3>🎯 它是怎么工作的？</h3>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <div class="step-title">你说话，系统理解</div>
+                        <div class="step-desc">AI分析你的对话，提取筛选条件（年龄、城市、性格偏好等）</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <div class="step-title">数据库筛选</div>
+                        <div class="step-desc">在MySQL数据库中，用你的条件筛选候选人（年龄范围、城市、学历等）</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <div class="step-title">向量库匹配</div>
+                        <div class="step-desc">用AI向量相似度匹配性格、价值观、外貌风格等"难以量化"的特征</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <div class="step-title">综合推荐</div>
+                        <div class="step-desc">结合数据库筛选结果和向量匹配结果，生成最终推荐列表</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>📊 关键数据库表</h3>
+
+            <div class="db-table">
+                <div class="table-header">📸 照片相关表</div>
+                <div class="field-item">
+                    <div class="field-name">profile_photo_features</div>
+                    <div class="field-desc">存每个人的外貌特征评分（成熟度、温柔度、阳光感等）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">profile_face_attributes</div>
+                    <div class="field-desc">脸部细节属性（眼睛大小、脸型圆润度等）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">profile_face_embeddings</div>
+                    <div class="field-desc">人脸的向量表示（用于脸型相似度匹配）</div>
+                </div>
+            </div>
+
+            <div class="db-table">
+                <div class="table-header">💬 摘要相关表</div>
+                <div class="field-item">
+                    <div class="field-name">conversation_summaries</div>
+                    <div class="field-desc">存每个人的性格、价值观、择偶期望等文本摘要</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">user_appearance_preferences</div>
+                    <div class="field-desc">用户对外貌的偏好记录</div>
+                </div>
+            </div>
+
+            <h3>🔮 向量库的秘密</h3>
+
+            <div class="highlight-box">
+                <div class="highlight-title">🤖 什么是向量匹配？</div>
+                <p>简单说，就是把"性格温柔、内向"这样的文字转换成一组数字（向量），然后计算你和候选人之间的"相似度"。</p>
+                <p style="margin-top:10px;">例如：你的性格向量是 [0.8, 0.6, 0.7]，候选人是 [0.75, 0.65, 0.72]，相似度可能达到 95%！</p>
+            </div>
+
+            <div class="success-box">
+                <div class="highlight-title">✨ 向量类型配置</div>
+                <div class="tag-container">
+                    <span class="tag">personality_traits（性格）365天衰减</span>
+                    <span class="tag">values（价值观）365天衰减</span>
+                    <span class="tag">partner_expectation（择偶期望）90天衰减</span>
+                    <span class="tag">emotional_needs（情感需求）30天衰减</span>
+                </div>
+                <p style="margin-top:10px;"><strong>为什么要衰减？</strong> 因为人的想法会变化，最新的信息更重要，老信息权重降低。</p>
+            </div>
+
+            <h3>📸 图片搜索怎么玩？</h3>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-number">A</div>
+                    <div class="step-content">
+                        <div class="step-title">上传照片或描述需求</div>
+                        <div class="step-desc">"找个像这张照片的人" 或 "找个像刘亦菲的感觉"</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">B</div>
+                    <div class="step-content">
+                        <div class="step-title">AI判断你的意图</div>
+                        <div class="step-desc">是想找脸型相似？还是风格相似？还是明星脸？</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">C</div>
+                    <div class="step-content">
+                        <div class="step-title">执行搜索</div>
+                        <div class="step-desc">在向量库中搜索相似的人脸向量或外貌风格向量</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">D</div>
+                    <div class="step-content">
+                        <div class="step-title">外貌加分计算</div>
+                        <div class="step-desc">根据照片质量、你的外貌偏好匹配度，给候选人加分</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">🌟 外貌评分维度</div>
+                <div class="visual-diagram">
+                    <div class="visual-box">
+                        <div class="visual-box-icon">🎯</div>
+                        <div class="visual-box-title">成熟感 (mature_score)</div>
+                        <div class="visual-box-desc">看起来成熟还是年轻</div>
+                    </div>
+                    <div class="visual-box">
+                        <div class="visual-box-icon">🧼</div>
+                        <div class="visual-box-title">清爽感 (clean_score)</div>
+                        <div class="visual-box-desc">干净清爽的程度</div>
+                    </div>
+                    <div class="visual-box">
+                        <div class="visual-box-icon">🌸</div>
+                        <div class="visual-box-title">温柔感 (gentle_score)</div>
+                        <div class="visual-box-desc">温柔气质评分</div>
+                    </div>
+                    <div class="visual-box">
+                        <div class="visual-box-icon">☀️</div>
+                        <div class="visual-box-title">阳光感 (sunny_score)</div>
+                        <div class="visual-box-desc">阳光活力的程度</div>
+                    </div>
+                    <div class="visual-box">
+                        <div class="visual-box-icon">✨</div>
+                        <div class="visual-box-title">精致感 (stylish_score)</div>
+                        <div class="visual-box-desc">利落精致的程度</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 二、画像写入系统 -->
+        <section class="system-section">
+            <div class="section-header">
+                <div class="section-icon icon-persona">📝</div>
+                <div>
+                    <h2>二、画像写入系统</h2>
+                    <div class="section-subtitle">记录并理解你的真实需求</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">💡 核心任务</div>
+                <p>当你在Discovery对话中表达了择偶需求，系统会自动提炼这些信息，写入你的画像，下次推荐时会更精准。</p>
+            </div>
+
+            <h3>⚡ 什么时候触发？</h3>
+
+            <div class="timeline">
+                <div class="timeline-item">
+                    <h4>📌 新建会话时</h4>
+                    <p>你开始新的对话，系统会先处理上一个会话的信息</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>⏰ 30分钟无活动时</h4>
+                    <p>定时任务每5分钟检查一次，发现超过30分钟没说话的会话就处理</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>🔚 会话销毁时</h4>
+                    <p>会话对象销毁时触发处理</p>
+                </div>
+                <div class="timeline-item">
+                    <h4>🔧 手动触发</h4>
+                    <p>管理员可以手动触发检查</p>
+                </div>
+            </div>
+
+            <h3>🔄 完整流程</h3>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <div class="step-title">加载聊天记录</div>
+                        <div class="step-desc">从 discovery_agent_session_memory_items 表读取你的对话内容</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <div class="step-title">AI提炼结构化信息</div>
+                        <div class="step-desc">用 qwen-plus 模型分析对话，提取性格、价值观、择偶条件等</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <div class="step-title">分流判断</div>
+                        <div class="step-desc">分为"可量化字段"和"不可量化字段"两条路径</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">4A</div>
+                    <div class="step-content">
+                        <div class="step-title">路径A：可量化字段 → 画像表</div>
+                        <div class="step-desc">年龄、身高、城市、学历等 → user_personas 表 + user_persona_observations 表</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">4B</div>
+                    <div class="step-content">
+                        <div class="step-title">路径B：不可量化字段 → 摘要表+向量库</div>
+                        <div class="step-desc">性格、价值观、择偶期望等 → conversation_summaries 表 + Milvus向量库</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>📊 关键数据库表</h3>
+
+            <div class="db-table">
+                <div class="table-header">🧩 画像主表 (user_personas)</div>
+                <div class="field-item">
+                    <div class="field-name">self_personality_traits_json</div>
+                    <div class="field-desc">性格特质JSON，如 {"mbti": {"type_code": "INTJ"}}</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">target_age_min/max</div>
+                    <div class="field-desc">目标年龄范围</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">target_cities</div>
+                    <div class="field-desc">目标城市列表</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">target_height_min/max</div>
+                    <div class="field-desc">目标身高范围</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">target_income_min_wan/max_wan</div>
+                    <div class="field-desc">目标收入范围（万元）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">target_marital_statuses</div>
+                    <div class="field-desc">可接受的婚况</div>
+                </div>
+            </div>
+
+            <div class="db-table">
+                <div class="table-header">📝 观察记录表 (user_persona_observations)</div>
+                <div class="field-item">
+                    <div class="field-name">field_name</div>
+                    <div class="field-desc">字段名，如 mbti_type</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">field_value</div>
+                    <div class="field-desc">字段值，如 INTJ</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">source_type</div>
+                    <div class="field-desc">来源类型（用户明确说/强推断/弱推断）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">confidence_score</div>
+                    <div class="field-desc">置信度（会话结束后LLM提炼为85）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">evidence_text</div>
+                    <div class="field-desc">证据文本，如 "会话结束后LLM提炼（session_id=xxx）"</div>
+                </div>
+            </div>
+
+            <div class="db-table">
+                <div class="table-header">💬 摘要表 (conversation_summaries)</div>
+                <div class="field-item">
+                    <div class="field-name">summary_key</div>
+                    <div class="field-desc">字段名，如 personality_traits</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">summary_text</div>
+                    <div class="field-desc">摘要内容，如 "性格温柔、内向"（VARCHAR(500))</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">vector_status</div>
+                    <div class="field-desc">向量化状态（pending/done/failed/retrying）</div>
+                </div>
+            </div>
+
+            <h3>🤖 AI语义判断逻辑</h3>
+
+            <div class="highlight-box">
+                <div class="highlight-title">🧠 新信息 vs 旧信息：怎么合并？</div>
+                <p>当新提取的信息与历史画像有冲突时，AI会判断三种关系：</p>
+            </div>
+
+            <table class="comparison-table">
+                <tr>
+                    <th>关系类型</th>
+                    <th>例子</th>
+                    <th>处理方式</th>
+                </tr>
+                <tr>
+                    <td><strong>补充关系</strong></td>
+                    <td>"内向" → "喜欢安静"</td>
+                    <td>合并为 "内向、喜欢安静"</td>
+                </tr>
+                <tr>
+                    <td><strong>冲突关系</strong></td>
+                    <td>"喜欢热闹" → "喜欢安静"</td>
+                    <td>覆盖为 "喜欢安静"（用户想法变了）</td>
+                </tr>
+                <tr>
+                    <td><strong>细化关系</strong></td>
+                    <td>"温柔" → "温柔、能理解工作"</td>
+                    <td>合并为更详细的版本</td>
+                </tr>
+            </table>
+
+            <div class="warning-box">
+                <div class="highlight-title">⚠️ 质量检验规则</div>
+                <p><strong>拦截泛泛结论：</strong>"合拍"、"真诚"、"稳定"、"三观一致"、"情绪价值"等抽象词汇不写入。</p>
+                <p style="margin-top:10px;"><strong>要求具体信号词：</strong>必须包含具体的描述才能写入，确保画像质量。</p>
+            </div>
+        </section>
+
+        <!-- 三、照片上传后台任务 -->
+        <section class="system-section">
+            <div class="section-header">
+                <div class="section-icon icon-photo">📷</div>
+                <div>
+                    <h2>三、照片上传后台任务</h2>
+                    <div class="section-subtitle">自动分析你的照片特征</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">💡 核心任务</div>
+                <p>当你上传照片后，系统会在后台自动分析照片，提取外貌特征、评分、生成向量，为后续推荐提供依据。</p>
+            </div>
+
+            <h3>⚡ 触发时机</h3>
+
+            <div class="tag-container">
+                <span class="tag">photo_uploaded（上传新照片）</span>
+                <span class="tag">photo_replaced（替换照片）</span>
+                <span class="tag">photo_deleted（删除照片）</span>
+            </div>
+
+            <h3>🔄 完整流程</h3>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <div class="step-title">你上传照片</div>
+                        <div class="step-desc">前端上传照片，更新 avatar_url/photo_url/cover_url 字段</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <div class="step-title">检测变化并发布事件</div>
+                        <div class="step-desc">系统检测到照片字段变化，发布 photo_analysis_event</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <div class="step-title">任务入队</div>
+                        <div class="step-desc">将 photo_feature_refresh 任务写入 async_jobs 表</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <div class="step-title">Worker执行分析</div>
+                        <div class="step-desc">后台Worker从队列取任务，执行照片特征分析</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <div class="step-title">特征提取</div>
+                        <div class="step-desc">人脸检测、质量评分、外貌评分、生成描述文本</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <div class="step-title">写入数据库</div>
+                        <div class="step-desc">写入 profile_photo_features、profile_face_attributes 等表</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <div class="step-title">生成向量</div>
+                        <div class="step-desc">生成外貌文本向量和人脸向量，存入向量库</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>📊 提取的特征维度</h3>
+
+            <div class="visual-diagram">
+                <div class="visual-box">
+                    <div class="visual-box-icon">📸</div>
+                    <div class="visual-box-title">照片质量 (quality_score)</div>
+                    <div class="visual-box-desc">清晰度、光线、构图评分</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">✅</div>
+                    <div class="visual-box-title">真实性 (authenticity_score)</div>
+                    <div class="visual-box-desc">认证奖励、封面真实性、详情一致性</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">🎯</div>
+                    <div class="visual-box-title">成熟感 (mature_score)</div>
+                    <div class="visual-box-desc">基于年龄和外观判断</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">🌸</div>
+                    <div class="visual-box-title">温柔感 (gentle_score)</div>
+                    <div class="visual-box-desc">气质评分</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">☀️</div>
+                    <div class="visual-box-title">阳光感 (sunny_score)</div>
+                    <div class="visual-box-desc">活力评分</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">✨</div>
+                    <div class="visual-box-title">精致感 (stylish_score)</div>
+                    <div class="visual-box-desc">利落精致程度</div>
+                </div>
+            </div>
+
+            <div class="success-box">
+                <div class="highlight-title">✨ 综合评分公式</div>
+                <p><strong>face_score_global</strong> = 上述5维平均</p>
+                <p style="margin-top:10px;"><strong>appearance_score_global</strong> = quality × 0.22 + authenticity × 0.18 + face × 0.60</p>
+            </div>
+
+            <h3>⚙️ 异步任务队列机制</h3>
+
+            <div class="db-table">
+                <div class="table-header">📋 async_jobs 表</div>
+                <div class="field-item">
+                    <div class="field-name">status</div>
+                    <div class="field-desc">pending（待处理）→ processing（处理中）→ succeeded/failed</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">max_attempts</div>
+                    <div class="field-desc">最大重试次数（默认3次）</div>
+                </div>
+            </div>
+
+            <div class="highlight-box">
+                <div class="highlight-title">🔄 重试机制</div>
+                <p><strong>指数退避策略：</strong>失败后延迟重试，避免频繁冲击系统</p>
+                <p style="margin-top:10px;">延迟序列：<span class="key-point">15秒 → 30秒 → 60秒 → 120秒 → 240秒 → 300秒（最大）</span></p>
+            </div>
+        </section>
+
+        <!-- 四、身份认证系统 -->
+        <section class="system-section">
+            <div class="section-header">
+                <div class="section-icon icon-auth">🔐</div>
+                <div>
+                    <h2>四、身份认证系统</h2>
+                    <div class="section-subtitle">安全登录与用户识别</div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">💡 核心任务</div>
+                <p>确保用户安全登录，管理会话状态，防止恶意攻击，记录所有认证事件。</p>
+            </div>
+
+            <h3>🔑 登录方式</h3>
+
+            <div class="visual-diagram">
+                <div class="visual-box">
+                    <div class="visual-box-icon">📱</div>
+                    <div class="visual-box-title">短信验证码</div>
+                    <div class="visual-box-desc">手机号 + 验证码登录</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">💚</div>
+                    <div class="visual-box-title">微信登录</div>
+                    <div class="visual-box-desc">微信授权一键登录</div>
+                </div>
+                <div class="visual-box">
+                    <div class="visual-box-icon">⚡</div>
+                    <div class="visual-box-title">一键登录</div>
+                    <div class="visual-box-desc">运营商手机号验证</div>
+                </div>
+            </div>
+
+            <h3>🔄 短信验证码流程</h3>
+
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <div class="step-title">发送验证码</div>
+                        <div class="step-desc">检查是否已有活跃验证码 → 生成新验证码 → 哈希存储 → 发送短信</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <div class="step-title">验证验证码</div>
+                        <div class="step-desc">检查验证码状态 → 验证码匹配 → 查找或创建用户 → 创建会话</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <div class="step-title">生成令牌</div>
+                        <div class="step-desc">access_token（2小时有效）+ refresh_token（7天有效）</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <div class="step-title">返回结果</div>
+                        <div class="step-desc">返回令牌、用户信息、跳转页面</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>🛡️ 安全措施</h3>
+
+            <div class="warning-box">
+                <div class="highlight-title">🔐 数据加密</div>
+                <p><span class="emoji-bullet">📱</span><strong>手机号加密存储</strong>：使用 AES-256 加密</p>
+                <p><span class="emoji-bullet">🔑</span><strong>验证码哈希存储</strong>：hash(phone:code:salt)，不存明文</p>
+                <p><span class="emoji-bullet">🎫</span><strong>令牌哈希存储</strong>：hash(access_token)，不存明文</p>
+            </div>
+
+            <div class="success-box">
+                <div class="highlight-title">🚦 多维限流</div>
+                <p><strong>SMS发送限流：</strong></p>
+                <ul style="margin-left:20px;margin-top:10px;">
+                    <li>手机号维度：同一号码每分钟最多 1 次</li>
+                    <li>IP维度：同一IP每分钟最多 5 次不同号码</li>
+                </ul>
+                <p style="margin-top:15px;"><strong>验证码限流：</strong></p>
+                <ul style="margin-left:20px;margin-top:10px;">
+                    <li>每手机号每分钟最多 10 次验证尝试</li>
+                    <li>单个验证码最多 5 次错误尝试（超过则锁定）</li>
+                </ul>
+            </div>
+
+            <h3>📊 核心数据库表</h3>
+
+            <div class="db-table">
+                <div class="table-header">👤 用户表 (user_accounts)</div>
+                <div class="field-item">
+                    <div class="field-name">account_status</div>
+                    <div class="field-desc">账户状态（active/inactive/banned）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">primary_phone</div>
+                    <div class="field-desc">主手机号（加密）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">phone_verified_at</div>
+                    <div class="field-desc">手机验证时间</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">onboarding_status</div>
+                    <div class="field-desc">新用户引导状态</div>
+                </div>
+            </div>
+
+            <div class="db-table">
+                <div class="table-header">🎫 会话表 (auth_sessions)</div>
+                <div class="field-item">
+                    <div class="field-name">access_token_hash</div>
+                    <div class="field-desc">访问令牌哈希（2小时有效）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">refresh_token_hash</div>
+                    <div class="field-desc">刷新令牌哈希（7天有效）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">login_method</div>
+                    <div class="field-desc">登录方式（sms/wechat/one_tap）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">revoked_at</div>
+                    <div class="field-desc">撤销时间（登出时设置）</div>
+                </div>
+            </div>
+
+            <div class="db-table">
+                <div class="table-header">🔐 验证码挑战表 (auth_otp_challenges)</div>
+                <div class="field-item">
+                    <div class="field-name">status</div>
+                    <div class="field-desc">状态（issued/expired/verified/blocked）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">code_hash</div>
+                    <div class="field-desc">验证码哈希</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">expires_at</div>
+                    <div class="field-desc">过期时间（5分钟）</div>
+                </div>
+                <div class="field-item">
+                    <div class="field-name">verify_attempt_count</div>
+                    <div class="field-desc">验证尝试次数（最多5次）</div>
+                </div>
+            </div>
+
+            <h3>📝 审计日志</h3>
+
+            <div class="tag-container">
+                <span class="tag">sms_send（发送验证码）</span>
+                <span class="tag">login_success（登录成功）</span>
+                <span class="tag">logout（登出）</span>
+                <span class="tag">token_refresh（令牌刷新）</span>
+                <span class="tag">bind_phone（绑定手机）</span>
+                <span class="tag">onboarding_submit（提交资料）</span>
+            </div>
+
+            <div class="info-box">
+                <div class="highlight-title">🔍 所有事件记录到 auth_login_events 表</div>
+                <p>包含：事件类型、结果、原因码、客户端IP、设备ID、元数据</p>
+                <p style="margin-top:10px;">用于安全审计、异常分析、用户行为追踪。</p>
+            </div>
+        </section>
+
+        <!-- 五、系统交互全景图 -->
+        <section class="system-section">
+            <div class="section-header">
+                <div class="section-icon" style="background: linear-gradient(135deg, #ff9500, #ff5e3a);">🗺️</div>
+                <div>
+                    <h2>五、系统交互全景图</h2>
+                    <div class="section-subtitle">四大系统如何协作</div>
+                </div>
+            </div>
+
+            <div class="flow-diagram" style="background: linear-gradient(135deg, #f5f5f7, #fff);">
+                <div class="flow-step" style="background: linear-gradient(135deg, #43e97b, #38f9d7); color: white;">
+                    <div class="step-number" style="background: rgba(255,255,255,0.3);">1</div>
+                    <div class="step-content">
+                        <div class="step-title">用户注册/登录</div>
+                        <div class="step-desc">身份认证系统验证身份，创建会话</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step" style="background: linear-gradient(135deg, #4facfe, #00f2fe); color: white;">
+                    <div class="step-number" style="background: rgba(255,255,255,0.3);">2</div>
+                    <div class="step-content">
+                        <div class="step-title">完成Onboarding + 上传照片</div>
+                        <div class="step-desc">创建画像基础信息 + 后台分析照片特征</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+                    <div class="step-number" style="background: rgba(255,255,255,0.3);">3</div>
+                    <div class="step-content">
+                        <div class="step-title">使用Discovery对话</div>
+                        <div class="step-desc">表达择偶需求，AI记录对话内容</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step" style="background: linear-gradient(135deg, #f093fb, #f5576c); color: white;">
+                    <div class="step-number" style="background: rgba(255,255,255,0.3);">4</div>
+                    <div class="step-content">
+                        <div class="step-title">会话结束触发画像写入</div>
+                        <div class="step-desc">AI提炼需求 → 写入画像表 + 摘要表 + 向量库</div>
+                    </div>
+                </div>
+                <div class="arrow">↓</div>
+                <div class="flow-step" style="background: linear-gradient(135deg, #ff9500, #ff5e3a); color: white;">
+                    <div class="step-number" style="background: rgba(255,255,255,0.3);">5</div>
+                    <div class="step-content">
+                        <div class="step-title">发现页搜索推荐</div>
+                        <div class="step-desc">数据库筛选 + 摘要查询 + 向量匹配 → 返回推荐</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>📊 数据依赖关系</h3>
+
+            <table class="comparison-table">
+                <tr>
+                    <th>系统</th>
+                    <th>依赖的数据库表</th>
+                    <th>依赖的向量类型</th>
+                </tr>
+                <tr>
+                    <td><strong>发现页搜索</strong></td>
+                    <td>profile、profile_photo_features、conversation_summaries</td>
+                    <td>appearance_profile、face_embedding、personality_traits、values</td>
+                </tr>
+                <tr>
+                    <td><strong>画像写入</strong></td>
+                    <td>user_personas、user_persona_observations、conversation_summaries</td>
+                    <td>personality_traits、values、partner_expectation</td>
+                </tr>
+                <tr>
+                    <td><strong>照片上传任务</strong></td>
+                    <td>profile_photo_features、profile_face_attributes、profile_face_embeddings</td>
+                    <td>appearance_profile、face_embedding</td>
+                </tr>
+                <tr>
+                    <td><strong>身份认证</strong></td>
+                    <td>user_accounts、auth_sessions、auth_otp_challenges</td>
+                    <td>无</td>
+                </tr>
+            </table>
+
+            <h3>🛠️ 技术栈总结</h3>
+
+            <div class="summary-card">
+                <div class="card">
+                    <div class="card-title">📊 数据库技术</div>
+                    <div class="card-content">
+                        <p><span class="emoji-bullet">🔹</span><strong>MySQL</strong>：结构化数据存储</p>
+                        <p><span class="emoji-bullet">🔹</span><strong>Milvus Lite</strong>：向量数据库，支持时间衰减</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">🤖 AI/LLM技术</div>
+                    <div class="card-content">
+                        <p><span class="emoji-bullet">🔹</span><strong>qwen-plus</strong>：摘要提炼、语义判断</p>
+                        <p><span class="emoji-bullet">🔹</span><strong>text-embedding-v3</strong>：文本向量化（1024维）</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">⚡ 异步任务</div>
+                    <div class="card-content">
+                        <p><span class="emoji-bullet">🔹</span><strong>async_jobs表</strong>：任务队列</p>
+                        <p><span class="emoji-bullet">🔹</span><strong>指数退避重试</strong>：15s → 300s</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">🛡️ 安全技术</div>
+                    <div class="card-content">
+                        <p><span class="emoji-bullet">🔹</span><strong>AES-256加密</strong>：敏感数据加密</p>
+                        <p><span class="emoji-bullet">🔹</span><strong>多维限流</strong>：手机号 + IP维度</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            <h3 style="margin-bottom: 20px;">📚 总结</h3>
+            <p style="font-size: 16px; line-height: 1.8;">
+                Her系统通过四大核心模块协同工作：<br>
+                🔍 <strong>发现页搜索</strong> - 用AI理解需求，数据库+向量库双路筛选<br>
+                📝 <strong>画像写入</strong> - 自动提炼对话内容，精准记录用户需求<br>
+                📷 <strong>照片分析</strong> - 后台自动提取外貌特征，为推荐提供依据<br>
+                🔐 <strong>身份认证</strong> - 多维限流+数据加密，确保安全登录<br>
+                <br>
+                🎯 <strong>核心设计理念</strong>：AI Native - 让AI成为决策引擎，而非简单的规则执行器。
+            </p>
+            <p style="margin-top: 30px; opacity: 0.7;">文档版本: 2026-07-05 | 维护者: Claude Code</p>
+        </footer>
+    </div>
+</body>
+</html>
