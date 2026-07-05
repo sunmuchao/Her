@@ -94,6 +94,7 @@ def user_message(
     body: str,
     *,
     created_at: datetime | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     item: dict[str, Any] = {
         "item_type": "user_message",
@@ -103,6 +104,8 @@ def user_message(
     formatted = _format_created_at(created_at)
     if formatted is not None:
         item["created_at"] = formatted
+    if metadata:
+        item["metadata"] = metadata
     return item
 
 

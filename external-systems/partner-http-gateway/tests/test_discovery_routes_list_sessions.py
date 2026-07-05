@@ -301,6 +301,59 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
         self.assertEqual(response["result_count"], 1)
         self.assertEqual(response["results"][0]["name"], "林夏")
 
+    def test_dispatch_photo_search_persists_into_discovery_session(self):
+        created = self.service.create_session(
+            requester_id=10001,
+            profile_id=10001,
+        )
+        session_id = created["session"]["session_id"]
+        environ = {
+            "wsgi.input": mock.MagicMock(),
+            "CONTENT_LENGTH": "180",
+        }
+        body = {
+            "profile_id": 10001,
+            "session_id": session_id,
+            "mode": "face",
+            "image_source": "data:image/jpeg;base64,abc",
+            "query_text": "笑起来像这张",
+        }
+        with (
+            mock.patch("gateway.discovery_routes._read_body", return_value=b"{}"),
+            mock.patch("gateway.discovery_routes._parse_json_body", return_value=body),
+            mock.patch(
+                "gateway.discovery_routes.default_profile_source",
+                return_value=("mysql://example/her", "profiles"),
+            ),
+            mock.patch(
+                "gateway.discovery_routes.execute_photo_preference_search",
+                return_value={
+                    "saved": True,
+                    "search_type": "face_similarity",
+                    "results": [{"profile_id": 20001, "final_score": 1.38, "appearance_summary": "清爽耐看"}],
+                },
+            ),
+            mock.patch(
+                "gateway.discovery_routes.list_profiles",
+                return_value=[{"id": 20001, "name": "林夏", "age": 27, "city": "上海", "job": "产品经理"}],
+            ),
+        ):
+            result = dispatch_discovery_rest(
+                self.gateway,
+                environ,
+                method="POST",
+                path="/v1/discovery/photo-search",
+            )
+
+        self.assertIsNotNone(result)
+        status, response = result
+        self.assertEqual(status, 200)
+        self.assertTrue(response["session_sync"]["success"])
+        view = self.service.get_session_view(session_id)
+        item_types = [item.get("item_type") for item in view["view"]["timeline"]]
+        self.assertIn("result_group", item_types)
+        self.assertEqual(view["view"]["timeline"][-1]["cards"][0]["profile_id"], 20001)
+
 
 class TestDiscoveryPhotoSearchAPI(unittest.TestCase):
     def setUp(self):

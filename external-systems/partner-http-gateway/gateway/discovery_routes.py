@@ -10,7 +10,7 @@ Changes:
 from __future__ import annotations
 
 import re
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol, Sequence
 
 from discovery_system import DiscoveryServiceError  # type: ignore[import-untyped]
 from match_domain import (  # noqa: E402
@@ -135,6 +135,103 @@ def _build_photo_search_preview(
     }
 
 
+def _build_discovery_photo_search_card(preview: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(preview or {})
+    highlights = [
+        str(item).strip()
+        for item in list(payload.get("matchHighlights") or [])
+        if str(item).strip()
+    ]
+    return {
+        "profile_id": int(payload.get("id") or 0),
+        "title": str(payload.get("name") or "候选人"),
+        "subtitle": str(payload.get("city") or payload.get("occupation") or "").strip() or None,
+        "cover_image_url": str(payload.get("image") or "").strip() or None,
+        "match_score": payload.get("matchScore"),
+        "reason_summary": str(payload.get("matchReason") or "").strip() or None,
+        "match_highlights": highlights[:4],
+    }
+
+
+def _append_photo_search_to_discovery_session(
+    *,
+    discovery_service: Any,
+    session_id: str,
+    mode: str,
+    query_text: str,
+    image_source: str,
+    result_previews: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    from datetime import datetime
+    from discovery_system.view_models import assistant_message, result_group, user_message
+
+    session = discovery_service._require_session(session_id)
+    now = datetime.now()
+    summary_text = (
+        f"我按“{query_text}”帮你找了一轮。"
+        if mode == "celebrity"
+        else (
+            "我按这张脸帮你找了一轮。"
+            if mode == "face"
+            else "我按这张图的整体感觉帮你找了一轮。"
+        )
+    )
+    timeline = list(session.view.get("timeline") or [])
+    user_text = (
+        f"像 {query_text}"
+        if mode == "celebrity"
+        else query_text or ("找像这张脸" if mode == "face" else "找这种感觉")
+    )
+    user_metadata = None
+    if image_source:
+        user_metadata = {
+            "media_type": "image",
+            "media_url": image_source,
+        }
+    timeline.append(
+        user_message(
+            discovery_service.storage.next_item_id("msg-u"),
+            user_text,
+            created_at=now,
+            metadata=user_metadata,
+        )
+    )
+    timeline.append(
+        assistant_message(
+            discovery_service.storage.next_item_id("msg-a"),
+            summary_text,
+            created_at=now,
+        )
+    )
+    cards = [
+        _build_discovery_photo_search_card(item)
+        for item in list(result_previews or [])
+        if int(item.get("id") or 0) > 0
+    ]
+    if cards:
+        title = (
+            f"像 {query_text}"
+            if mode == "celebrity"
+            else ("像这张脸" if mode == "face" else "这种感觉")
+        )
+        timeline.append(
+            result_group(
+                discovery_service.storage.next_item_id("result-group"),
+                title,
+                cards,
+            )
+        )
+    session.view["timeline"] = timeline
+    session.updated_at = now
+    discovery_service.storage.save_session(session)
+    return {
+        "success": True,
+        "session_id": session_id,
+        "timeline_count": len(timeline),
+        "appended_result_count": len(cards),
+    }
+
+
 def _load_profile_rows_by_ids(
     *,
     source_dsn: str,
@@ -172,6 +269,7 @@ def rest_discovery_photo_search(
     image_source = str(body.get("image_source") or "").strip()
     query_text = str(body.get("query_text") or "").strip()
     celebrity_name = str(body.get("celebrity_name") or "").strip()
+    session_id = str(body.get("session_id") or "").strip()
     if mode not in {"face", "style", "celebrity", ""}:
         return _photo_search_error("mode must be one of: face, style, celebrity")
     if mode in {"face", "style"} and not image_source:
@@ -241,6 +339,22 @@ def rest_discovery_photo_search(
         )
         for item in ranked_results
     ]
+    session_sync: dict[str, Any] | None = None
+    if session_id:
+        owner_id = gateway._discovery.get_session_owner_id(session_id)
+        gateway._assert_actor_can_access_owner(
+            environ,
+            owner_id,
+            field_name="profile_id",
+        )
+        session_sync = _append_photo_search_to_discovery_session(
+            discovery_service=gateway._discovery,
+            session_id=session_id,
+            mode=intent.mode,
+            query_text=query_text or celebrity_name or intent.query_text,
+            image_source=image_source,
+            result_previews=previews,
+        )
     return 200, {
         "trace_id": get_trace_id(),
         "task": {
@@ -259,6 +373,7 @@ def rest_discovery_photo_search(
         "query_text": query_text,
         "image_source_present": bool(image_source),
         "results": previews,
+        "session_sync": session_sync,
     }
 
 

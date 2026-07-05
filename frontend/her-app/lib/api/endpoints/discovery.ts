@@ -22,6 +22,12 @@ export type DiscoveryPhotoSearchResponse = {
   query_text?: string
   image_source_present?: boolean
   results?: CandidatePreview[]
+  session_sync?: {
+    success?: boolean
+    session_id?: string
+    timeline_count?: number
+    appended_result_count?: number
+  } | null
 }
 
 export async function createDiscoverySession(params: { profileId: number }) {
@@ -160,6 +166,7 @@ export async function fetchDiscoverySessionList(params: {
 export async function searchDiscoveryByPhoto(params: {
   profileId: number
   mode: DiscoveryPhotoSearchMode
+  sessionId?: string
   imageSource?: string
   queryText?: string
   celebrityName?: string
@@ -170,6 +177,7 @@ export async function searchDiscoveryByPhoto(params: {
     method: 'POST',
     body: JSON.stringify({
       profile_id: params.profileId,
+      session_id: params.sessionId,
       mode: params.mode,
       image_source: params.imageSource,
       query_text: params.queryText,

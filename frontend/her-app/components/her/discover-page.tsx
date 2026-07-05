@@ -241,11 +241,24 @@ function DiscoveryTimelineEntry({
             )}
           >
             {isUser ? (
-              <div className="flex items-center gap-2">
-                {isSending && (
-                  <div className="w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-                )}
-                <span>{item.content}</span>
+              <div className="space-y-2">
+                {item.mediaType === 'image' && item.mediaUrl ? (
+                  <div className="relative h-28 w-28 overflow-hidden rounded-2xl bg-black/5">
+                    <Image
+                      src={item.mediaUrl}
+                      alt="用户发送的图片"
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                ) : null}
+                <div className="flex items-center gap-2">
+                  {isSending && (
+                    <div className="w-3 h-3 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
+                  )}
+                  <span>{item.content}</span>
+                </div>
               </div>
             ) : (
               <XiaoyaRichText
@@ -437,6 +450,7 @@ export default function DiscoverPage({
   const [photoAttachmentSource, setPhotoAttachmentSource] = useState('')
   const [photoAttachmentPreview, setPhotoAttachmentPreview] = useState('')
   const [isPhotoSearchSending, setIsPhotoSearchSending] = useState(false)
+  const [isPhotoDragActive, setIsPhotoDragActive] = useState(false)
   const [assessmentCard, setAssessmentCard] = useState<AssessmentCard | null>(null)
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
   const [currentAssessmentType, setCurrentAssessmentType] = useState<'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love'>('mbti_16')
@@ -552,9 +566,7 @@ export default function DiscoverPage({
     }
   }
 
-  const handlePhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const processPhotoFile = async (file: File) => {
     try {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
         throw new Error('目前只支持 JPG、PNG、WEBP')
@@ -569,6 +581,14 @@ export default function DiscoverPage({
       setShowPhotoModes(true)
     } catch (error) {
       notifyError(error, '图片处理失败')
+    }
+  }
+
+  const handlePhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      await processPhotoFile(file)
     } finally {
       if (photoFileInputRef.current) {
         photoFileInputRef.current.value = ''
@@ -611,6 +631,7 @@ export default function DiscoverPage({
     try {
       const response = await searchDiscoveryByPhoto({
         profileId: currentProfileId,
+        sessionId: sessionId || undefined,
         mode: photoSearchMode,
         imageSource: photoSearchMode === 'celebrity' ? undefined : photoAttachmentSource,
         queryText: normalizedCaption || undefined,
@@ -618,28 +639,32 @@ export default function DiscoverPage({
         topK: 12,
       })
       removeTimelineItem(progressId)
-      addTimelineItem({
-        kind: 'message',
-        id: `${resultId}-summary`,
-        type: 'matchmaker',
-        content:
-          response.result_count && response.result_count > 0
-            ? `先帮你捞到了 ${response.result_count} 个方向比较贴近的人，你往下看。`
-            : '这次我还没找到特别贴的，你可以换张图，或者补一句更明确的描述。',
-        timestamp: '刚刚',
-      })
-      if ((response.results || []).length > 0) {
+      if (response.session_sync?.success && sessionId) {
+        await reloadSession()
+      } else {
         addTimelineItem({
-          kind: 'result_group',
-          id: resultId,
-          title:
-            photoSearchMode === 'face'
-              ? '按这张脸找'
-              : photoSearchMode === 'style'
-                ? '按这种感觉找'
-                : `按 ${normalizedCaption} 找`,
-          candidates: response.results || [],
+          kind: 'message',
+          id: `${resultId}-summary`,
+          type: 'matchmaker',
+          content:
+            response.result_count && response.result_count > 0
+              ? `先帮你捞到了 ${response.result_count} 个方向比较贴近的人，你往下看。`
+              : '这次我还没找到特别贴的，你可以换张图，或者补一句更明确的描述。',
+          timestamp: '刚刚',
         })
+        if ((response.results || []).length > 0) {
+          addTimelineItem({
+            kind: 'result_group',
+            id: resultId,
+            title:
+              photoSearchMode === 'face'
+                ? '按这张脸找'
+                : photoSearchMode === 'style'
+                  ? '按这种感觉找'
+                  : `按 ${normalizedCaption} 找`,
+            candidates: response.results || [],
+          })
+        }
       }
       clearPhotoComposer()
     } catch (error) {
@@ -1249,7 +1274,33 @@ export default function DiscoverPage({
         {/* 微信式设计：不显示"识别中..."等待状态，让用户感觉已即时发送 */}
         {/* isProcessing 状态下不显示任何UI提示，后台静默处理 */}
 
-        <div className="flex items-center gap-2 bg-secondary rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30">
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-xl px-3 py-2 transition-all focus-within:ring-2 focus-within:ring-primary/30',
+            isPhotoDragActive ? 'bg-primary/10 ring-2 ring-primary/30' : 'bg-secondary',
+          )}
+          onDragOver={(event) => {
+            event.preventDefault()
+            if (photoSearchMode === 'celebrity') {
+              setPhotoSearchMode('face')
+            }
+            setIsPhotoDragActive(true)
+            setShowPhotoModes(true)
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault()
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              setIsPhotoDragActive(false)
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault()
+            setIsPhotoDragActive(false)
+            const file = Array.from(event.dataTransfer.files || []).find((item) => item.type.startsWith('image/'))
+            if (!file) return
+            void processPhotoFile(file)
+          }}
+        >
           <button
             aria-label={showActionMenu ? '收起菜单' : '展开菜单'}
             onClick={() => setShowActionMenu((prev) => !prev)}
@@ -1278,6 +1329,18 @@ export default function DiscoverPage({
                   void submitTurn({ user_message: inputValue.trim() })
                 }
               }
+            }}
+            onPaste={(event) => {
+              const imageItem = Array.from(event.clipboardData.items || []).find((item) => item.type.startsWith('image/'))
+              if (!imageItem) return
+              const file = imageItem.getAsFile()
+              if (!file) return
+              event.preventDefault()
+              if (photoSearchMode === 'celebrity') {
+                setPhotoSearchMode('face')
+              }
+              setShowPhotoModes(true)
+              void processPhotoFile(file)
             }}
             placeholder={
               isRecording
