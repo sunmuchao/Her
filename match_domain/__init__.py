@@ -135,6 +135,13 @@ from .photo_discovery_search import (
     search_similar_face_candidates,
     search_style_candidates,
 )
+from .photo_intent_agent import (
+    PhotoPreferenceIntent,
+    build_photo_recommendation_explanation,
+    detect_photo_preference_intent,
+    execute_photo_preference_search,
+    translate_intent_to_search_plan,
+)
 from her_runtime_context import (
     ActorContext,
     TRACE_ID_HEX_LEN,
@@ -284,9 +291,14 @@ __all__ = [
     "run_photo_analysis_job_worker",
     "search_profiles_by_reference_image",
     "search_celebrity_face_candidates",
+    "PhotoPreferenceIntent",
+    "build_photo_recommendation_explanation",
+    "detect_photo_preference_intent",
+    "execute_photo_preference_search",
     "search_similar_face_candidates",
     "search_style_candidates",
     "subscribe_photo_analysis_events",
+    "translate_intent_to_search_plan",
     "extract_collected_statements",
     "extract_profile_facts",
     "filter_explicit_patch",

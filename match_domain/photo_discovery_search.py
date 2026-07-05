@@ -13,6 +13,7 @@ from .appearance_search import (
     UploadedReferenceFaceProcessor,
     search_profiles_by_reference_image,
 )
+from observability.photo_search_metrics import emit_photo_search_event
 
 
 def _rerank_with_photo_bonus(
@@ -61,6 +62,13 @@ def search_similar_face_candidates(
         top_k=max(top_k * 2, 20),
     )
     if not base.get("saved"):
+        emit_photo_search_event(
+            user_key=requester_user_key,
+            search_type="face_similarity",
+            stage="search_failed",
+            result_count=0,
+            success=False,
+        )
         return base
     result_rows = list(base.get("results") or [])
     allowed_ids: set[int] | None = None
@@ -86,12 +94,20 @@ def search_similar_face_candidates(
         profile_ids=ordered_ids,
         base_scores=base_scores,
     )[: max(1, int(top_k or 20))]
-    return {
+    out = {
         "saved": True,
         "search_type": "face_similarity",
         "result_count": len(reranked),
         "results": reranked,
     }
+    emit_photo_search_event(
+        user_key=requester_user_key,
+        search_type="face_similarity",
+        stage="search_completed",
+        result_count=len(reranked),
+        success=True,
+    )
+    return out
 
 
 def _style_query_from_image_source(image_source: str) -> str:
@@ -154,13 +170,21 @@ def search_style_candidates(
         profile_ids=ordered_ids,
         base_scores=base_scores,
     )[: max(1, int(top_k or 20))]
-    return {
+    out = {
         "saved": True,
         "search_type": "style_similarity",
         "query_text": query_text,
         "result_count": len(reranked),
         "results": reranked,
     }
+    emit_photo_search_event(
+        user_key=str(requester_profile_id or "anonymous"),
+        search_type="style_similarity",
+        stage="search_completed",
+        result_count=len(reranked),
+        success=True,
+    )
+    return out
 
 
 def search_celebrity_face_candidates(
@@ -184,13 +208,21 @@ def search_celebrity_face_candidates(
         profile_ids=[item.profile_id for item in face_results],
         base_scores=base_scores,
     )[: max(1, int(top_k or 20))]
-    return {
+    out = {
         "saved": True,
         "search_type": "celebrity_face_similarity",
         "celebrity_reference": references[0] if references else {"name": celebrity_name},
         "result_count": len(reranked),
         "results": reranked,
     }
+    emit_photo_search_event(
+        user_key=str(requester_profile_id or celebrity_name),
+        search_type="celebrity_face_similarity",
+        stage="search_completed",
+        result_count=len(reranked),
+        success=True,
+    )
+    return out
 
 
 __all__ = [

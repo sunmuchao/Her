@@ -127,3 +127,41 @@ CHAT_FUNNEL_THREAD_OPEN = "thread_open"
 CHAT_FUNNEL_MESSAGE_SEND = "message_send"
 CHAT_FUNNEL_PERSONA_JOB_ENQUEUED = "persona_job_enqueued"
 CHAT_FUNNEL_OUTBOX_DISPATCHED = "outbox_dispatched"
+
+from .photo_search_metrics import (  # noqa: E402
+    PHOTO_SEARCH_BUCKETS,
+    compare_photo_search_bucket_effect,
+    emit_photo_search_event,
+    resolve_photo_search_experiment_bucket,
+    summarize_photo_search_events,
+)
+
+__all__ = [
+    "CHAT_FUNNEL_MESSAGE_SEND",
+    "CHAT_FUNNEL_OUTBOX_DISPATCHED",
+    "CHAT_FUNNEL_PERSONA_JOB_ENQUEUED",
+    "CHAT_FUNNEL_THREAD_OPEN",
+    "MATCHMAKING_FUNNEL_CASE",
+    "MATCHMAKING_FUNNEL_EDGE",
+    "MATCHMAKING_FUNNEL_FIRST_ACCEPT",
+    "MATCHMAKING_FUNNEL_MEMBER",
+    "MATCHMAKING_FUNNEL_MUTUAL_ACCEPT",
+    "MATCHMAKING_FUNNEL_PAIR",
+    "MATCHMAKING_FUNNEL_SECOND_ACCEPT",
+    "PHOTO_SEARCH_BUCKETS",
+    "RECOMMENDATION_FUNNEL_ACTION",
+    "RECOMMENDATION_FUNNEL_DELIVERED",
+    "RECOMMENDATION_FUNNEL_PENDING_DELIVERY",
+    "RECOMMENDATION_FUNNEL_PROXY_INTRO",
+    "RECOMMENDATION_FUNNEL_REFRESH",
+    "RECOMMENDATION_FUNNEL_REVIEW_PENDING",
+    "alert_signal",
+    "audit_event",
+    "compare_photo_search_bucket_effect",
+    "emit_photo_search_event",
+    "emit_pipeline_record",
+    "funnel_stage",
+    "metric_gauge",
+    "resolve_photo_search_experiment_bucket",
+    "summarize_photo_search_events",
+]
