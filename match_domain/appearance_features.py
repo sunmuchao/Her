@@ -10,24 +10,38 @@ from datetime import datetime
 from typing import Any, Iterable
 
 from profile_service import (
+    get_face_consistency_score,
     get_profile,
+    insert_reference_face_search_job,
     insert_profile_photo_feature_version,
     iter_profile_batches,
     list_appearance_feedback_events,
+    list_profile_face_attributes,
+    list_profile_face_embeddings,
     list_profile_photo_feature_rows,
     list_profile_photo_feature_versions,
     list_profile_photos,
     list_profile_photo_features,
+    list_verified_face_anchors,
     load_user_appearance_preference,
     record_appearance_feedback_event,
     resolve_profile_source,
+    upsert_face_consistency_score,
+    upsert_profile_face_attributes,
+    upsert_profile_face_embedding,
     upsert_profile_photo_features,
+    upsert_verified_face_anchor,
     upsert_user_appearance_preference,
 )
 
 
 DEFAULT_PROFILE_PHOTO_FEATURES_TABLE = "profile_photo_features"
 DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE = "profile_photo_feature_versions"
+DEFAULT_PROFILE_FACE_ATTRIBUTES_TABLE = "profile_face_attributes"
+DEFAULT_PROFILE_FACE_EMBEDDINGS_TABLE = "profile_face_embeddings"
+DEFAULT_VERIFIED_FACE_ANCHORS_TABLE = "verified_face_anchors"
+DEFAULT_FACE_CONSISTENCY_SCORES_TABLE = "face_consistency_scores"
+DEFAULT_REFERENCE_FACE_SEARCH_JOBS_TABLE = "reference_face_search_jobs"
 DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
 APPEARANCE_PROFILE_VECTOR_TYPE = "appearance_profile"
@@ -145,6 +159,34 @@ class ProfilePhotoTrustScore:
     confidence_weight: float
     risk_level: str
     badges: list[str]
+
+
+@dataclass(frozen=True)
+class VerifiedPhotoQualityScore:
+    score: float
+    confidence: float
+    blur_penalty: float
+    lighting_penalty: float
+    occlusion_penalty: float
+    reasons: list[str]
+
+
+@dataclass(frozen=True)
+class EnvironmentGapAssessment:
+    gap_score: float
+    compensation_factor: float
+    notes: list[str]
+
+
+@dataclass(frozen=True)
+class FaceConsistencyResult:
+    score: float
+    threshold: float
+    confidence_weight: float
+    environment_gap_score: float
+    risk_level: str
+    risk_flags: list[str]
+    matched: bool
 
 
 class PhotoAnalysisStateMachine:
@@ -271,6 +313,198 @@ class PhotoFeatureVersionManager:
         return snapshot
 
 
+class VerifiedPhotoQualityScorer:
+    @staticmethod
+    def score(
+        profile_row: dict[str, Any] | None,
+        photo_entries: list[dict[str, Any]] | None,
+    ) -> VerifiedPhotoQualityScore:
+        normalized_profile = dict(profile_row or {})
+        sources = _normalize_photo_sources(list(photo_entries or []))
+        if not sources:
+            return VerifiedPhotoQualityScore(
+                score=0.0,
+                confidence=0.35,
+                blur_penalty=18.0,
+                lighting_penalty=16.0,
+                occlusion_penalty=20.0,
+                reasons=["缺少认证照来源"],
+            )
+        primary_source = sources[0].lower()
+        verification_level = str(
+            normalized_profile.get("photo_verification_level")
+            or normalized_profile.get("verified_level")
+            or ""
+        ).strip().lower()
+        base_score = {
+            "offline": 88.0,
+            "id": 84.0,
+            "photo": 76.0,
+            "uploaded": 68.0,
+            "basic": 60.0,
+        }.get(verification_level, 58.0)
+        blur_penalty = 12.0 if any(token in primary_source for token in ("blur", "lowres", "small")) else 0.0
+        lighting_penalty = 10.0 if any(token in primary_source for token in ("dark", "night", "backlight")) else 0.0
+        occlusion_penalty = 14.0 if any(token in primary_source for token in ("mask", "sunglass", "cover")) else 0.0
+        bonus = min(8.0, max(0, len(sources) - 1) * 2.5)
+        score = max(0.0, min(100.0, base_score - blur_penalty - lighting_penalty - occlusion_penalty + bonus))
+        confidence = max(0.35, min(1.0, score / 100.0))
+        reasons: list[str] = []
+        if blur_penalty:
+            reasons.append("认证照清晰度偏弱")
+        if lighting_penalty:
+            reasons.append("认证照光线条件一般")
+        if occlusion_penalty:
+            reasons.append("认证照有人脸遮挡风险")
+        if not reasons:
+            reasons.append("认证照质量整体稳定")
+        return VerifiedPhotoQualityScore(
+            score=round(score, 2),
+            confidence=round(confidence, 2),
+            blur_penalty=round(blur_penalty, 2),
+            lighting_penalty=round(lighting_penalty, 2),
+            occlusion_penalty=round(occlusion_penalty, 2),
+            reasons=reasons,
+        )
+
+
+class EnvironmentGapCompensator:
+    @staticmethod
+    def assess(
+        verified_anchor_row: dict[str, Any] | None,
+        candidate_photo_features: dict[str, Any] | None,
+    ) -> EnvironmentGapAssessment:
+        anchor_row = dict(verified_anchor_row or {})
+        feature_row = dict(candidate_photo_features or {})
+        anchor_quality = _clamp_score(anchor_row.get("quality_score"), default=60.0)
+        feature_quality = _clamp_score(feature_row.get("photo_quality_score"), default=60.0)
+        authenticity = _clamp_score(feature_row.get("photo_authenticity_score"), default=60.0)
+        gap_score = max(0.0, min(100.0, abs(anchor_quality - feature_quality) * 0.9 + abs(anchor_quality - authenticity) * 0.4))
+        compensation_factor = max(0.72, min(1.08, 1.0 - (gap_score / 250.0)))
+        notes: list[str] = []
+        if gap_score >= 24:
+            notes.append("认证照和资料照拍摄环境差异较大")
+        if feature_quality + 8 < anchor_quality:
+            notes.append("资料照质量明显弱于认证照")
+        if not notes:
+            notes.append("认证照与资料照环境差异可控")
+        return EnvironmentGapAssessment(
+            gap_score=round(gap_score, 2),
+            compensation_factor=round(compensation_factor, 2),
+            notes=notes,
+        )
+
+
+class FaceConsistencyScorer:
+    @staticmethod
+    def _cosine_similarity(anchor_embedding: list[float], candidate_embedding: list[float]) -> float:
+        if not anchor_embedding or not candidate_embedding or len(anchor_embedding) != len(candidate_embedding):
+            return 0.0
+        numerator = sum(left * right for left, right in zip(anchor_embedding, candidate_embedding))
+        left_norm = math.sqrt(sum(value * value for value in anchor_embedding))
+        right_norm = math.sqrt(sum(value * value for value in candidate_embedding))
+        if left_norm <= 0 or right_norm <= 0:
+            return 0.0
+        return max(-1.0, min(1.0, numerator / (left_norm * right_norm)))
+
+    @classmethod
+    def score(
+        cls,
+        verified_anchor_row: dict[str, Any] | None,
+        candidate_photo_features: dict[str, Any] | None,
+        *,
+        face_embedding_row: dict[str, Any] | None = None,
+    ) -> FaceConsistencyResult:
+        anchor_row = dict(verified_anchor_row or {})
+        feature_row = dict(candidate_photo_features or {})
+        embedding_row = dict(face_embedding_row or {})
+        quality_confidence = max(
+            0.35,
+            min(
+                1.0,
+                _safe_float(anchor_row.get("confidence_score"), default=65.0) / 100.0,
+            ),
+        )
+        environment = EnvironmentGapCompensator.assess(anchor_row, feature_row)
+        anchor_embedding = list(anchor_row.get("embedding_json") or [])
+        candidate_embedding = list(embedding_row.get("embedding_json") or [])
+        if anchor_embedding and candidate_embedding:
+            similarity = ((cls._cosine_similarity(anchor_embedding, candidate_embedding) + 1.0) / 2.0) * 100.0
+        else:
+            authenticity = _clamp_score(feature_row.get("photo_authenticity_score"), default=55.0)
+            quality = _clamp_score(feature_row.get("photo_quality_score"), default=55.0)
+            appearance = _clamp_score(feature_row.get("appearance_score_global"), default=55.0)
+            similarity = (authenticity * 0.42) + (quality * 0.28) + (appearance * 0.30)
+        compensated_score = similarity * environment.compensation_factor
+        threshold = max(48.0, min(78.0, 70.0 - ((_safe_float(anchor_row.get("quality_score"), default=70.0) - 70.0) * 0.22)))
+        weighted_score = max(0.0, min(100.0, compensated_score * (0.72 + quality_confidence * 0.28)))
+        risk_flags = generate_photo_risk_flags(
+            candidate_photo_features=feature_row,
+            consistency_score=weighted_score,
+            environment_gap_score=environment.gap_score,
+        )
+        if weighted_score >= threshold + 8:
+            risk_level = "low"
+        elif weighted_score >= threshold - 4:
+            risk_level = "medium"
+        else:
+            risk_level = "high"
+        return FaceConsistencyResult(
+            score=round(weighted_score, 2),
+            threshold=round(threshold, 2),
+            confidence_weight=round(quality_confidence, 2),
+            environment_gap_score=environment.gap_score,
+            risk_level=risk_level,
+            risk_flags=risk_flags,
+            matched=weighted_score >= threshold,
+        )
+
+
+class VerifiedFaceAnchorWriter:
+    @staticmethod
+    def write(
+        *,
+        source_dsn: str | None,
+        profile_id: int,
+        profile_row: dict[str, Any] | None,
+        photo_entries: list[dict[str, Any]] | None,
+        face_embedding_row: dict[str, Any] | None = None,
+        table_name: str = DEFAULT_VERIFIED_FACE_ANCHORS_TABLE,
+    ) -> dict[str, Any]:
+        normalized_profile_id = int(profile_id or 0)
+        if not source_dsn or normalized_profile_id <= 0:
+            return {}
+        quality = VerifiedPhotoQualityScorer.score(profile_row, photo_entries)
+        sources = _normalize_photo_sources(list(photo_entries or []))
+        primary_source = sources[0] if sources else ""
+        anchor_version = f"verified-anchor-v1:{normalized_profile_id}"
+        embedding_json = list((face_embedding_row or {}).get("embedding_json") or []) or _deterministic_face_embedding(
+            normalized_profile_id,
+            sources,
+            salt="verified_anchor",
+        )
+        return upsert_verified_face_anchor(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            anchor_version=anchor_version,
+            patch={
+                "verification_asset_type": "photo",
+                "anchor_source": primary_source or None,
+                "quality_score": quality.score,
+                "confidence_score": round(quality.confidence * 100.0, 2),
+                "environment_bias_score": round((quality.lighting_penalty + quality.occlusion_penalty) / 2.0, 2),
+                "embedding_json": embedding_json,
+                "metadata_json": {
+                    "reasons": quality.reasons,
+                    "blur_penalty": quality.blur_penalty,
+                    "lighting_penalty": quality.lighting_penalty,
+                    "occlusion_penalty": quality.occlusion_penalty,
+                },
+                "is_active": 1,
+            },
+            table_name=table_name,
+        )
+
 def _clamp_score(value: Any, *, default: float = 50.0) -> float:
     try:
         numeric = float(value)
@@ -284,6 +518,21 @@ def _stable_bucket(text: str, *, salt: str = "", lower: int = 0, upper: int = 10
     digest = hashlib.sha256(normalized).hexdigest()
     span = max(1, upper - lower)
     return float(lower + (int(digest[:8], 16) % (span + 1)))
+
+
+def _deterministic_face_embedding(
+    profile_id: int,
+    photo_sources: list[str],
+    *,
+    salt: str,
+    dims: int = 16,
+) -> list[float]:
+    seed = f"{profile_id}|{'|'.join(photo_sources)}|{salt}"
+    vector: list[float] = []
+    for index in range(max(4, dims)):
+        bucket = _stable_bucket(seed, salt=f"{salt}:{index}", lower=0, upper=1000)
+        vector.append(round((bucket / 500.0) - 1.0, 6))
+    return vector
 
 
 def _top_dimension_labels(feature_row: dict[str, Any], limit: int = 3) -> list[str]:
@@ -304,6 +553,27 @@ def _normalize_photo_sources(photo_entries: list[dict[str, Any]]) -> list[str]:
         for item in photo_entries or []
         if isinstance(item, dict) and str(item.get("photo_source") or "").strip()
     ]
+
+
+def generate_photo_risk_flags(
+    *,
+    candidate_photo_features: dict[str, Any] | None,
+    consistency_score: float,
+    environment_gap_score: float,
+) -> list[str]:
+    feature_row = dict(candidate_photo_features or {})
+    flags: list[str] = []
+    authenticity = _clamp_score(feature_row.get("photo_authenticity_score"), default=60.0)
+    quality = _clamp_score(feature_row.get("photo_quality_score"), default=60.0)
+    if consistency_score < 52:
+        flags.append("mixed_identity_photos")
+    if authenticity < 45:
+        flags.append("heavy_beautification")
+    if quality < 40:
+        flags.append("low_quality_profile_photos")
+    if environment_gap_score >= 24:
+        flags.append("environment_gap_high")
+    return flags
 
 
 def compute_cover_authenticity_score(
@@ -1026,6 +1296,136 @@ def _persist_photo_feature_version_snapshot(
         return None
 
 
+def _build_face_attribute_patch(
+    *,
+    profile_row: dict[str, Any] | None,
+    feature_row: dict[str, Any] | None,
+    photo_entries: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    normalized_profile = dict(profile_row or {})
+    normalized_feature = dict(feature_row or {})
+    photo_sources = _normalize_photo_sources(list(photo_entries or []))
+    profile_id = int(normalized_profile.get("id") or normalized_feature.get("profile_id") or 0)
+    seed = f"{profile_id}|{'|'.join(photo_sources)}|face_attributes"
+    mature = _clamp_score(normalized_feature.get("mature_score"), default=50.0)
+    clean = _clamp_score(normalized_feature.get("clean_score"), default=50.0)
+    gentle = _clamp_score(normalized_feature.get("gentle_score"), default=50.0)
+    sunny = _clamp_score(normalized_feature.get("sunny_score"), default=50.0)
+    stylish = _clamp_score(normalized_feature.get("stylish_score"), default=50.0)
+    eye_size = round(min(100.0, 36.0 + gentle * 0.24 + _stable_bucket(seed, salt="eye", lower=0, upper=18)), 2)
+    face_roundness = round(min(100.0, 30.0 + sunny * 0.18 + _stable_bucket(seed, salt="round", lower=0, upper=22)), 2)
+    jaw_definition = round(min(100.0, 32.0 + mature * 0.26 + stylish * 0.14), 2)
+    smile_intensity = round(min(100.0, 24.0 + sunny * 0.42), 2)
+    skin_clarity = round(min(100.0, 30.0 + clean * 0.46), 2)
+    youthfulness = round(
+        min(100.0, max(0.0, (eye_size * 0.28) + (face_roundness * 0.24) + (skin_clarity * 0.24) + (smile_intensity * 0.24))),
+        2,
+    )
+    return {
+        "primary_photo_id": normalized_feature.get("primary_photo_id"),
+        "face_count": max(1, len(photo_sources)),
+        "dominant_face_index": 0,
+        "eye_size_score": eye_size,
+        "face_roundness_score": face_roundness,
+        "jaw_definition_score": jaw_definition,
+        "smile_intensity_score": smile_intensity,
+        "skin_clarity_score": skin_clarity,
+        "style_clean_score": round(clean, 2),
+        "style_gentle_score": round(gentle, 2),
+        "style_sunny_score": round(sunny, 2),
+        "style_stylish_score": round(stylish, 2),
+        "youthfulness_score": youthfulness,
+        "attributes_json": {
+            "appearance_summary": normalized_feature.get("appearance_summary"),
+            "top_labels": _top_dimension_labels(normalized_feature),
+        },
+        "extractor_version": "deterministic-face-attributes-v1",
+    }
+
+
+def _sync_profile_face_side_tables(
+    *,
+    source_dsn: str | None,
+    profile_row: dict[str, Any] | None,
+    photo_entries: list[dict[str, Any]] | None,
+    feature_row: dict[str, Any] | None,
+) -> dict[str, Any]:
+    normalized_feature = dict(feature_row or {})
+    normalized_profile_id = int(normalized_feature.get("profile_id") or (profile_row or {}).get("id") or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return {}
+    photo_sources = _normalize_photo_sources(list(photo_entries or []))
+    attributes_row = upsert_profile_face_attributes(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        patch=_build_face_attribute_patch(
+            profile_row=profile_row,
+            feature_row=normalized_feature,
+            photo_entries=photo_entries,
+        ),
+    )
+    embedding_row = upsert_profile_face_embedding(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        embedding_type="primary_face",
+        patch={
+            "photo_set_version": int(normalized_feature.get("photo_set_version") or 1),
+            "embedding_dim": 16,
+            "embedding_json": _deterministic_face_embedding(
+                normalized_profile_id,
+                photo_sources,
+                salt="primary_face",
+            ),
+            "quality_score": normalized_feature.get("photo_quality_score"),
+            "confidence_score": normalized_feature.get("photo_authenticity_score"),
+            "extractor_version": "deterministic-face-embedding-v1",
+        },
+    )
+    verified_level = str(
+        (profile_row or {}).get("photo_verification_level")
+        or (profile_row or {}).get("verified_level")
+        or ""
+    ).strip().lower()
+    anchor_row: dict[str, Any] | None = None
+    consistency_row: dict[str, Any] | None = None
+    if verified_level in {"offline", "id", "photo", "uploaded"} and photo_sources:
+        anchor_row = VerifiedFaceAnchorWriter.write(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            profile_row=profile_row,
+            photo_entries=photo_entries,
+            face_embedding_row=embedding_row,
+        )
+        consistency = FaceConsistencyScorer.score(
+            anchor_row,
+            normalized_feature,
+            face_embedding_row=embedding_row,
+        )
+        consistency_row = upsert_face_consistency_score(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            patch={
+                "anchor_id": anchor_row.get("id"),
+                "consistency_score": consistency.score,
+                "threshold_score": consistency.threshold,
+                "confidence_weight": consistency.confidence_weight,
+                "environment_gap_score": consistency.environment_gap_score,
+                "risk_level": consistency.risk_level,
+                "risk_flags_json": consistency.risk_flags,
+                "detail_json": {
+                    "matched": consistency.matched,
+                    "badges": list(ProfilePhotoTrustScorer.score(profile_row, normalized_feature, risk_flags=consistency.risk_flags).badges),
+                },
+            },
+        )
+    return {
+        "face_attributes": attributes_row,
+        "face_embedding": embedding_row,
+        "verified_anchor": anchor_row,
+        "consistency": consistency_row,
+    }
+
+
 def _merge_analysis_patch(
     base_patch: dict[str, Any],
     transition_patch: dict[str, Any],
@@ -1133,6 +1533,16 @@ def refresh_profile_photo_features(
         patch=_merge_analysis_patch(patch, transition_patch),
         table_name=table_name,
     )
+    if str(saved.get("analysis_status") or "").lower() == "done":
+        try:
+            _sync_profile_face_side_tables(
+                source_dsn=source_dsn,
+                profile_row=profile_row,
+                photo_entries=photo_entries,
+                feature_row=saved,
+            )
+        except Exception:
+            pass
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
         try:
             embedding_out = _save_text_embedding(
@@ -1232,6 +1642,16 @@ def refresh_profile_photo_features_from_record(
         ),
         table_name=table_name,
     )
+    if str(saved.get("analysis_status") or "").lower() == "done":
+        try:
+            _sync_profile_face_side_tables(
+                source_dsn=source_dsn,
+                profile_row=normalized_record,
+                photo_entries=photo_entries,
+                feature_row=saved,
+            )
+        except Exception:
+            pass
     if sync_embedding and str(saved.get("analysis_status") or "").lower() == "done":
         try:
             embedding_out = _save_text_embedding(
@@ -1404,6 +1824,113 @@ def load_profile_photo_feature_versions(
         source_dsn=source_dsn,
         profile_id=normalized_profile_id,
         limit=limit,
+        table_name=table_name,
+    )
+
+
+def load_profile_face_attributes(
+    *,
+    source_dsn: str | None,
+    profile_ids: Iterable[int],
+    table_name: str = DEFAULT_PROFILE_FACE_ATTRIBUTES_TABLE,
+) -> dict[int, dict[str, Any]]:
+    normalized_ids = [int(profile_id) for profile_id in profile_ids if int(profile_id) > 0]
+    if not source_dsn or not normalized_ids:
+        return {}
+    return list_profile_face_attributes(
+        source_dsn=source_dsn,
+        profile_ids=normalized_ids,
+        table_name=table_name,
+    )
+
+
+def load_profile_face_embeddings(
+    *,
+    source_dsn: str | None,
+    profile_ids: Iterable[int] | None = None,
+    embedding_type: str | None = None,
+    limit: int = 200,
+    table_name: str = DEFAULT_PROFILE_FACE_EMBEDDINGS_TABLE,
+) -> list[dict[str, Any]]:
+    if not source_dsn:
+        return []
+    return list_profile_face_embeddings(
+        source_dsn=source_dsn,
+        profile_ids=list(profile_ids or []),
+        embedding_type=embedding_type,
+        limit=limit,
+        table_name=table_name,
+    )
+
+
+def load_verified_face_anchors(
+    *,
+    source_dsn: str | None,
+    profile_id: int,
+    active_only: bool = True,
+    limit: int = 5,
+    table_name: str = DEFAULT_VERIFIED_FACE_ANCHORS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_profile_id = int(profile_id or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return []
+    return list_verified_face_anchors(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        active_only=active_only,
+        limit=limit,
+        table_name=table_name,
+    )
+
+
+def load_face_consistency_score(
+    *,
+    source_dsn: str | None,
+    profile_id: int,
+    table_name: str = DEFAULT_FACE_CONSISTENCY_SCORES_TABLE,
+) -> dict[str, Any] | None:
+    normalized_profile_id = int(profile_id or 0)
+    if not source_dsn or normalized_profile_id <= 0:
+        return None
+    return get_face_consistency_score(
+        source_dsn=source_dsn,
+        profile_id=normalized_profile_id,
+        table_name=table_name,
+    )
+
+
+def create_reference_face_search_job(
+    *,
+    source_dsn: str | None,
+    requester_user_key: str,
+    requester_profile_id: int | None = None,
+    job_type: str = "face_similarity",
+    input_source: str | None = None,
+    filters: dict[str, Any] | None = None,
+    result_profile_ids: Iterable[int] | None = None,
+    status: str = "pending",
+    table_name: str = DEFAULT_REFERENCE_FACE_SEARCH_JOBS_TABLE,
+) -> dict[str, Any]:
+    normalized_user_key = str(requester_user_key or "").strip()
+    if not source_dsn or not normalized_user_key:
+        return {"saved": False, "error": "source_or_user_missing"}
+    normalized_results = [int(profile_id) for profile_id in list(result_profile_ids or []) if int(profile_id) > 0]
+    embedding_json = _deterministic_face_embedding(
+        int(requester_profile_id or 0),
+        [str(input_source or "").strip()],
+        salt="reference_search",
+    )
+    return insert_reference_face_search_job(
+        source_dsn=source_dsn,
+        requester_user_key=normalized_user_key,
+        requester_profile_id=requester_profile_id,
+        job_type=job_type,
+        input_source=input_source,
+        input_face_embedding_json=embedding_json,
+        status=status,
+        filters_json=filters,
+        result_profile_ids_json=normalized_results,
+        result_count=len(normalized_results),
         table_name=table_name,
     )
 
@@ -1966,6 +2493,10 @@ __all__ = [
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
     "AppearanceWeightStrategy",
+    "EnvironmentGapAssessment",
+    "EnvironmentGapCompensator",
+    "FaceConsistencyResult",
+    "FaceConsistencyScorer",
     "GlobalAppearanceScorer",
     "PhotoBonusBreakdown",
     "PhotoAnalysisRetryQueue",
@@ -1977,18 +2508,27 @@ __all__ = [
     "RiskPenaltyCalculator",
     "TrustBonusBreakdown",
     "TrustBonusCalculator",
+    "VerifiedFaceAnchorWriter",
+    "VerifiedPhotoQualityScore",
+    "VerifiedPhotoQualityScorer",
     "backfill_profile_photo_features",
     "build_appearance_explanation",
     "build_match_explanation_payload",
     "build_photo_feature_patch",
     "calibrate_global_appearance_score",
+    "create_reference_face_search_job",
     "compute_appearance_interest_signal",
     "compute_photo_bonus_breakdown",
     "compute_risk_penalty_breakdown",
     "compute_trust_bonus_breakdown",
+    "generate_photo_risk_flags",
     "load_candidate_photo_features",
+    "load_face_consistency_score",
+    "load_profile_face_attributes",
+    "load_profile_face_embeddings",
     "load_profile_photo_feature_versions",
     "load_requester_appearance_preference",
+    "load_verified_face_anchors",
     "backfill_user_appearance_preferences",
     "record_feedback_event",
     "rebuild_user_preference_from_events",

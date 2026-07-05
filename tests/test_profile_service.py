@@ -385,6 +385,216 @@ class ProfileServiceTests(unittest.TestCase):
         self.assertEqual(inserted["snapshot_json"]["analysis_status"], "done")
         self.assertEqual(listed[0]["snapshot_json"]["appearance_score_global"], 82)
 
+    def test_upsert_and_list_profile_face_attributes(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "profile_id": 12,
+                        "eye_size_score": 71,
+                        "attributes_json": '{"top_labels":["干净清爽"]}',
+                    }
+                ),
+                _FakeResult(
+                    fetchall_result=[
+                        {
+                            "profile_id": 12,
+                            "eye_size_score": 71,
+                            "attributes_json": '{"top_labels":["干净清爽"]}',
+                        }
+                    ]
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            saved = profile_service_api.upsert_profile_face_attributes(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                patch={
+                    "eye_size_score": 71,
+                    "attributes_json": {"top_labels": ["干净清爽"]},
+                },
+            )
+            listed = profile_service_api.list_profile_face_attributes(
+                source_dsn="mysql://persona",
+                profile_ids=[12],
+            )
+
+        self.assertEqual(saved["attributes_json"]["top_labels"][0], "干净清爽")
+        self.assertEqual(listed[12]["eye_size_score"], 71)
+
+    def test_upsert_and_list_profile_face_embedding(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "profile_id": 12,
+                        "embedding_type": "primary_face",
+                        "embedding_json": "[0.1, 0.2, 0.3]",
+                    }
+                ),
+                _FakeResult(
+                    fetchall_result=[
+                        {
+                            "profile_id": 12,
+                            "embedding_type": "primary_face",
+                            "embedding_json": "[0.1, 0.2, 0.3]",
+                        }
+                    ]
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            saved = profile_service_api.upsert_profile_face_embedding(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                embedding_type="primary_face",
+                patch={"embedding_json": [0.1, 0.2, 0.3]},
+            )
+            listed = profile_service_api.list_profile_face_embeddings(
+                source_dsn="mysql://persona",
+                profile_ids=[12],
+                embedding_type="primary_face",
+            )
+
+        self.assertEqual(saved["embedding_json"][1], 0.2)
+        self.assertEqual(listed[0]["embedding_type"], "primary_face")
+
+    def test_upsert_verified_face_anchor_and_consistency_score(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "id": 5,
+                        "profile_id": 12,
+                        "anchor_version": "verified-anchor-v1:12",
+                        "embedding_json": "[0.1, 0.2]",
+                        "metadata_json": '{"reasons":["认证照质量整体稳定"]}',
+                    }
+                ),
+                _FakeResult(fetchone_result=None),
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "profile_id": 12,
+                        "consistency_score": 82,
+                        "risk_flags_json": '["environment_gap_high"]',
+                        "detail_json": '{"matched": true}',
+                    }
+                ),
+                _FakeResult(
+                    fetchall_result=[
+                        {
+                            "id": 5,
+                            "profile_id": 12,
+                            "anchor_version": "verified-anchor-v1:12",
+                            "embedding_json": "[0.1, 0.2]",
+                            "metadata_json": '{"reasons":["认证照质量整体稳定"]}',
+                        }
+                    ]
+                ),
+                _FakeResult(
+                    fetchone_result={
+                        "profile_id": 12,
+                        "consistency_score": 82,
+                        "risk_flags_json": '["environment_gap_high"]',
+                        "detail_json": '{"matched": true}',
+                    }
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api, "_column_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            anchor = profile_service_api.upsert_verified_face_anchor(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                anchor_version="verified-anchor-v1:12",
+                patch={
+                    "embedding_json": [0.1, 0.2],
+                    "metadata_json": {"reasons": ["认证照质量整体稳定"]},
+                },
+            )
+            consistency = profile_service_api.upsert_face_consistency_score(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                patch={
+                    "consistency_score": 82,
+                    "risk_flags_json": ["environment_gap_high"],
+                    "detail_json": {"matched": True},
+                },
+            )
+            listed_anchor = profile_service_api.list_verified_face_anchors(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+            loaded_consistency = profile_service_api.get_face_consistency_score(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+
+        self.assertEqual(anchor["metadata_json"]["reasons"][0], "认证照质量整体稳定")
+        self.assertEqual(consistency["risk_flags_json"][0], "environment_gap_high")
+        self.assertEqual(listed_anchor[0]["profile_id"], 12)
+        self.assertTrue(loaded_consistency["detail_json"]["matched"])
+
+    def test_insert_reference_face_search_job_decodes_json_fields(self):
+        fake_conn = _FakeConnection(
+            responses=[
+                _FakeResult(rowcount=1),
+                _FakeResult(
+                    fetchone_result={
+                        "requester_user_key": "user-1",
+                        "input_face_embedding_json": "[0.1, 0.2]",
+                        "filters_json": '{"city":"上海"}',
+                        "result_profile_ids_json": "[12, 18]",
+                    }
+                ),
+            ]
+        )
+
+        with (
+            mock.patch.object(profile_service_api, "_connect_profile_db", return_value=fake_conn),
+            mock.patch.object(profile_service_api, "_table_exists", return_value=True),
+            mock.patch.object(profile_service_api.schema, "quote_mysql_ident", side_effect=lambda value: f"`{value}`"),
+        ):
+            result = profile_service_api.insert_reference_face_search_job(
+                source_dsn="mysql://persona",
+                requester_user_key="user-1",
+                requester_profile_id=9,
+                input_source="https://img.her.local/ref.jpg",
+                input_face_embedding_json=[0.1, 0.2],
+                filters_json={"city": "上海"},
+                result_profile_ids_json=[12, 18],
+                status="done",
+                result_count=2,
+            )
+
+        self.assertEqual(result["filters_json"]["city"], "上海")
+        self.assertEqual(result["result_profile_ids_json"], [12, 18])
+
     def test_list_appearance_feedback_events_decodes_metadata(self):
         fake_conn = _FakeConnection(
             responses=[

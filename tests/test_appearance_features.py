@@ -7,6 +7,8 @@ from unittest import mock
 from match_domain.appearance_features import (
     AppearanceInterestSignal,
     AppearanceWeightStrategy,
+    EnvironmentGapCompensator,
+    FaceConsistencyScorer,
     GlobalAppearanceScorer,
     ProfilePhotoTrustScore,
     ProfilePhotoTrustScorer,
@@ -22,6 +24,7 @@ from match_domain.appearance_features import (
     build_match_explanation_payload,
     build_photo_feature_patch,
     calibrate_global_appearance_score,
+    create_reference_face_search_job,
     classify_click_quality,
     compute_cover_authenticity_score,
     compute_cover_detail_consistency_score,
@@ -29,11 +32,15 @@ from match_domain.appearance_features import (
     compute_appearance_interest_signal,
     compute_photo_bonus_breakdown,
     load_profile_photo_feature_versions,
+    load_verified_face_anchors,
+    load_face_consistency_score,
     rebuild_user_preference_from_history,
     retry_failed_profile_photo_features,
     resolve_appearance_weight_strategy,
     resolve_global_bonus_multiplier,
     resolve_preference_weight_multiplier,
+    VerifiedFaceAnchorWriter,
+    VerifiedPhotoQualityScorer,
 )
 
 
@@ -274,6 +281,43 @@ class AppearanceFeaturesTests(unittest.TestCase):
         self.assertEqual(trust_score.risk_level, "low")
         self.assertTrue(trust_score.badges)
 
+    def test_verified_photo_quality_scorer_and_anchor_writer(self):
+        with mock.patch(
+            "match_domain.appearance_features.upsert_verified_face_anchor",
+            return_value={"profile_id": 12, "quality_score": 84, "metadata_json": {"reasons": ["认证照质量整体稳定"]}},
+        ) as mocked:
+            quality = VerifiedPhotoQualityScorer.score(
+                {"photo_verification_level": "id"},
+                [{"photo_source": "https://img.her.local/verified.jpg"}],
+            )
+            anchor = VerifiedFaceAnchorWriter.write(
+                source_dsn="mysql://persona",
+                profile_id=12,
+                profile_row={"photo_verification_level": "id"},
+                photo_entries=[{"photo_source": "https://img.her.local/verified.jpg"}],
+                face_embedding_row={"embedding_json": [0.1, 0.2, 0.3]},
+            )
+
+        self.assertGreater(quality.score, 70)
+        mocked.assert_called_once()
+        self.assertEqual(anchor["quality_score"], 84)
+
+    def test_environment_gap_and_face_consistency_scorer(self):
+        gap = EnvironmentGapCompensator.assess(
+            {"quality_score": 86, "confidence_score": 88},
+            {"photo_quality_score": 62, "photo_authenticity_score": 58, "appearance_score_global": 64},
+        )
+        result = FaceConsistencyScorer.score(
+            {"quality_score": 86, "confidence_score": 88, "embedding_json": [0.5, 0.3, 0.1]},
+            {"photo_quality_score": 62, "photo_authenticity_score": 58, "appearance_score_global": 64},
+            face_embedding_row={"embedding_json": [0.45, 0.28, 0.12]},
+        )
+
+        self.assertGreater(gap.gap_score, 0)
+        self.assertLessEqual(result.threshold, 78)
+        self.assertTrue(result.risk_level in {"low", "medium", "high"})
+        self.assertIsInstance(result.risk_flags, list)
+
     def test_build_appearance_explanation_produces_summary_and_highlights(self):
         explanation = build_appearance_explanation(
             {
@@ -389,6 +433,48 @@ class AppearanceFeaturesTests(unittest.TestCase):
                 max_retry_count=3,
             )
         self.assertEqual(result["retried_count"], 1)
+
+    def test_load_anchor_and_consistency_wrappers_delegate_to_profile_service(self):
+        with (
+            mock.patch(
+                "match_domain.appearance_features.list_verified_face_anchors",
+                return_value=[{"profile_id": 12, "anchor_version": "verified-anchor-v1:12"}],
+            ) as mocked_anchors,
+            mock.patch(
+                "match_domain.appearance_features.get_face_consistency_score",
+                return_value={"profile_id": 12, "consistency_score": 81},
+            ) as mocked_consistency,
+        ):
+            anchors = load_verified_face_anchors(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+            consistency = load_face_consistency_score(
+                source_dsn="mysql://persona",
+                profile_id=12,
+            )
+
+        mocked_anchors.assert_called_once()
+        mocked_consistency.assert_called_once()
+        self.assertEqual(anchors[0]["profile_id"], 12)
+        self.assertEqual(consistency["consistency_score"], 81)
+
+    def test_create_reference_face_search_job_delegates_to_profile_service(self):
+        with mock.patch(
+            "match_domain.appearance_features.insert_reference_face_search_job",
+            return_value={"requester_user_key": "user-1", "result_count": 2},
+        ) as mocked:
+            result = create_reference_face_search_job(
+                source_dsn="mysql://persona",
+                requester_user_key="user-1",
+                requester_profile_id=9,
+                input_source="https://img.her.local/reference.jpg",
+                result_profile_ids=[12, 18],
+                status="done",
+            )
+
+        mocked.assert_called_once()
+        self.assertEqual(result["result_count"], 2)
 
     def test_global_appearance_scorer_uses_existing_or_fallback_formula(self):
         calibrated = GlobalAppearanceScorer.score({"appearance_score_global": 86})

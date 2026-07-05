@@ -277,8 +277,28 @@ def build_mysql_prefilter(
         add_in("gender", gender_values, allow_missing=True)
     add_numeric_bound("age", ">=", criteria.get("age_min"), allow_missing=True)
     add_numeric_bound("age", "<=", criteria.get("age_max"), allow_missing=True)
-    add_numeric_bound("height", ">=", criteria.get("height_min"), allow_missing=True)
-    add_numeric_bound("height", "<=", criteria.get("height_max"), allow_missing=True)
+    # ====================================================================
+    # Agent Native架构：身高期望改为期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    # 设计理念：
+    # - 旧逻辑：身高硬筛选（height_min/max在SQL WHERE中过滤）
+    # - 新逻辑：身高期望匹配（preferred_height_min/max在评分阶段处理）
+    #
+    # 为什么这样改？
+    # - 与薪资逻辑一致：薪资期望只是"期望"，不是"硬标准"
+    # - 身高期望也应该只是"期望"，超出范围不应硬性过滤
+    # - 例如：用户期望167-172cm，候选人173cm不应被过滤
+    # - 系统会说："身高略高，但通常不构成负向问题"
+    #
+    # 技术实现：
+    # - 移除身高硬筛选（不再在SQL WHERE中过滤）
+    # - 改为在评分阶段处理（search_matching.py）
+    # - 通过加分/减分和风险标记来判断匹配度
+    #
+    # 参照：薪资期望的处理方式（preferred_income_min/max）
+    # ====================================================================
+    # add_numeric_bound("height", ">=", criteria.get("height_min"), allow_missing=True)  ← 移除硬筛选
+    # add_numeric_bound("height", "<=", criteria.get("height_max"), allow_missing=True)  ← 移除硬筛选
     add_in("city", criteria.get("cities"), allow_missing=True)
     add_in("district", criteria.get("districts"), allow_missing=True)
     add_in("settlement_city", criteria.get("settlement_cities"), allow_missing=True)

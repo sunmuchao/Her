@@ -19,6 +19,11 @@ from profile_source_refs import resolve_profile_source as _resolve_profile_sourc
 DEFAULT_PROFILE_PHOTOS_TABLE = "profile_photos"
 DEFAULT_PROFILE_PHOTO_FEATURES_TABLE = "profile_photo_features"
 DEFAULT_PROFILE_PHOTO_FEATURE_VERSIONS_TABLE = "profile_photo_feature_versions"
+DEFAULT_PROFILE_FACE_ATTRIBUTES_TABLE = "profile_face_attributes"
+DEFAULT_PROFILE_FACE_EMBEDDINGS_TABLE = "profile_face_embeddings"
+DEFAULT_VERIFIED_FACE_ANCHORS_TABLE = "verified_face_anchors"
+DEFAULT_FACE_CONSISTENCY_SCORES_TABLE = "face_consistency_scores"
+DEFAULT_REFERENCE_FACE_SEARCH_JOBS_TABLE = "reference_face_search_jobs"
 DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
 PROFILE_TABLE_DETECTION_ALIASES = {
@@ -1033,6 +1038,586 @@ def list_profile_photo_feature_versions(
                     pass
             out.append(payload)
         return out
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def list_profile_face_attributes(
+    *,
+    source_dsn: str,
+    profile_ids: Sequence[int],
+    table_name: str = DEFAULT_PROFILE_FACE_ATTRIBUTES_TABLE,
+) -> dict[int, dict[str, Any]]:
+    normalized_ids = [int(profile_id) for profile_id in profile_ids if int(profile_id) > 0]
+    if not normalized_ids:
+        return {}
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return {}
+        placeholders = ", ".join(["?"] * len(normalized_ids))
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} IN ({placeholders})
+            """,
+            tuple(normalized_ids),
+        ).fetchall()
+        out: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            payload = dict(row)
+            raw_json = payload.get("attributes_json")
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    payload["attributes_json"] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    pass
+            profile_id = int(payload.get("profile_id") or 0)
+            if profile_id > 0:
+                out[profile_id] = payload
+        return out
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def upsert_profile_face_attributes(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    patch: Mapping[str, Any],
+    table_name: str = DEFAULT_PROFILE_FACE_ATTRIBUTES_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        existing = dict(row) if row else None
+        payload = dict(patch or {})
+        if isinstance(payload.get("attributes_json"), (dict, list)):
+            payload["attributes_json"] = json.dumps(payload.get("attributes_json"), ensure_ascii=False)
+        writable_columns = [
+            str(column)
+            for column, value in payload.items()
+            if value is not None and _column_exists(profile_conn, table_name, str(column))
+        ]
+        if not writable_columns and existing is not None:
+            return existing
+        if existing is not None:
+            assignments = [f"{schema.quote_mysql_ident(column)} = ?" for column in writable_columns]
+            values = [payload.get(column) for column in writable_columns]
+            if _column_exists(profile_conn, table_name, "updated_at"):
+                assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
+                values.append(current_time())
+            profile_conn.execute(
+                f"""
+                UPDATE {schema.quote_mysql_ident(table_name)}
+                SET {", ".join(assignments)}
+                WHERE {schema.quote_mysql_ident('profile_id')} = ?
+                """,
+                tuple(values + [normalized_profile_id]),
+            )
+        else:
+            insert_columns = ["profile_id"] + writable_columns
+            placeholders = ", ".join(["?"] * len(insert_columns))
+            profile_conn.execute(
+                f"""
+                INSERT INTO {schema.quote_mysql_ident(table_name)}
+                ({", ".join(schema.quote_mysql_ident(column) for column in insert_columns)})
+                VALUES ({placeholders})
+                """,
+                tuple([normalized_profile_id] + [payload.get(column) for column in writable_columns]),
+            )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        result = dict(refreshed) if refreshed else {}
+        raw_json = result.get("attributes_json")
+        if isinstance(raw_json, str) and raw_json.strip():
+            try:
+                result["attributes_json"] = json.loads(raw_json)
+            except json.JSONDecodeError:
+                pass
+        return result
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def list_profile_face_embeddings(
+    *,
+    source_dsn: str,
+    profile_ids: Sequence[int] | None = None,
+    embedding_type: str | None = None,
+    limit: int = 200,
+    table_name: str = DEFAULT_PROFILE_FACE_EMBEDDINGS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_limit = max(1, min(int(limit or 200), 1000))
+    normalized_ids = [int(profile_id) for profile_id in list(profile_ids or []) if int(profile_id) > 0]
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return []
+        clauses: list[str] = []
+        params: list[Any] = []
+        if normalized_ids:
+            placeholders = ", ".join(["?"] * len(normalized_ids))
+            clauses.append(f"{schema.quote_mysql_ident('profile_id')} IN ({placeholders})")
+            params.extend(normalized_ids)
+        normalized_type = str(embedding_type or "").strip()
+        if normalized_type:
+            clauses.append(f"{schema.quote_mysql_ident('embedding_type')} = ?")
+            params.append(normalized_type)
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            {where_sql}
+            ORDER BY {schema.quote_mysql_ident('updated_at')} DESC, {schema.quote_mysql_ident('id')} DESC
+            LIMIT ?
+            """,
+            tuple(params + [normalized_limit]),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            raw_json = payload.get("embedding_json")
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    payload["embedding_json"] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    pass
+            out.append(payload)
+        return out
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def upsert_profile_face_embedding(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    embedding_type: str,
+    patch: Mapping[str, Any],
+    table_name: str = DEFAULT_PROFILE_FACE_EMBEDDINGS_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    normalized_type = str(embedding_type or "").strip()
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    if not normalized_type:
+        raise ValueError("embedding_type is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+              AND {schema.quote_mysql_ident('embedding_type')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id, normalized_type),
+        ).fetchone()
+        existing = dict(row) if row else None
+        payload = dict(patch or {})
+        payload["embedding_type"] = normalized_type
+        if isinstance(payload.get("embedding_json"), (dict, list)):
+            payload["embedding_json"] = json.dumps(payload.get("embedding_json"), ensure_ascii=False)
+        writable_columns = [
+            str(column)
+            for column, value in payload.items()
+            if value is not None and _column_exists(profile_conn, table_name, str(column))
+        ]
+        if not writable_columns and existing is not None:
+            return existing
+        if existing is not None:
+            assignments = [f"{schema.quote_mysql_ident(column)} = ?" for column in writable_columns]
+            values = [payload.get(column) for column in writable_columns]
+            if _column_exists(profile_conn, table_name, "updated_at"):
+                assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
+                values.append(current_time())
+            profile_conn.execute(
+                f"""
+                UPDATE {schema.quote_mysql_ident(table_name)}
+                SET {", ".join(assignments)}
+                WHERE {schema.quote_mysql_ident('profile_id')} = ?
+                  AND {schema.quote_mysql_ident('embedding_type')} = ?
+                """,
+                tuple(values + [normalized_profile_id, normalized_type]),
+            )
+        else:
+            insert_columns = ["profile_id"] + writable_columns
+            placeholders = ", ".join(["?"] * len(insert_columns))
+            profile_conn.execute(
+                f"""
+                INSERT INTO {schema.quote_mysql_ident(table_name)}
+                ({", ".join(schema.quote_mysql_ident(column) for column in insert_columns)})
+                VALUES ({placeholders})
+                """,
+                tuple([normalized_profile_id] + [payload.get(column) for column in writable_columns]),
+            )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+              AND {schema.quote_mysql_ident('embedding_type')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id, normalized_type),
+        ).fetchone()
+        result = dict(refreshed) if refreshed else {}
+        raw_json = result.get("embedding_json")
+        if isinstance(raw_json, str) and raw_json.strip():
+            try:
+                result["embedding_json"] = json.loads(raw_json)
+            except json.JSONDecodeError:
+                pass
+        return result
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def list_verified_face_anchors(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    active_only: bool = True,
+    limit: int = 5,
+    table_name: str = DEFAULT_VERIFIED_FACE_ANCHORS_TABLE,
+) -> list[dict[str, Any]]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        return []
+    normalized_limit = max(1, min(int(limit or 5), 50))
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return []
+        clauses = [f"{schema.quote_mysql_ident('profile_id')} = ?"]
+        params: list[Any] = [normalized_profile_id]
+        if active_only and _column_exists(profile_conn, table_name, "is_active"):
+            clauses.append(f"{schema.quote_mysql_ident('is_active')} = ?")
+            params.append(1)
+        rows = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {' AND '.join(clauses)}
+            ORDER BY {schema.quote_mysql_ident('quality_score')} DESC, {schema.quote_mysql_ident('id')} DESC
+            LIMIT ?
+            """,
+            tuple(params + [normalized_limit]),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            payload = dict(row)
+            for field_name in ("embedding_json", "metadata_json"):
+                raw_json = payload.get(field_name)
+                if isinstance(raw_json, str) and raw_json.strip():
+                    try:
+                        payload[field_name] = json.loads(raw_json)
+                    except json.JSONDecodeError:
+                        pass
+            out.append(payload)
+        return out
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def upsert_verified_face_anchor(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    anchor_version: str,
+    patch: Mapping[str, Any],
+    table_name: str = DEFAULT_VERIFIED_FACE_ANCHORS_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    normalized_version = str(anchor_version or "").strip()
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    if not normalized_version:
+        raise ValueError("anchor_version is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+              AND {schema.quote_mysql_ident('anchor_version')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id, normalized_version),
+        ).fetchone()
+        existing = dict(row) if row else None
+        payload = dict(patch or {})
+        payload["anchor_version"] = normalized_version
+        for field_name in ("embedding_json", "metadata_json"):
+            if isinstance(payload.get(field_name), (dict, list)):
+                payload[field_name] = json.dumps(payload.get(field_name), ensure_ascii=False)
+        writable_columns = [
+            str(column)
+            for column, value in payload.items()
+            if value is not None and _column_exists(profile_conn, table_name, str(column))
+        ]
+        if not writable_columns and existing is not None:
+            return existing
+        if existing is not None:
+            assignments = [f"{schema.quote_mysql_ident(column)} = ?" for column in writable_columns]
+            values = [payload.get(column) for column in writable_columns]
+            if _column_exists(profile_conn, table_name, "updated_at"):
+                assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
+                values.append(current_time())
+            profile_conn.execute(
+                f"""
+                UPDATE {schema.quote_mysql_ident(table_name)}
+                SET {", ".join(assignments)}
+                WHERE {schema.quote_mysql_ident('profile_id')} = ?
+                  AND {schema.quote_mysql_ident('anchor_version')} = ?
+                """,
+                tuple(values + [normalized_profile_id, normalized_version]),
+            )
+        else:
+            insert_columns = ["profile_id"] + writable_columns
+            placeholders = ", ".join(["?"] * len(insert_columns))
+            profile_conn.execute(
+                f"""
+                INSERT INTO {schema.quote_mysql_ident(table_name)}
+                ({", ".join(schema.quote_mysql_ident(column) for column in insert_columns)})
+                VALUES ({placeholders})
+                """,
+                tuple([normalized_profile_id] + [payload.get(column) for column in writable_columns]),
+            )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+              AND {schema.quote_mysql_ident('anchor_version')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id, normalized_version),
+        ).fetchone()
+        result = dict(refreshed) if refreshed else {}
+        for field_name in ("embedding_json", "metadata_json"):
+            raw_json = result.get(field_name)
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    result[field_name] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    pass
+        return result
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def get_face_consistency_score(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    table_name: str = DEFAULT_FACE_CONSISTENCY_SCORES_TABLE,
+) -> dict[str, Any] | None:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        return None
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            return None
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        for field_name in ("risk_flags_json", "detail_json"):
+            raw_json = result.get(field_name)
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    result[field_name] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    pass
+        return result
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def upsert_face_consistency_score(
+    *,
+    source_dsn: str,
+    profile_id: int,
+    patch: Mapping[str, Any],
+    table_name: str = DEFAULT_FACE_CONSISTENCY_SCORES_TABLE,
+) -> dict[str, Any]:
+    normalized_profile_id = int(profile_id or 0)
+    if normalized_profile_id <= 0:
+        raise ValueError("profile_id is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        row = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('profile_id')} = ?
+            LIMIT 1
+            """,
+            (normalized_profile_id,),
+        ).fetchone()
+        existing = dict(row) if row else None
+        payload = dict(patch or {})
+        for field_name in ("risk_flags_json", "detail_json"):
+            if isinstance(payload.get(field_name), (dict, list)):
+                payload[field_name] = json.dumps(payload.get(field_name), ensure_ascii=False)
+        writable_columns = [
+            str(column)
+            for column, value in payload.items()
+            if value is not None and _column_exists(profile_conn, table_name, str(column))
+        ]
+        if not writable_columns and existing is not None:
+            return existing
+        if existing is not None:
+            assignments = [f"{schema.quote_mysql_ident(column)} = ?" for column in writable_columns]
+            values = [payload.get(column) for column in writable_columns]
+            if _column_exists(profile_conn, table_name, "updated_at"):
+                assignments.append(f"{schema.quote_mysql_ident('updated_at')} = ?")
+                values.append(current_time())
+            profile_conn.execute(
+                f"""
+                UPDATE {schema.quote_mysql_ident(table_name)}
+                SET {", ".join(assignments)}
+                WHERE {schema.quote_mysql_ident('profile_id')} = ?
+                """,
+                tuple(values + [normalized_profile_id]),
+            )
+        else:
+            insert_columns = ["profile_id"] + writable_columns
+            placeholders = ", ".join(["?"] * len(insert_columns))
+            profile_conn.execute(
+                f"""
+                INSERT INTO {schema.quote_mysql_ident(table_name)}
+                ({", ".join(schema.quote_mysql_ident(column) for column in insert_columns)})
+                VALUES ({placeholders})
+                """,
+                tuple([normalized_profile_id] + [payload.get(column) for column in writable_columns]),
+            )
+        profile_conn.commit()
+        return get_face_consistency_score(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            table_name=table_name,
+        ) or {}
+    finally:
+        release_profile_connection(source_dsn, profile_conn)
+
+
+def insert_reference_face_search_job(
+    *,
+    source_dsn: str,
+    requester_user_key: str,
+    requester_profile_id: int | None = None,
+    job_type: str = "face_similarity",
+    input_source: str | None = None,
+    input_face_embedding_json: Mapping[str, Any] | Sequence[Any] | None = None,
+    status: str = "pending",
+    filters_json: Mapping[str, Any] | None = None,
+    result_profile_ids_json: Sequence[Any] | None = None,
+    result_count: int = 0,
+    error_message: str | None = None,
+    table_name: str = DEFAULT_REFERENCE_FACE_SEARCH_JOBS_TABLE,
+) -> dict[str, Any]:
+    normalized_user_key = str(requester_user_key or "").strip()
+    if not normalized_user_key:
+        raise ValueError("requester_user_key is required")
+    profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
+    try:
+        if not _table_exists(profile_conn, table_name):
+            raise ValueError(f"table {table_name} was not found")
+        profile_conn.execute(
+            f"""
+            INSERT INTO {schema.quote_mysql_ident(table_name)}
+            (
+              {schema.quote_mysql_ident('requester_user_key')},
+              {schema.quote_mysql_ident('requester_profile_id')},
+              {schema.quote_mysql_ident('job_type')},
+              {schema.quote_mysql_ident('input_source')},
+              {schema.quote_mysql_ident('input_face_embedding_json')},
+              {schema.quote_mysql_ident('status')},
+              {schema.quote_mysql_ident('result_count')},
+              {schema.quote_mysql_ident('filters_json')},
+              {schema.quote_mysql_ident('result_profile_ids_json')},
+              {schema.quote_mysql_ident('error_message')}
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                normalized_user_key,
+                int(requester_profile_id or 0) or None,
+                str(job_type or "face_similarity").strip() or "face_similarity",
+                str(input_source or "").strip() or None,
+                json.dumps(input_face_embedding_json, ensure_ascii=False) if input_face_embedding_json is not None else None,
+                str(status or "pending").strip() or "pending",
+                max(0, int(result_count or 0)),
+                json.dumps(filters_json, ensure_ascii=False) if filters_json is not None else None,
+                json.dumps(list(result_profile_ids_json or []), ensure_ascii=False),
+                str(error_message or "").strip()[:255] or None,
+            ),
+        )
+        profile_conn.commit()
+        refreshed = profile_conn.execute(
+            f"""
+            SELECT *
+            FROM {schema.quote_mysql_ident(table_name)}
+            WHERE {schema.quote_mysql_ident('requester_user_key')} = ?
+            ORDER BY {schema.quote_mysql_ident('id')} DESC
+            LIMIT 1
+            """,
+            (normalized_user_key,),
+        ).fetchone()
+        result = dict(refreshed) if refreshed else {}
+        for field_name in ("input_face_embedding_json", "filters_json", "result_profile_ids_json"):
+            raw_json = result.get(field_name)
+            if isinstance(raw_json, str) and raw_json.strip():
+                try:
+                    result[field_name] = json.loads(raw_json)
+                except json.JSONDecodeError:
+                    pass
+        return result
     finally:
         release_profile_connection(source_dsn, profile_conn)
 

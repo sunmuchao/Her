@@ -368,6 +368,71 @@ def income_range_proximity_decision(
     return {"status": "within", "score": income_curve["within_score"], "distance": 0}
 
 
+def height_range_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_height: int | None,
+    *,
+    preferred_min: int | None,
+    preferred_max: int | None,
+) -> dict[str, Any]:
+    """身高期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    Args:
+        runtime: SearchMatchingRuntime
+        candidate_height: 候选人身高（单位：cm）
+        preferred_min: 用户期望身高下限（单位：cm）
+        preferred_max: 用户期望身高上限（单位：cm）
+
+    Returns:
+        {"status": "within/near/edge/far/above/unknown", "score": int, "distance": int}
+
+    设计理念：
+    - 与薪资逻辑一致：期望只是"期望"，不是"硬标准"
+    - 身高超出期望范围不应硬性过滤，而是通过评分处理
+    - 例如：用户期望167-172cm，候选人173cm → 状态为"above"（高于期望）
+    - 系统会说："身高略高，但通常不构成负向问题"
+
+    参照：income_range_proximity_decision（薪资期望匹配）
+    """
+    height_curve = runtime.matching_rule_params.get("height_curve") or {
+        "within_score": 8,       # 在期望范围内：加分
+        "below_near_distance": 3, # 低于期望下限3cm以内：接近
+        "below_near_score": 5,    # 接近：加分（但分数低）
+        "below_edge_distance": 5, # 低于期望下限5cm以内：边缘
+        "below_edge_score": 2,    # 边缘：加分（但分数更低）
+        "above_near_distance": 3, # 高于期望上限3cm以内：接近
+        "above_near_score": 5,    # 接近：加分
+        "above_far_score": 3,     # 高于期望上限很远：加分（但分数低）
+    }
+
+    # 候选人身高未知
+    if candidate_height is None:
+        return {"status": "unknown", "score": 0, "distance": None}
+
+    # 用户没有设置身高期望
+    if preferred_min is None and preferred_max is None:
+        return {"status": "within", "score": 0, "distance": 0}
+
+    # 候选人身高低于期望下限
+    if preferred_min is not None and candidate_height < preferred_min:
+        distance = preferred_min - candidate_height
+        if distance <= height_curve["below_near_distance"]:
+            return {"status": "near", "score": height_curve["below_near_score"], "distance": distance}
+        if distance <= height_curve["below_edge_distance"]:
+            return {"status": "edge", "score": height_curve["below_edge_score"], "distance": distance}
+        return {"status": "far", "score": 0, "distance": distance}
+
+    # 候选人身高高于期望上限（关键：不过滤，而是加分）
+    if preferred_max is not None and candidate_height > preferred_max:
+        distance = candidate_height - preferred_max
+        if distance <= height_curve["above_near_distance"]:
+            return {"status": "above", "score": height_curve["above_near_score"], "distance": distance}
+        return {"status": "above", "score": height_curve["above_far_score"], "distance": distance}
+
+    # 候选人身高在期望范围内
+    return {"status": "within", "score": height_curve["within_score"], "distance": 0}
+
+
 def city_alignment_score(
     runtime: SearchMatchingRuntime,
     *,
@@ -1631,6 +1696,44 @@ def evaluate_candidate(
         reasons.append("收入高于你的预期上限")
         fit_score += income_decision["score"]
         risk_flags.append("收入高于预期上限，但通常不构成负向问题")
+
+    # ====================================================================
+    # 身高期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+    # ====================================================================
+    # 设计理念：
+    # - 身高期望也应该只是"期望"，超出范围不应硬性过滤
+    # - 例如：用户期望167-172cm，候选人173cm不应被过滤
+    # - 系统会说："身高略高，但通常不构成负向问题"
+    #
+    # 参照：薪资期望的处理方式（preferred_income_min/max）
+    # ====================================================================
+    preferred_height_min = runtime.as_int(self_profile.get("preferred_height_min"))
+    preferred_height_max = runtime.as_int(self_profile.get("preferred_height_max"))
+    candidate_height = runtime.as_int(record.get("height"))
+    height_decision = height_range_proximity_decision(
+        runtime,
+        candidate_height,
+        preferred_min=preferred_height_min,
+        preferred_max=preferred_height_max,
+    )
+    if height_decision["status"] == "within":
+        if preferred_height_min is not None or preferred_height_max is not None:
+            reasons.append("身高符合你的预期")
+            fit_score += height_decision["score"]
+    elif height_decision["status"] == "near":
+        reasons.append("身高略低于预期，但仍然接近")
+        fit_score += height_decision["score"]
+        risk_flags.append("身高略低于理想区间，但仍然接近")
+    elif height_decision["status"] == "edge":
+        reasons.append("身高有一定差距")
+        fit_score += height_decision["score"]
+        risk_flags.append("身高有一定差距，但可以先尝试沟通")
+    elif height_decision["status"] == "far":
+        risk_flags.append("身高明显低于理想区间")
+    elif height_decision["status"] == "above":
+        reasons.append("身高高于你的预期上限")
+        fit_score += height_decision["score"]
+        risk_flags.append("身高高于预期上限，但通常不构成负向问题")
 
     # 性能优化：使用提前提取的 criteria_smoking_val 和 record_smoking
     if criteria_smoking_val:
