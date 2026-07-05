@@ -433,6 +433,273 @@ def height_range_proximity_decision(
     return {"status": "within", "score": height_curve["within_score"], "distance": 0}
 
 
+def age_range_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_age: int | None,
+    *,
+    preferred_min: int | None,
+    preferred_max: int | None,
+) -> dict[str, Any]:
+    """年龄期望匹配（与薪资/身高逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    Args:
+        runtime: SearchMatchingRuntime
+        candidate_age: 候选人年龄
+        preferred_min: 用户期望年龄下限
+        preferred_max: 用户期望年龄上限
+
+    Returns:
+        {"status": "within/near/edge/far/above/unknown", "score": int, "distance": int}
+
+    设计理念：
+    - 年龄差1-2岁不应硬性过滤
+    - 例如：用户期望26-36岁，24岁或38岁不应被过滤
+    - 系统会说："年龄略低/略高，但仍然接近"
+    """
+    age_curve = runtime.matching_rule_params.get("age_curve") or {
+        "within_score": 8,
+        "below_near_distance": 2,  # 低于期望下限2岁以内：接近
+        "below_near_score": 5,
+        "below_edge_distance": 5,  # 低于期望下限5岁以内：边缘
+        "below_edge_score": 2,
+        "above_near_distance": 2,  # 高于期望上限2岁以内：接近
+        "above_near_score": 5,
+        "above_far_score": 3,
+    }
+
+    if candidate_age is None:
+        return {"status": "unknown", "score": 0, "distance": None}
+
+    if preferred_min is None and preferred_max is None:
+        return {"status": "within", "score": 0, "distance": 0}
+
+    # 候选人年龄低于期望下限
+    if preferred_min is not None and candidate_age < preferred_min:
+        distance = preferred_min - candidate_age
+        if distance <= age_curve["below_near_distance"]:
+            return {"status": "near", "score": age_curve["below_near_score"], "distance": distance}
+        if distance <= age_curve["below_edge_distance"]:
+            return {"status": "edge", "score": age_curve["below_edge_score"], "distance": distance}
+        return {"status": "far", "score": 0, "distance": distance}
+
+    # 候选人年龄高于期望上限（关键：不过滤，而是加分）
+    if preferred_max is not None and candidate_age > preferred_max:
+        distance = candidate_age - preferred_max
+        if distance <= age_curve["above_near_distance"]:
+            return {"status": "above", "score": age_curve["above_near_score"], "distance": distance}
+        return {"status": "above", "score": age_curve["above_far_score"], "distance": distance}
+
+    return {"status": "within", "score": age_curve["within_score"], "distance": 0}
+
+
+def housing_status_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_housing_status: str | None,
+    *,
+    preferred_statuses: list[str] | None,
+) -> dict[str, Any]:
+    """房况期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    设计理念：
+    - 房况是经济条件，可以协商
+    - 例如：用户期望"有房"，但无房的人不应被过滤
+    - 系统会说："无房，但可以先看看"
+    """
+    housing_curve = runtime.matching_rule_params.get("housing_curve") or {
+        "within_score": 6,    # 有房：加分
+        "near_score": 3,      # 正在买房：加分（少）
+        "edge_score": 0,      # 无房：不加分
+    }
+
+    if candidate_housing_status is None:
+        return {"status": "unknown", "score": 0}
+
+    if not preferred_statuses:
+        return {"status": "within", "score": 0}
+
+    candidate_status_lower = runtime.as_lower(candidate_housing_status)
+    preferred_lower = [runtime.as_lower(s) for s in preferred_statuses]
+
+    if candidate_status_lower in preferred_lower:
+        return {"status": "within", "score": housing_curve["within_score"]}
+
+    # 正在买房的情况
+    if "买房" in candidate_status_lower or "准备买房" in candidate_status_lower:
+        return {"status": "near", "score": housing_curve["near_score"]}
+
+    return {"status": "edge", "score": housing_curve["edge_score"]}
+
+
+def car_status_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_car_status: str | None,
+    *,
+    preferred_statuses: list[str] | None,
+) -> dict[str, Any]:
+    """车况期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    设计理念：
+    - 车况是经济条件，可以协商
+    - 例如：用户期望"有车"，但无车的人不应被过滤
+    - 系统会说："无车，但可以先看看"
+    """
+    car_curve = runtime.matching_rule_params.get("car_curve") or {
+        "within_score": 4,    # 有车：加分
+        "near_score": 2,      # 正在买车：加分（少）
+        "edge_score": 0,      # 无车：不加分
+    }
+
+    if candidate_car_status is None:
+        return {"status": "unknown", "score": 0}
+
+    if not preferred_statuses:
+        return {"status": "within", "score": 0}
+
+    candidate_status_lower = runtime.as_lower(candidate_car_status)
+    preferred_lower = [runtime.as_lower(s) for s in preferred_statuses]
+
+    if candidate_status_lower in preferred_lower:
+        return {"status": "within", "score": car_curve["within_score"]}
+
+    # 正在买车的情况
+    if "买车" in candidate_status_lower or "准备买车" in candidate_status_lower:
+        return {"status": "near", "score": car_curve["near_score"]}
+
+    return {"status": "edge", "score": car_curve["edge_score"]}
+
+
+def smoking_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_smoking: str | None,
+    *,
+    preferred_smoking: str | None,
+) -> dict[str, Any]:
+    """抽烟期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    设计理念：
+    - 抽烟习惯可以协商
+    - 例如：用户期望"不抽烟"，但抽烟的人不应被过滤
+    - 系统会说："抽烟，但可以先看看"
+    """
+    smoking_curve = runtime.matching_rule_params.get("smoking_curve") or {
+        "within_score": 6,    # 不抽烟：加分
+        "near_score": 0,      # 偶尔抽烟：不加分
+        "edge_score": -2,     # 抽烟：减分
+    }
+
+    if candidate_smoking is None:
+        return {"status": "unknown", "score": 0}
+
+    if not preferred_smoking:
+        return {"status": "within", "score": 0}
+
+    candidate_lower = runtime.as_lower(candidate_smoking)
+    preferred_lower = runtime.as_lower(preferred_smoking)
+
+    if candidate_lower == preferred_lower:
+        return {"status": "within", "score": smoking_curve["within_score"]}
+
+    # 偶尔抽烟的情况
+    if "偶尔" in candidate_lower:
+        return {"status": "near", "score": smoking_curve["near_score"]}
+
+    return {"status": "edge", "score": smoking_curve["edge_score"]}
+
+
+def drinking_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_drinking: str | None,
+    *,
+    preferred_drinking: str | None,
+) -> dict[str, Any]:
+    """喝酒期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    设计理念：
+    - 喝酒习惯可以协商
+    - 例如：用户期望"不喝酒"，但喝酒的人不应被过滤
+    - 系统会说："喝酒，但可以先看看"
+    """
+    drinking_curve = runtime.matching_rule_params.get("drinking_curve") or {
+        "within_score": 4,    # 不喝酒：加分
+        "near_score": 0,      # 偶尔喝酒：不加分
+        "edge_score": -1,     # 喝酒：减分
+    }
+
+    if candidate_drinking is None:
+        return {"status": "unknown", "score": 0}
+
+    if not preferred_drinking:
+        return {"status": "within", "score": 0}
+
+    candidate_lower = runtime.as_lower(candidate_drinking)
+    preferred_lower = runtime.as_lower(preferred_drinking)
+
+    if candidate_lower == preferred_lower:
+        return {"status": "within", "score": drinking_curve["within_score"]}
+
+    # 偶尔喝酒的情况
+    if "偶尔" in candidate_lower:
+        return {"status": "near", "score": drinking_curve["near_score"]}
+
+    return {"status": "edge", "score": drinking_curve["edge_score"]}
+
+
+def marriage_timeline_proximity_decision(
+    runtime: SearchMatchingRuntime,
+    candidate_timeline: str | None,
+    *,
+    preferred_timelines: list[str] | None,
+) -> dict[str, Any]:
+    """结婚时间线期望匹配（与薪资逻辑一致：期望只是"期望"，不是"硬标准"）
+
+    设计理念：
+    - 结婚时间可以协商
+    - 例如：用户期望"1年内结婚"，但2年内结婚的人不应被过滤
+    - 系统会说："结婚时间略晚，但可以先看看"
+    """
+    timeline_curve = runtime.matching_rule_params.get("timeline_curve") or {
+        "within_score": 6,    # 时间符合：加分
+        "near_score": 3,      # 时间略晚：加分（少）
+        "edge_score": 0,      # 时间较晚：不加分
+    }
+
+    if candidate_timeline is None:
+        return {"status": "unknown", "score": 0}
+
+    if not preferred_timelines:
+        return {"status": "within", "score": 0}
+
+    candidate_lower = runtime.as_lower(candidate_timeline)
+    preferred_lower = [runtime.as_lower(t) for t in preferred_timelines]
+
+    if candidate_lower in preferred_lower:
+        return {"status": "within", "score": timeline_curve["within_score"]}
+
+    # 时间接近的情况（例如：2年内结婚 vs 1年内结婚）
+    timeline_distance = _calculate_timeline_distance(candidate_lower, preferred_lower)
+    if timeline_distance <= 1:
+        return {"status": "near", "score": timeline_curve["near_score"]}
+
+    return {"status": "edge", "score": timeline_curve["edge_score"]}
+
+
+def _calculate_timeline_distance(candidate: str, preferred: list[str]) -> int:
+    """计算结婚时间线的距离（年数差异）"""
+    # 简化实现：根据关键词判断距离
+    timeline_order = {
+        "暂不考虑": 0,
+        "合适就结婚": 1,
+        "1年内": 1,
+        "2年内": 2,
+        "3年内": 3,
+    }
+
+    candidate_order = timeline_order.get(candidate, 1)
+    preferred_order = min(timeline_order.get(p, 1) for p in preferred)
+
+    return abs(candidate_order - preferred_order)
+
+
 def city_alignment_score(
     runtime: SearchMatchingRuntime,
     *,
@@ -1734,6 +2001,138 @@ def evaluate_candidate(
         reasons.append("身高高于你的预期上限")
         fit_score += height_decision["score"]
         risk_flags.append("身高高于预期上限，但通常不构成负向问题")
+
+    # ====================================================================
+    # 年龄期望匹配（与薪资/身高逻辑一致）
+    # ====================================================================
+    preferred_age_min = runtime.as_int(self_profile.get("preferred_age_min"))
+    preferred_age_max = runtime.as_int(self_profile.get("preferred_age_max"))
+    candidate_age = runtime.as_int(record.get("age"))
+    age_decision = age_range_proximity_decision(
+        runtime,
+        candidate_age,
+        preferred_min=preferred_age_min,
+        preferred_max=preferred_age_max,
+    )
+    if age_decision["status"] == "within":
+        if preferred_age_min is not None or preferred_age_max is not None:
+            reasons.append("年龄符合你的预期")
+            fit_score += age_decision["score"]
+    elif age_decision["status"] == "near":
+        reasons.append("年龄略低于预期，但仍然接近")
+        fit_score += age_decision["score"]
+        risk_flags.append("年龄略低于理想区间，但仍然接近")
+    elif age_decision["status"] == "edge":
+        reasons.append("年龄有一定差距")
+        fit_score += age_decision["score"]
+        risk_flags.append("年龄有一定差距，但可以先尝试沟通")
+    elif age_decision["status"] == "far":
+        risk_flags.append("年龄明显低于理想区间")
+    elif age_decision["status"] == "above":
+        reasons.append("年龄高于你的预期上限")
+        fit_score += age_decision["score"]
+        risk_flags.append("年龄高于预期上限，但通常不构成负向问题")
+
+    # ====================================================================
+    # 房况期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    preferred_housing_statuses = criteria.get("housing_statuses")
+    candidate_housing_status = runtime.as_text(record.get("housing_status"))
+    housing_decision = housing_status_proximity_decision(
+        runtime,
+        candidate_housing_status,
+        preferred_statuses=preferred_housing_statuses,
+    )
+    if housing_decision["status"] == "within":
+        if preferred_housing_statuses:
+            reasons.append("房况符合你的预期")
+            fit_score += housing_decision["score"]
+    elif housing_decision["status"] == "near":
+        reasons.append("正在买房，接近你的预期")
+        fit_score += housing_decision["score"]
+        risk_flags.append("目前无房，但正在买房")
+    elif housing_decision["status"] == "edge":
+        risk_flags.append("目前无房，但可以先看看")
+
+    # ====================================================================
+    # 车况期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    preferred_car_statuses = criteria.get("car_statuses")
+    candidate_car_status = runtime.as_text(record.get("car_status"))
+    car_decision = car_status_proximity_decision(
+        runtime,
+        candidate_car_status,
+        preferred_statuses=preferred_car_statuses,
+    )
+    if car_decision["status"] == "within":
+        if preferred_car_statuses:
+            reasons.append("车况符合你的预期")
+            fit_score += car_decision["score"]
+    elif car_decision["status"] == "near":
+        reasons.append("正在买车，接近你的预期")
+        fit_score += car_decision["score"]
+        risk_flags.append("目前无车，但正在买车")
+    elif car_decision["status"] == "edge":
+        risk_flags.append("目前无车，但可以先看看")
+
+    # ====================================================================
+    # 抽烟期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    preferred_smoking = criteria.get("smoking")
+    candidate_smoking = runtime.as_text(record.get("smoking"))
+    smoking_decision = smoking_proximity_decision(
+        runtime,
+        candidate_smoking,
+        preferred_smoking=preferred_smoking,
+    )
+    if smoking_decision["status"] == "within":
+        if preferred_smoking:
+            reasons.append("抽烟习惯符合你的预期")
+            fit_score += smoking_decision["score"]
+    elif smoking_decision["status"] == "near":
+        risk_flags.append("偶尔抽烟，但可以先看看")
+    elif smoking_decision["status"] == "edge":
+        risk_flags.append("抽烟，但可以先看看")
+
+    # ====================================================================
+    # 喝酒期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    preferred_drinking = criteria.get("drinking")
+    candidate_drinking = runtime.as_text(record.get("drinking"))
+    drinking_decision = drinking_proximity_decision(
+        runtime,
+        candidate_drinking,
+        preferred_drinking=preferred_drinking,
+    )
+    if drinking_decision["status"] == "within":
+        if preferred_drinking:
+            reasons.append("喝酒习惯符合你的预期")
+            fit_score += drinking_decision["score"]
+    elif drinking_decision["status"] == "near":
+        risk_flags.append("偶尔喝酒，但可以先看看")
+    elif drinking_decision["status"] == "edge":
+        risk_flags.append("喝酒，但可以先看看")
+
+    # ====================================================================
+    # 结婚时间线期望匹配（与薪资逻辑一致）
+    # ====================================================================
+    preferred_marriage_timelines = criteria.get("marriage_timelines")
+    candidate_marriage_timeline = runtime.as_text(record.get("marriage_timeline"))
+    timeline_decision = marriage_timeline_proximity_decision(
+        runtime,
+        candidate_marriage_timeline,
+        preferred_timelines=preferred_marriage_timelines,
+    )
+    if timeline_decision["status"] == "within":
+        if preferred_marriage_timelines:
+            reasons.append("结婚时间符合你的预期")
+            fit_score += timeline_decision["score"]
+    elif timeline_decision["status"] == "near":
+        reasons.append("结婚时间略晚，但仍然接近")
+        fit_score += timeline_decision["score"]
+        risk_flags.append("结婚时间略晚于理想时间")
+    elif timeline_decision["status"] == "edge":
+        risk_flags.append("结婚时间较晚，但可以先看看")
 
     # 性能优化：使用提前提取的 criteria_smoking_val 和 record_smoking
     if criteria_smoking_val:

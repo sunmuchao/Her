@@ -272,46 +272,74 @@ def build_mysql_prefilter(
         base_clauses.append(clause)
         base_params.append(value)
 
+    # ====================================================================
+    # Agent Native架构：期望匹配设计理念（统一标准）
+    # ====================================================================
+    # 核心原则：期望只是"期望"，不是"硬标准"
+    # - 薪资期望：50w超出20-30w → 不过滤，评分处理（已实现）
+    # - 身高期望：173cm超出167-172cm → 不过滤，评分处理（已实现）
+    # - 年龄期望：24岁超出26-36岁 → 不过滤，评分处理（本次修改）
+    # - 房况/车况期望：无房/无车 → 不过滤，评分处理（本次修改）
+    # - 抽烟/喝酒期望：抽烟/喝酒 → 不过滤，评分处理（本次修改）
+    # - 结婚时间线期望：2年内结婚 → 不过滤，评分处理（本次修改）
+    #
+    # 为什么这样设计？
+    # 1. 给候选人机会：即使不完全符合期望，也可能合适
+    # 2. 扩大候选人池：避免因期望限制导致候选人池过小
+    # 3. 保持灵活性：用户可以根据实际情况调整期望
+    # 4. 统一设计理念：所有期望条件逻辑一致
+    #
+    # 技术实现：
+    # - 移除硬筛选（不再在SQL WHERE中过滤）
+    # - 改为在评分阶段处理（search_matching.py）
+    # - 通过加分/减分和风险标记来判断匹配度
+    # ====================================================================
+
+    # 1. 性别：必须硬筛选（核心条件，无法协商）
     gender_values = expand_search_gender_values(criteria.get("gender"))
     if gender_values:
         add_in("gender", gender_values, allow_missing=True)
-    add_numeric_bound("age", ">=", criteria.get("age_min"), allow_missing=True)
-    add_numeric_bound("age", "<=", criteria.get("age_max"), allow_missing=True)
-    # ====================================================================
-    # Agent Native架构：身高期望改为期望匹配（与薪资逻辑一致）
-    # ====================================================================
-    # 设计理念：
-    # - 旧逻辑：身高硬筛选（height_min/max在SQL WHERE中过滤）
-    # - 新逻辑：身高期望匹配（preferred_height_min/max在评分阶段处理）
-    #
-    # 为什么这样改？
-    # - 与薪资逻辑一致：薪资期望只是"期望"，不是"硬标准"
-    # - 身高期望也应该只是"期望"，超出范围不应硬性过滤
-    # - 例如：用户期望167-172cm，候选人173cm不应被过滤
-    # - 系统会说："身高略高，但通常不构成负向问题"
-    #
-    # 技术实现：
-    # - 移除身高硬筛选（不再在SQL WHERE中过滤）
-    # - 改为在评分阶段处理（search_matching.py）
-    # - 通过加分/减分和风险标记来判断匹配度
-    #
-    # 参照：薪资期望的处理方式（preferred_income_min/max）
-    # ====================================================================
-    # add_numeric_bound("height", ">=", criteria.get("height_min"), allow_missing=True)  ← 移除硬筛选
-    # add_numeric_bound("height", "<=", criteria.get("height_max"), allow_missing=True)  ← 移除硬筛选
+
+    # 2. 年龄：改为期望匹配（差1-2岁不应硬性过滤）
+    # add_numeric_bound("age", ">=", criteria.get("age_min"), allow_missing=True)  ← 移除硬筛选
+    # add_numeric_bound("age", "<=", criteria.get("age_max"), allow_missing=True)  ← 移除硬筛选
+
+    # 3. 身高：已改为期望匹配（search_matching.py）
+
+    # 4. 城市：必须硬筛选（地理位置要求）
     add_in("city", criteria.get("cities"), allow_missing=True)
     add_in("district", criteria.get("districts"), allow_missing=True)
     add_in("settlement_city", criteria.get("settlement_cities"), allow_missing=True)
+
+    # 5. 关系目标：必须硬筛选（核心条件）
     add_in("relationship_goal", criteria.get("relationship_goals"), allow_missing=True)
-    add_exact("smoking", criteria.get("smoking"), allow_missing=True)
-    add_exact("drinking", criteria.get("drinking"), allow_missing=True)
+
+    # 6. 抽烟：改为期望匹配（习惯可以协商）
+    # add_exact("smoking", criteria.get("smoking"), allow_missing=True)  ← 移除硬筛选
+
+    # 7. 喝酒：改为期望匹配（习惯可以协商）
+    # add_exact("drinking", criteria.get("drinking"), allow_missing=True)  ← 移除硬筛选
+
+    # 8. 异地：必须硬筛选（生活方式硬性条件）
     add_exact("long_distance", criteria.get("long_distance"), allow_missing=True)
-    add_in("housing_status", criteria.get("housing_statuses"), allow_missing=True)
-    add_in("car_status", criteria.get("car_statuses"), allow_missing=True)
+
+    # 9. 房况：改为期望匹配（经济条件可以协商）
+    # add_in("housing_status", criteria.get("housing_statuses"), allow_missing=True)  ← 移除硬筛选
+
+    # 10. 车况：改为期望匹配（经济条件可以协商）
+    # add_in("car_status", criteria.get("car_statuses"), allow_missing=True)  ← 移除硬筛选
+
+    # 11. 婚况：必须硬筛选（法律约束）
     add_in("marital_status", criteria.get("marital_statuses"), allow_missing=True)
+
+    # 12. 想要孩子：必须硬筛选（重大责任）
     add_exact("want_children", criteria.get("want_children"), allow_missing=True)
+
+    # 13. 接受对方孩子：必须硬筛选（重大责任）
     add_exact("accept_partner_children", criteria.get("accept_partner_children"), allow_missing=True)
-    add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)
+
+    # 14. 结婚时间线：改为期望匹配（时间可以协商）
+    # add_in("marriage_timeline", criteria.get("marriage_timelines"), allow_missing=True)  ← 移除硬筛选
     # ====================================================================
     # 用户状态筛选逻辑（新设计：所有用户都能被搜索，但状态不同排名不同）
     # ====================================================================

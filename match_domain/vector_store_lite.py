@@ -138,6 +138,14 @@ VECTOR_TYPES_CONFIG = {
         "cleanup_days": 45,
         "description": "用户照片审美偏好：由历史正负反馈聚合而成。",
     },
+    "face_embedding": {
+        "decay_days": 240,
+        "decay_curve": "linear",
+        "min_factor": 0.85,
+        "max_version_count": 4,
+        "cleanup_days": 90,
+        "description": "人脸相似检索索引：由资料照主脸 embedding 扩展生成。",
+    },
 }
 
 
