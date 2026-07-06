@@ -6,6 +6,7 @@ import { queryKeys } from '@/lib/query-keys'
 
 export type ProfileFactsData = {
   profile_facts?: Record<string, unknown>
+  photos?: string[]
 }
 
 export function useProfileFacts() {

@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import outer_system_mysql_schema as schema
+
 from profile_service import resolve_profile_source, upsert_profile_for_onboarding
 from profile_service.persona_bridge import apply_persona_patch
 
@@ -1430,6 +1432,7 @@ def submit_onboarding_profile(
     *,
     basic_info: dict[str, Any] | None = None,
     preference: dict[str, Any] | None = None,
+    photos: list[str] | None = None,  # 新增：photos参数
     mark_completed: bool = True,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -1482,6 +1485,112 @@ def submit_onboarding_profile(
     merged_basic["profile_id"] = profile_id
     persona_patch = build_onboarding_persona_patch(merged_basic, merged_pref)
     _sync_onboarding_persona_memory(profile_id=profile_id, patch=persona_patch)
+
+    # 新增：照片处理逻辑（使用外部数据库连接）
+    if photos and profile_id:
+        # 添加日志：查看 photos 的实际内容
+        logger.info(f"Photo processing started for profile_id={profile_id}, photos count={len(photos)}, photos type={type(photos)}, first photo type={type(photos[0]) if photos else None}")
+        logger.debug(f"Photos content: {photos[:3] if len(photos) > 3 else photos}")
+
+        # 获取外部数据库连接来操作 profile_photos 和 profiles 表
+        from profile_service.api import _connect_profile_db, _table_exists
+
+        profile_conn = None
+        try:
+            profile_conn = _connect_profile_db(source_dsn, use_pool=False, timeout=10.0)
+
+            # 防御性检查：确认 profile_photos 表存在
+            if not _table_exists(profile_conn, "profile_photos"):
+                logger.warning(
+                    f"profile_photos table does not exist in database {source_dsn}, "
+                    f"skipping photo processing for profile_id={profile_id}"
+                )
+            else:
+                # 清空旧照片
+                profile_conn.execute(
+                    f"DELETE FROM {schema.quote_mysql_ident('profile_photos')} WHERE {schema.quote_mysql_ident('profile_id')} = ?",
+                    (profile_id,)
+                )
+
+                # 插入新照片
+                inserted_count = 0  # 统计实际插入的照片数量
+                for index, photo_item in enumerate(photos):
+                    # 兼容两种格式：字符串或对象（提取 url 字段）
+                    if isinstance(photo_item, str):
+                        photo_url = photo_item
+                    elif isinstance(photo_item, dict):
+                        photo_url = photo_item.get("url") or photo_item.get("photo_url")
+                    else:
+                        logger.warning(f"Invalid photo item type at index {index}: {type(photo_item)}, value={photo_item}")
+                        continue
+
+                    if not photo_url:
+                        logger.warning(f"Empty photo_url at index {index}, skipping")
+                        continue
+
+                    profile_conn.execute(
+                        f"""
+                        INSERT INTO {schema.quote_mysql_ident('profile_photos')}
+                        ({schema.quote_mysql_ident('profile_id')}, {schema.quote_mysql_ident('photo_url')}, {schema.quote_mysql_ident('is_primary')}, {schema.quote_mysql_ident('sort_order')})
+                        VALUES (?, ?, ?, ?)
+                        """,
+                        (profile_id, photo_url, inserted_count == 0, inserted_count)  # 第一张照片设为主照片
+                    )
+                    inserted_count += 1
+
+                # 更新profile表的photo_count（使用实际插入的数量）
+                if inserted_count > 0 and _table_exists(profile_conn, source_table):
+                    try:
+                        # 检查 photo_count 列是否存在
+                        from profile_service.api import _column_exists
+                        if _column_exists(profile_conn, source_table, "photo_count"):
+                            profile_conn.execute(
+                                f"UPDATE {schema.quote_mysql_ident(source_table)} SET {schema.quote_mysql_ident('photo_count')} = ? WHERE {schema.quote_mysql_ident('id')} = ?",
+                                (inserted_count, profile_id)  # ← 修复：使用实际插入数量
+                            )
+                    except Exception as update_error:
+                        logger.warning(f"Failed to update photo_count: {update_error}")
+
+                # 提交事务
+                profile_conn.commit()
+                logger.info(f"Successfully processed {inserted_count} photos for profile_id={profile_id}")
+        except Exception as photo_error:
+            # 照片处理失败记录日志，但不影响主流程
+            logger.error(f"Photo processing failed for profile_id={profile_id}: {photo_error}")
+            if profile_conn:
+                try:
+                    profile_conn.rollback()
+                except Exception:
+                    pass
+        finally:
+            if profile_conn:
+                try:
+                    profile_conn.close()
+                except Exception:
+                    pass
+
+        # 新增：触发照片分析事件
+        try:
+            from match_domain.photo_event_bus import build_photo_analysis_event, publish_photo_analysis_event
+            import os
+
+            # 获取persona_source_dsn（用于照片特征分析）
+            persona_source_dsn = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn
+
+            event = build_photo_analysis_event(
+                event_type="photo_uploaded",
+                profile_id=int(profile_id),
+                persona_source_dsn=str(persona_source_dsn),
+                profile_source_dsn=str(source_dsn),
+                source_table_name=str(source_table),
+                photos_table_name="profile_photos",
+                trigger_fields=["photo_url", "photo_count"],
+                metadata={"photos_count": len(photos), "write_mode": write_mode},
+            )
+            publish_photo_analysis_event(event)
+        except Exception:
+            # 照片分析事件触发失败不影响主流程，只记录日志
+            pass
 
     next_status = (
         ONBOARDING_STATUS_COMPLETED

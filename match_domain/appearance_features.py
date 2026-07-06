@@ -1253,6 +1253,15 @@ def build_photo_feature_patch(
         "stylish_score": round(stylish_score, 2),
         "appearance_summary": appearance_summary,
         "appearance_tags_json": appearance_tags_json,
+
+        # 新增：AI颜值评分和AI口语化描述
+        "beauty_score": None,  # 将在refresh_profile_photo_features中填充
+        "beauty_score_model": None,
+        "beauty_score_reasoning": None,
+        "appearance_keywords_json": None,
+        "appearance_style_type": None,
+        "dominant_features_json": None,
+
         "analysis_model": "deterministic-photo-feature-v1",
         "last_error": None,
     }
@@ -1605,6 +1614,88 @@ def refresh_profile_photo_features(
         table_name=table_name,
     )
     if str(saved.get("analysis_status") or "").lower() == "done":
+        try:
+            # 新增：人脸向量提取
+            from .face_embedding_extractor import extract_face_embedding
+            from .face_similarity_search import upsert_profile_face_embedding
+
+            face_embedding_result = None
+            primary_photo_url = None
+
+            # 找到主照片（第一张照片）
+            if photo_entries and len(photo_entries) > 0:
+                primary_photo_url = photo_entries[0].get("photo_url") or photo_entries[0].get("photo_source")
+
+            # 提取人脸向量
+            if primary_photo_url:
+                face_embedding_result = extract_face_embedding(primary_photo_url)
+
+                if face_embedding_result and face_embedding_result.get("success"):
+                    # 保存人脸向量到数据库
+                    import json
+                    upsert_profile_face_embedding(
+                        source_dsn=source_dsn,
+                        profile_id=normalized_profile_id,
+                        face_embedding_json=json.dumps(face_embedding_result["face_embedding"]),
+                        face_embedding_model=face_embedding_result["face_embedding_model"],
+                        face_embedding_dimension=face_embedding_result["face_embedding_dimension"],
+                        face_detection_confidence=face_embedding_result.get("face_detection_confidence"),
+                        face_bbox_json=json.dumps(face_embedding_result.get("face_bbox", {})),
+                        photo_url=primary_photo_url,
+                        photo_verification_level=profile_row.get("photo_verification_level"),
+                        is_primary_face=True,
+                    )
+        except Exception:
+            # 人脸向量提取失败不影响主流程
+            pass
+
+        # 新增：AI颜值评分和AI口语化描述
+        try:
+            from .beauty_score_analyzer import analyze_beauty_score, generate_appearance_description
+
+            primary_photo_url = None
+            if photo_entries and len(photo_entries) > 0:
+                primary_photo_url = photo_entries[0].get("photo_url") or photo_entries[0].get("photo_source")
+
+            if primary_photo_url:
+                # AI颜值评分
+                beauty_result = analyze_beauty_score(primary_photo_url)
+                if beauty_result and beauty_result.get("success"):
+                    beauty_score = beauty_result.get("beauty_score", 0)
+                    reasoning = beauty_result.get("reasoning", "")
+                    saved = upsert_profile_photo_features(
+                        source_dsn=source_dsn,
+                        profile_id=normalized_profile_id,
+                        table_name=table_name,
+                        patch={
+                            "beauty_score": round(float(beauty_score), 2),
+                            "beauty_score_model": "claude-3-5-sonnet-20241022",
+                            "beauty_score_reasoning": str(reasoning)[:500] if reasoning else None,
+                        },
+                    )
+
+                # AI外貌描述
+                description_result = generate_appearance_description(primary_photo_url)
+                if description_result and description_result.get("success"):
+                    appearance_keywords = description_result.get("appearance_keywords", [])
+                    appearance_style_type = description_result.get("appearance_style_type", "neutral")
+                    dominant_features = description_result.get("dominant_features", [])
+
+                    saved = upsert_profile_photo_features(
+                        source_dsn=source_dsn,
+                        profile_id=normalized_profile_id,
+                        table_name=table_name,
+                        patch={
+                            "appearance_keywords_json": [{"keyword": kw} for kw in appearance_keywords],
+                            "appearance_style_type": appearance_style_type,
+                            "dominant_features_json": [{"feature": f} for f in dominant_features],
+                        },
+                    )
+        except Exception:
+            # AI评分和描述失败不影响主流程
+            pass
+
+        # 原有逻辑：同步profile_face_side_tables
         try:
             _sync_profile_face_side_tables(
                 source_dsn=source_dsn,

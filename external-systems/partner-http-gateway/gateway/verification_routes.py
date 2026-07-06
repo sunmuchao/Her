@@ -371,7 +371,7 @@ def rest_verification_submit_live_video(
         video_base64_for_submit = video_base64
 
     try:
-        submission = gateway._with_chat(
+        submission = gateway._with_verification(
             submit_live_video_verification,
             user_id=user_id,
             video_base64=video_base64_for_submit,
@@ -426,7 +426,7 @@ def rest_verification_request_live_video(
     user_id = body.get("user_id")
     if not user_id:
         raise ValueError("user_id is required")
-    request = gateway._with_chat(
+    request = gateway._with_verification(
         request_live_video_verification,
         user_id=str(user_id),
         profile_id=int(body["profile_id"]) if body.get("profile_id") is not None else None,
@@ -514,7 +514,7 @@ def rest_verification_list_submissions(
     except ValidationError:
         limit = 100
 
-    rows = gateway._with_chat(
+    rows = gateway._with_verification(
         list_verification_submissions,
         user_id=user_id,
         statuses=_statuses_from_query(q),
@@ -546,7 +546,7 @@ def rest_verification_list_photo_review_requests(
     except ValueError:
         limit = 100
 
-    rows = gateway._with_chat(
+    rows = gateway._with_verification(
         list_photo_review_requests,
         user_id=user_id,
         statuses=_statuses_from_query(q),
@@ -580,7 +580,7 @@ def rest_verification_get_submission(
     except Exception:
         return 400, {"error": {"code": "invalid_request", "message": "Invalid submission_id"}}
 
-    submission = gateway._with_chat(get_verification_submission, safe_id)
+    submission = gateway._with_verification(get_verification_submission, safe_id)
     if not submission:
         return 404, {"error": {"code": "not_found", "message": "verification submission not found"}}
 
@@ -632,7 +632,7 @@ def rest_verification_get_photo_review_request(
 
     SECURITY: Ownership verification required.
     """
-    submission = gateway._with_chat(get_verification_submission, submission_id)
+    submission = gateway._with_verification(get_verification_submission, submission_id)
     if not submission or not (submission.get("photo_review_task") or {}).get("task_kind"):
         return 404, {"error": {"code": "not_found", "message": "photo review request not found"}}
 
@@ -665,7 +665,7 @@ def rest_verification_resubmit_live_video(
     video_base64_raw = str(body.get("video_base64") or body.get("video_bytes_base64") or "")
     video_base64 = _normalize_base64(video_base64_raw) if video_base64_raw else ""
 
-    submission = gateway._with_chat(
+    submission = gateway._with_verification(
         resubmit_live_video_verification,
         submission_id,
         user_id=user_id,
@@ -701,7 +701,7 @@ def rest_verification_list_notifications(
     except ValueError:
         limit = 100
 
-    rows = gateway._with_chat(
+    rows = gateway._with_verification(
         list_verification_notifications,
         submission_id=q.get("submission_id") or None,
         user_id=user_id,
@@ -732,7 +732,7 @@ def rest_verification_review_submission(
     decision = body.get("decision")
     if not decision:
         raise ValueError("decision is required")
-    submission = gateway._with_chat(
+    submission = gateway._with_verification(
         review_live_video_verification,
         submission_id,
         reviewer_id,

@@ -2466,6 +2466,34 @@ def review_live_video_verification(
         sync_result = _sync_live_video_status_to_profile(current, reviewed_at=ts)
         next_status = SUBMISSION_STATUS_APPROVED
         approved_at = ts
+
+        # 新增：触发照片分析事件
+        try:
+            from match_domain.photo_event_bus import build_photo_analysis_event, publish_photo_analysis_event
+
+            profile_id = current.get("profile_id")
+            source_dsn = current.get("source_dsn")
+            source_table_name = current.get("source_table_name")
+
+            if profile_id and source_dsn:
+                event = build_photo_analysis_event(
+                    event_type="photo_uploaded",
+                    profile_id=int(profile_id),
+                    persona_source_dsn=source_dsn,
+                    profile_source_dsn=source_dsn,
+                    source_table_name=source_table_name or "profiles",
+                    photos_table_name="profile_photos",
+                    trigger_fields=["photo_verification_level"],
+                    metadata={
+                        "verification_type": "live_video_verified",
+                        "submission_id": submission_id,
+                        "reviewer_id": reviewer_id,
+                    },
+                )
+                publish_photo_analysis_event(event)
+        except Exception:
+            # 触发照片分析失败不影响审核流程
+            pass
     elif normalized_decision == REVIEW_DECISION_REQUEST_RESUBMISSION:
         next_status = SUBMISSION_STATUS_RESUBMISSION_REQUIRED
     else:

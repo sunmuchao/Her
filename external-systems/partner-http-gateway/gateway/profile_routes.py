@@ -225,7 +225,7 @@ def rest_profile_get_field_verification(
     environ: dict[str, Any],
     submission_id: str,
 ) -> tuple[int, dict[str, Any]]:
-    submission = gateway._with_chat(get_profile_field_verification_submission, submission_id)
+    submission = gateway._with_verification(get_profile_field_verification_submission, submission_id)
     if not submission:
         return 404, {"error": {"code": "not_found", "message": "profile verification submission not found"}}
     gateway._assert_actor_can_access_owner(environ, submission.get("subject_user_id"), field_name="subject_user_id")
@@ -383,7 +383,7 @@ def rest_profile_get_review_case(
     environ: dict[str, Any],
     profile_review_case_id: str,
 ) -> tuple[int, dict[str, Any]]:
-    risk_case = gateway._with_chat(get_profile_review_case, profile_review_case_id)
+    risk_case = gateway._with_risk(get_profile_review_case, profile_review_case_id)
     if not risk_case:
         return 404, {"error": {"code": "not_found", "message": "profile review case not found"}}
     gateway._assert_actor_can_access_owner(environ, risk_case.get("subject_user_id"), field_name="subject_user_id")
@@ -414,7 +414,7 @@ def rest_profile_get_photo_risk_run(
     environ: dict[str, Any],
     score_run_id: int,
 ) -> tuple[int, dict[str, Any]]:
-    row = gateway._with_chat(get_photo_risk_score_run, int(score_run_id))
+    row = gateway._with_risk(get_photo_risk_score_run, int(score_run_id))
     if not row:
         return 404, {"error": {"code": "not_found", "message": "photo risk score run not found"}}
     gateway._assert_actor_can_access_owner(environ, row.get("subject_user_id"), field_name="subject_user_id")
@@ -514,7 +514,7 @@ def rest_profile_get_review_case_appeal(
     environ: dict[str, Any],
     appeal_id: int,
 ) -> tuple[int, dict[str, Any]]:
-    appeal = gateway._with_chat(get_profile_review_case_appeal, int(appeal_id))
+    appeal = gateway._with_risk(get_profile_review_case_appeal, int(appeal_id))
     if not appeal:
         return 404, {"error": {"code": "not_found", "message": "profile review appeal not found"}}
     gateway._assert_actor_can_access_owner(environ, appeal.get("subject_user_id"), field_name="subject_user_id")

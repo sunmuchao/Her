@@ -377,14 +377,14 @@ def handle_chat_jsonrpc(
             CHAT_RISK_REVIEW_ROLES,
             message="current actor cannot inspect fraud networks",
         )
-        return gateway._with_chat(build_fraud_network_overview, str(p["subject_user_id"]))
+        return gateway._with_risk(build_fraud_network_overview, str(p["subject_user_id"]))
     if method == "chat.get_risk_case":
         gateway._require_roles(
             environ,
             CHAT_RISK_REVIEW_ROLES,
             message="current actor cannot inspect chat risk cases",
         )
-        return gateway._with_chat(build_risk_case_playback, p["risk_case_id"])
+        return gateway._with_risk(build_risk_case_playback, p["risk_case_id"])
     if method == "chat.review_risk_case":
         resolver_id = gateway._resolve_operator_actor_id(
             environ,
@@ -404,7 +404,7 @@ def handle_chat_jsonrpc(
         )
     if method == "chat.get_thread_risk_overview":
         requester_id = gateway._resolve_actor_bound_id(environ, p.get("requester_id"), field_name="requester_id")
-        return gateway._with_chat(build_thread_risk_overview, p["thread_id"], requester_id)
+        return gateway._with_risk(build_thread_risk_overview, p["thread_id"], requester_id)
     if method == "chat.submit_risk_appeal":
         appellant_id = gateway._resolve_actor_bound_id(environ, p.get("appellant_id"), field_name="appellant_id")
         return gateway._with_chat(
@@ -434,7 +434,7 @@ def handle_chat_jsonrpc(
             CHAT_RISK_REVIEW_ROLES,
             message="current actor cannot inspect chat risk appeals",
         )
-        return gateway._with_chat(get_risk_appeal, int(p["appeal_id"]))
+        return gateway._with_risk(get_risk_appeal, int(p["appeal_id"]))
     if method == "chat.review_risk_appeal":
         resolver_id = gateway._resolve_operator_actor_id(
             environ,

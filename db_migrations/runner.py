@@ -28,6 +28,22 @@ from .core import (
 
 
 TARGETS: dict[str, TargetDefinition] = {
+    "infrastructure": TargetDefinition(
+        env_var="HER_INFRASTRUCTURE_DB",
+        package="db_migrations.targets.infrastructure",
+    ),
+    "auth": TargetDefinition(
+        env_var="HER_AUTH_DB",
+        package="db_migrations.targets.auth",
+    ),
+    "verification": TargetDefinition(
+        env_var="HER_VERIFICATION_DB",
+        package="db_migrations.targets.verification",
+    ),
+    "risk": TargetDefinition(
+        env_var="HER_RISK_DB",
+        package="db_migrations.targets.risk",
+    ),
     "recommendation": TargetDefinition(
         env_var="PARTNER_RECOMMENDATION_DB",
         package="db_migrations.targets.recommendation",

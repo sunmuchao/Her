@@ -13,6 +13,10 @@ _PARTNER_SYSTEM_DIRS = (
     Path("external-systems/partner-chat-system"),
     Path("external-systems/partner-discovery-system"),
     Path("external-systems/partner-http-gateway"),
+    Path("external-systems/auth-system"),
+    Path("external-systems/verification-system"),
+    Path("external-systems/risk-system"),
+    Path("external-systems/infrastructure-system"),
 )
 
 

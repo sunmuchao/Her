@@ -362,7 +362,20 @@ def rest_media_upload(
 
     # Step 5: Validate file type (Magic Number)
     data = file_field["data"]
+    file_size = len(data)
+
     detected_type, type_error = _validate_file_type(data, _ALLOWED_IMAGE_TYPES)
+
+    # LOG: 文件类型检测结果
+    from observability import emit_pipeline_record
+    emit_pipeline_record(
+        her_kind="media_upload",
+        stage="file_type_detected",
+        trace_id=get_trace_id(),
+        detected_type=detected_type,
+        type_error=type_error,
+    )
+
     if type_error:
         return 400, {
             "error": {"code": "invalid_file_type", "message": type_error},
@@ -371,6 +384,19 @@ def rest_media_upload(
 
     # Step 6: Sanitize filename
     original_filename = file_field["filename"]
+
+    # LOG: 文件类型检测前的关键信息（在 original_filename 定义后）
+    emit_pipeline_record(
+        her_kind="media_upload",
+        stage="file_validation",
+        trace_id=get_trace_id(),
+        user_id=user_id,
+        original_filename=original_filename[:50],
+        file_size=file_size,
+        content_type_header=file_field.get("content_type"),
+        first_16_bytes_hex=data[:16].hex() if file_size >= 16 else data.hex(),
+    )
+
     safe_filename, filename_error = _sanitize_filename(original_filename)
     if filename_error:
         return 400, {

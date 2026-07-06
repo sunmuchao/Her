@@ -163,7 +163,7 @@ def handle_verification_jsonrpc(
             limit=int(params.get("limit", 100)),
         )
     if method == "verification.get_submission":
-        submission = gateway._with_chat(get_verification_submission, str(params["submission_id"]))
+        submission = gateway._with_verification(get_verification_submission, str(params["submission_id"]))
         gateway._assert_actor_can_access_owner(environ, (submission or {}).get("user_id"), field_name="user_id")
         return submission
     if method == "verification.list_notifications":

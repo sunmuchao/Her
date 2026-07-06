@@ -84,10 +84,10 @@ class AuthOtpService:
         self,
         provider: SmsProvider | None = None,
         *,
-        chat_executor: Any | None = None,
+        auth_executor: Any | None = None,
     ) -> None:
         self._provider = provider or build_sms_provider()
-        self._chat_executor = chat_executor
+        self._auth_executor = auth_executor
         self._records: dict[str, OtpRecord] = {}
         self._users: dict[str, str] = {}
         self._lock = threading.Lock()
@@ -108,9 +108,9 @@ class AuthOtpService:
         now = utcnow()
         code = fixed_auth_code() or f"{secrets.randbelow(1000000):06d}"
         provider_meta = self._provider.send_code(phone, code)
-        if self._chat_executor is not None:
+        if self._auth_executor is not None:
             try:
-                return self._chat_executor(
+                return self._auth_executor(
                     persist_sms_code,
                     phone=phone,
                     code=code,
@@ -163,9 +163,9 @@ class AuthOtpService:
         device_id: str | None = None,
         client_type: str | None = None,
     ) -> dict[str, Any]:
-        if self._chat_executor is not None:
+        if self._auth_executor is not None:
             try:
-                return self._chat_executor(
+                return self._auth_executor(
                     persist_verify_sms_code,
                     phone=phone,
                     code=code,
@@ -352,7 +352,7 @@ def rest_auth_refresh_token(
     if not refresh_token:
         return _error_payload(AuthRouteError(400, "refresh_token_required", "refresh_token is required"))
     try:
-        out = gateway._with_chat(persist_refresh_session, refresh_token)
+        out = gateway._with_auth(persist_refresh_session, refresh_token)
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
     return 200, _json_safe({**out, "trace_id": get_trace_id()})
@@ -368,7 +368,7 @@ def rest_auth_wechat_login(
         return _error_payload(AuthRouteError(400, "wechat_code_required", "微信授权 code 不能为空"))
     try:
         profile = gateway._wechat_login_provider.exchange_code(code)
-        out = gateway._with_chat(
+        out = gateway._with_auth(
             login_with_wechat_profile,
             openid=str(profile.get("openid") or "").strip(),
             unionid=str(profile.get("unionid") or "").strip() or None,
@@ -398,7 +398,7 @@ def rest_auth_one_tap_create(
             device_id=device_id,
             client_type=client_type,
         )
-        out = gateway._with_chat(
+        out = gateway._with_auth(
             create_one_tap_attempt,
             provider=str(created.get("provider") or "unknown"),
             masked_phone=str(created.get("masked_phone") or "").strip(),
@@ -429,14 +429,14 @@ def rest_auth_one_tap_verify(
     device_id = str(body.get("device_id") or "").strip() or None
     client_type = str(body.get("client_type") or "").strip() or None
     try:
-        provider_result = gateway._with_chat(_load_one_tap_attempt_context, attempt_id)
+        provider_result = gateway._with_auth(_load_one_tap_attempt_context, attempt_id)
         if not provider_result:
             raise AuthRouteError(404, "one_tap_attempt_not_found", "一键登录尝试不存在")
         verified = gateway._one_tap_login_provider.verify(
             operator_token=operator_token,
             attempt_context=provider_result,
         )
-        out = gateway._with_chat(
+        out = gateway._with_auth(
             verify_one_tap_login,
             attempt_id=attempt_id,
             phone=require_cn_phone(verified.get("phone")),
@@ -491,7 +491,7 @@ def rest_auth_get_onboarding(
     if actor is None:
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
     try:
-        out = gateway._with_chat(get_onboarding_profile, str(actor.actor_id))
+        out = gateway._with_auth(get_onboarding_profile, str(actor.actor_id))
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
     return 200, _json_safe({**out, "trace_id": get_trace_id()})
@@ -506,11 +506,12 @@ def rest_auth_patch_onboarding(
     if actor is None:
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
     try:
-        out = gateway._with_chat(
+        out = gateway._with_auth(
             submit_onboarding_profile,
             str(actor.actor_id),
             basic_info=body.get("basic_info"),
             preference=body.get("preference"),
+            photos=body.get("photos"),  # 新增：传递photos参数
             mark_completed=bool(body.get("mark_completed", True)),
         )
     except AuthDomainError as exc:
@@ -527,7 +528,7 @@ def rest_auth_me(
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
     token = _extract_bearer_token(environ)
     try:
-        out = gateway._with_chat(get_current_auth_payload, actor.actor_id, token)
+        out = gateway._with_auth(get_current_auth_payload, actor.actor_id, token)
     except AuthDomainError as exc:
         return _error_payload(AuthRouteError(exc.status_code, exc.code, exc.message))
     return 200, _json_safe(
@@ -570,7 +571,7 @@ def rest_auth_logout(
     token = _extract_bearer_token(environ)
     if not token:
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
-    out = gateway._with_chat(revoke_session_by_access_token, token)
+    out = gateway._with_auth(revoke_session_by_access_token, token)
     return 200, _json_safe({**out, "trace_id": get_trace_id()})
 
 
@@ -583,7 +584,7 @@ def rest_auth_wechat_bind_phone(
     if actor is None:
         return _error_payload(AuthRouteError(401, "unauthorized", "登录状态已失效，请重新登录"))
     try:
-        out = gateway._with_chat(
+        out = gateway._with_auth(
             bind_phone_with_sms,
             user_id=str(actor.actor_id),
             phone=require_cn_phone(body.get("phone") or body.get("mobile")),

@@ -1,20 +1,57 @@
+# 开发环境配置：代码挂载 + 快速重启
+# 使用方法：docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
 services:
   gateway-public:
-    volumes:
-      - .:/app
+    # 使用本地已构建的镜像（避免重复构建）
+    image: her-gateway-public:latest
 
-  gateway-ops:
+    # 添加代码挂载（改代码后重启即可，无需重建）
     volumes:
-      - .:/app
+      - ./external-systems:/app/external-systems
+      - ./match_domain:/app/match_domain
+      - ./profile_service:/app/profile_service
+      - ./observability:/app/observability
+      - ./partner_search:/app/partner_search
+      - ./persona_memory_sync:/app/persona_memory_sync
+      - ./assessment:/app/assessment
+      - ./config:/app/config
+      - ./scripts:/app/scripts
+      - ./relationship_ledger:/app/relationship_ledger
+      - ./async_jobs:/app/async_jobs
+      - ./task_scheduler:/app/task_scheduler
+      - ./db_migrations:/app/db_migrations
+      # 挂载根目录的 Python 文件
+      - ./her_env.py:/app/her_env.py
+      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
+
+    # 开发环境：启用调试日志
+    environment:
+      HER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
 
   gateway-internal:
+    image: her-gateway-internal:latest
     volumes:
-      - .:/app
+      - ./external-systems:/app/external-systems
+      - ./match_domain:/app/match_domain
+      - ./profile_service:/app/profile_service
+      - ./observability:/app/observability
+      - ./partner_search:/app/partner_search
+      - ./persona_memory_sync:/app/persona_memory_sync
+      - ./relationship_ledger:/app/relationship_ledger
+      - ./async_jobs:/app/async_jobs
+      - ./task_scheduler:/app/task_scheduler
+      - ./her_env.py:/app/her_env.py
+      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
 
-  scheduler:
+  gateway-ops:
+    image: her-gateway-ops:latest
     volumes:
-      - .:/app
-
-  sse-server:
-    volumes:
-      - .:/app
+      - ./external-systems:/app/external-systems
+      - ./match_domain:/app/match_domain
+      - ./profile_service:/app/profile_service
+      - ./observability:/app/observability
+      - ./partner_search:/app/partner_search
+      - ./her_env.py:/app/her_env.py
+      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py

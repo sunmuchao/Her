@@ -23,7 +23,14 @@ class PrincipalGateway(Protocol):
 def _lookup_onboarding_profile_id(gateway: PrincipalGateway, user_id: str) -> int | None:
     from chat_system.auth_accounts import get_onboarding_profile  # type: ignore[import-untyped]
 
-    out = gateway._with_chat(get_onboarding_profile, str(user_id))
+    # 🔧 FIX: auth tables (user_onboarding_profiles) 在 her_auth 数据库，而不是 her_chat
+    # 需要使用 gateway._with_auth 方法，但 Protocol 定义中没有，需要动态调用
+    # 临时方案：直接使用 _with_chat，因为 gateway 实例会有 _with_auth 方法
+    if hasattr(gateway, '_with_auth'):
+        out = gateway._with_auth(get_onboarding_profile, str(user_id))
+    else:
+        # Fallback for old Protocol definition
+        out = gateway._with_chat(get_onboarding_profile, str(user_id))
     return coalesce_profile_requester(
         profile_id=out.get("profile_id"),
         requester_id=out.get("requester_id"),

@@ -1,26 +1,79 @@
-FROM python:3.11-slim-bookworm
+# ============================================================
+# 第一阶段：Builder（安装依赖，包含编译工具）
+# ============================================================
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /app
 
+# 设置 pip 配置
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=
-
 ENV PIP_DEFAULT_TIMEOUT=180
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 
+# 安装编译依赖（这些工具只在构建阶段需要）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     default-libmysqlclient-dev \
     ffmpeg \
     pkg-config \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# 升级 pip 工具
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
+# 先复制依赖定义文件（这些文件很少改变）
 COPY pyproject.toml README.md ./
-COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py partner_moderation.py profile_*.py mysql_source_config.py ./
+
+# 复制 external-systems 目录（pyproject.toml 引用了这些包）
+COPY external-systems ./external-systems
+
+# 创建最小化的项目结构（支持 editable install）
+# 这些目录只需要 __init__.py 文件，实际代码在第二阶段复制
+RUN mkdir -p match_domain observability async_jobs task_scheduler \
+    db_migrations relationship_ledger partner_search persona_memory_sync \
+    profile_service assessment scripts config \
+    && touch match_domain/__init__.py observability/__init__.py \
+    async_jobs/__init__.py task_scheduler/__init__.py \
+    db_migrations/__init__.py relationship_ledger/__init__.py \
+    partner_search/__init__.py persona_memory_sync/__init__.py \
+    profile_service/__init__.py assessment/__init__.py
+
+# 复制项目根目录的 Python 文件（这些是 py_modules）
+COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py \
+    partner_moderation.py profile_*.py mysql_source_config.py ./
+
+# 安装所有依赖（这一层会被缓存，除非 pyproject.toml 改变）
+# 开发环境：禁用 SSL 验证避免证书问题（生产环境需恢复）
+RUN pip install --no-cache-dir --trusted-host files.pythonhosted.org --trusted-host pypi.org --trusted-host download.pytorch.org torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir --trusted-host files.pythonhosted.org --trusted-host pypi.org --no-build-isolation -e ".[dev,local_oss]" faster-whisper
+
+# ============================================================
+# 第二阶段：Runtime（只包含运行必需的文件）
+# ============================================================
+FROM python:3.11-slim-bookworm AS runtime
+
+WORKDIR /app
+
+# 只安装运行时必需的 apt 包（不含编译工具 gcc、libffi-dev）
+# 注意：pymysql 是纯 Python 实现，不需要 MySQL 客户端库
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# 从 builder 复制已安装的 Python 包（约 200MB，但不需要重新编译）
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+# 从 builder 复制 pip 和 setuptools（editable install 需要这些工具）
+COPY --from=builder /usr/local/bin/pip /usr/local/bin/pip
+COPY --from=builder /usr/local/bin/pip3 /usr/local/bin/pip3
+
+# 复制所有代码文件（经常改变，放在最后）
+COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py \
+    partner_moderation.py profile_*.py mysql_source_config.py ./
 COPY match_domain ./match_domain
 COPY observability ./observability
 COPY async_jobs ./async_jobs
@@ -35,9 +88,7 @@ COPY external-systems ./external-systems
 COPY scripts ./scripts
 COPY config ./config
 
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir --no-build-isolation -e ".[dev,local_oss]" faster-whisper
-
+# 设置环境变量
 ENV PYTHONUNBUFFERED=1
 ENV PARTNER_GATEWAY_DB_POOL_MAX=16
 ENV PARTNER_SEARCH_CACHE_TTL_SECONDS=120

@@ -15,6 +15,7 @@ import { SelectDropdown } from '@/components/her/ui/select-dropdown'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { PageHeader } from '@/components/her/ui/page-header'
 import { SlideInTransition } from '@/components/her/ui/page-transitions'
+import { uploadImage, compressImage } from '@/lib/api/endpoints/media'
 
 interface EditProfilePageProps {
   onBack: () => void
@@ -140,43 +141,6 @@ function normalizeOrientation(value: unknown): string {
   return ''
 }
 
-// Compress image before upload
-async function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width
-          width = maxWidth
-        }
-
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'))
-          return
-        }
-
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
-}
-
 export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProps) {
   const { auth, facts, isLoading, refetch } = useProfilePageData()
 
@@ -255,6 +219,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           authProfile.settlement_city,
         ),
         photos: [
+          ...firstStringArray(facts?.photos),
           ...firstStringArray(rawProfile.photos, authProfile.photos),
           ...firstStringArray(rawProfile.photo_urls, authProfile.photo_urls),
           ...(() => {
@@ -307,15 +272,22 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     try {
       const newPhotos: string[] = []
       for (const file of Array.from(files)) {
-        const compressed = await compressImage(file)
-        newPhotos.push(compressed)
+        // Step 1: 前端压缩（使用API的compressImage函数）
+        const compressedFile = await compressImage(file)
+
+        // Step 2: 上传到MinIO（使用API的uploadImage函数）
+        const result = await uploadImage(compressedFile)
+
+        // Step 3: 保存media_url（而非base64 DataURL）
+        newPhotos.push(result.mediaUrl)
       }
       setProfile(prev => ({
         ...prev,
         photos: [...prev.photos, ...newPhotos].slice(0, 6)
       }))
+      notifySuccess('照片上传成功')
     } catch (error) {
-      notifyError(error, '图片处理失败')
+      notifyError(error, '照片上传失败')
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) {

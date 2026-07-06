@@ -21,7 +21,7 @@ from typing import Any, Protocol
 from match_domain.collected_profile import extract_collected_statements, extract_profile_facts
 from match_domain.collected_metadata import build_collected_items
 from match_domain.persona_loader import load_collected_bundle
-from profile_service import get_profile
+from profile_service import get_profile, list_profile_photos
 
 from .http_helpers import _json_safe, _query_dict
 from .input_validator import validate_int_id, ValidationError
@@ -209,9 +209,27 @@ def rest_profile_me(gateway: CollectedGateway, environ: dict[str, Any]) -> tuple
         )
         if not row:
             return 404, {"error": {"code": "not_found", "message": "profile not found"}}
+
+        # 查询照片数据
+        photos = []
+        try:
+            photos = list_profile_photos(
+                source_dsn=normalized_source,
+                source_table_name=table_name or "profiles",
+                profile_id=int(profile_id),
+                photos_table_name="profile_photos",
+            )
+        except Exception as photo_error:
+            # 照片查询失败不影响主流程，记录日志
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Failed to query photos for profile_id={profile_id}: {photo_error}"
+            )
+
         return 200, {
             "profile_id": int(profile_id),
             "profile_facts": _json_safe(extract_profile_facts(row)),
+            "photos": [photo.get("photo_url") for photo in photos if photo.get("photo_url")],
             "access_method": access_method,  # Include for transparency
         }
     except TimeoutError as e:

@@ -108,6 +108,11 @@ export function buildProfileView(
 
   const user = auth?.user ?? {}
   const rawProfile = facts?.profile_facts ?? {}
+  const profilePhotos = Array.isArray(facts?.photos)
+    ? facts.photos
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+    : []
   const collectedStatements = collected?.collected_statements ?? {}
   const onboardingPreference = auth?.onboarding?.preference ?? {}
   // 提取标签（从 preferred_traits 字段，用户手动编辑）
@@ -135,7 +140,7 @@ export function buildProfileView(
     name: safeString(user.display_name, rawProfile.name, '用户'),
     age: safeNumber(rawProfile.age),
     city: safeString(rawProfile.city, rawProfile.settlement_city, '待完善'),
-    avatar: safeString(user.avatar_url, rawProfile.avatar_url, PLACEHOLDER_AVATAR),
+    avatar: safeString(user.avatar_url, rawProfile.avatar_url, profilePhotos[0], PLACEHOLDER_AVATAR),
     headline: safeString(
       rawProfile.public_notes,
       rawProfile.headline,

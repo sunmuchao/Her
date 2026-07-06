@@ -98,7 +98,7 @@ def handle_profile_jsonrpc(
             **with_visible_subject_user_id(gateway, environ, dict(params)),
         )
     if method == "profile.get_field_verification":
-        submission = gateway._with_chat(get_profile_field_verification_submission, params["submission_id"])
+        submission = gateway._with_verification(get_profile_field_verification_submission, params["submission_id"])
         gateway._assert_actor_can_access_owner(
             environ,
             (submission or {}).get("subject_user_id"),
@@ -113,7 +113,7 @@ def handle_profile_jsonrpc(
             treat_empty_as_missing=False,
         )
         submission_id = payload.pop("submission_id")
-        return gateway._with_chat(resubmit_profile_field_verification, submission_id, **payload)
+        return gateway._with_verification(resubmit_profile_field_verification, submission_id, **payload)
     if method == "profile.dispute_field_verification":
         payload = with_resolved_subject_user_id(
             gateway,
@@ -122,7 +122,7 @@ def handle_profile_jsonrpc(
             treat_empty_as_missing=False,
         )
         submission_id = payload.pop("submission_id")
-        return gateway._with_chat(dispute_profile_field_verification, submission_id, **payload)
+        return gateway._with_verification(dispute_profile_field_verification, submission_id, **payload)
     if method == "profile.review_field_verification":
         payload = dict(params)
         submission_id = payload.pop("submission_id")
@@ -133,28 +133,28 @@ def handle_profile_jsonrpc(
             roles=PROFILE_REVIEW_ROLES,
             message="current actor cannot review profile verifications",
         )
-        return gateway._with_chat(review_profile_field_verification, submission_id, reviewer_id, **payload)
+        return gateway._with_verification(review_profile_field_verification, submission_id, reviewer_id, **payload)
     if method == "profile.expire_due_field_verifications":
         gateway._require_roles(
             environ,
             PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
             message="current actor cannot expire due profile verifications",
         )
-        return gateway._with_chat(expire_due_profile_field_verifications, **params)
+        return gateway._with_verification(expire_due_profile_field_verifications, **params)
     if method == "profile.evaluate_risk_case":
         gateway._require_roles(
             environ,
             PROFILE_REVIEW_ROLES | INTERNAL_WRITE_ROLES,
             message="current actor cannot evaluate profile review cases",
         )
-        return gateway._with_chat(evaluate_profile_consistency, **params)
+        return gateway._with_verification(evaluate_profile_consistency, **params)
     if method == "profile.list_risk_cases":
         return gateway._with_chat(
             list_profile_review_cases,
             **with_visible_subject_user_id(gateway, environ, dict(params)),
         )
     if method == "profile.get_risk_case":
-        risk_case = gateway._with_chat(get_profile_review_case, params["profile_review_case_id"])
+        risk_case = gateway._with_risk(get_profile_review_case, params["profile_review_case_id"])
         gateway._assert_actor_can_access_owner(
             environ,
             (risk_case or {}).get("subject_user_id"),
@@ -167,7 +167,7 @@ def handle_profile_jsonrpc(
             **with_visible_subject_user_id(gateway, environ, dict(params)),
         )
     if method == "profile.get_photo_risk_run":
-        row = gateway._with_chat(get_photo_risk_score_run, int(params["score_run_id"]))
+        row = gateway._with_risk(get_photo_risk_score_run, int(params["score_run_id"]))
         gateway._assert_actor_can_access_owner(
             environ,
             (row or {}).get("subject_user_id"),
@@ -180,7 +180,7 @@ def handle_profile_jsonrpc(
             PROFILE_REVIEW_ROLES,
             message="current actor cannot view the photo risk review queue",
         )
-        return gateway._with_chat(list_photo_risk_review_queue, **params)
+        return gateway._with_risk(list_photo_risk_review_queue, **params)
     if method == "profile.review_risk_case":
         payload = dict(params)
         profile_review_case_id = payload.pop("profile_review_case_id")
@@ -191,7 +191,7 @@ def handle_profile_jsonrpc(
             roles=PROFILE_REVIEW_ROLES,
             message="current actor cannot review profile risk cases",
         )
-        return gateway._with_chat(review_profile_review_case, profile_review_case_id, resolver_id, **payload)
+        return gateway._with_risk(review_profile_review_case, profile_review_case_id, resolver_id, **payload)
     if method == "profile.submit_risk_case_appeal":
         payload = dict(params)
         profile_review_case_id = payload.pop("profile_review_case_id")
@@ -200,14 +200,14 @@ def handle_profile_jsonrpc(
             payload.pop("appellant_id", None),
             field_name="appellant_id",
         )
-        return gateway._with_chat(submit_profile_review_case_appeal, profile_review_case_id, appellant_id, **payload)
+        return gateway._with_risk(submit_profile_review_case_appeal, profile_review_case_id, appellant_id, **payload)
     if method == "profile.list_risk_case_appeals":
         return gateway._with_chat(
             list_profile_review_case_appeals,
             **with_visible_subject_user_id(gateway, environ, dict(params)),
         )
     if method == "profile.get_risk_case_appeal":
-        appeal = gateway._with_chat(get_profile_review_case_appeal, int(params["appeal_id"]))
+        appeal = gateway._with_risk(get_profile_review_case_appeal, int(params["appeal_id"]))
         gateway._assert_actor_can_access_owner(
             environ,
             (appeal or {}).get("subject_user_id"),
@@ -224,5 +224,5 @@ def handle_profile_jsonrpc(
             roles=PROFILE_REVIEW_ROLES,
             message="current actor cannot review profile appeals",
         )
-        return gateway._with_chat(review_profile_review_case_appeal, appeal_id, resolver_id, **payload)
+        return gateway._with_risk(review_profile_review_case_appeal, appeal_id, resolver_id, **payload)
     return JSONRPC_NOT_HANDLED

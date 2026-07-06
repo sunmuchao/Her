@@ -58,6 +58,35 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    develop:
+      watch:
+        - path: ./external-systems
+          target: /app/external-systems
+          action: sync+restart
+          ignore:
+            - "**/__pycache__/**"
+            - "**/*.pyc"
+        - path: ./match_domain
+          target: /app/match_domain
+          action: sync+restart
+        - path: ./profile_service
+          target: /app/profile_service
+          action: sync+restart
+        - path: ./partner_search
+          target: /app/partner_search
+          action: sync+restart
+        - path: ./persona_memory_sync
+          target: /app/persona_memory_sync
+          action: sync+restart
+        - path: ./observability
+          target: /app/observability
+          action: sync+restart
+        - path: ./her_env.py
+          target: /app/her_env.py
+          action: sync+restart
+        - path: ./her_repo_path_bootstrap.py
+          target: /app/her_repo_path_bootstrap.py
+          action: sync+restart
     env_file:
       - .env
     environment:
@@ -68,6 +97,10 @@ services:
       PARTNER_GATEWAY_DB_POOL_MAX: "32"
       HER_E2E_MYSQL_HOST: mysql
       HER_E2E_MYSQL_PORT: "3306"
+      HER_INFRASTRUCTURE_DB: mysql://root@mysql:3306/her_infrastructure
+      HER_AUTH_DB: mysql://root@mysql:3306/her_auth
+      HER_VERIFICATION_DB: mysql://root@mysql:3306/her_verification
+      HER_RISK_DB: mysql://root@mysql:3306/her_risk
       HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
       PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
@@ -109,6 +142,22 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    develop:
+      watch:
+        - path: ./external-systems
+          target: /app/external-systems
+          action: sync+restart
+          ignore:
+            - "**/__pycache__/**"
+        - path: ./match_domain
+          target: /app/match_domain
+          action: sync+restart
+        - path: ./profile_service
+          target: /app/profile_service
+          action: sync+restart
+        - path: ./observability
+          target: /app/observability
+          action: sync+restart
     env_file:
       - .env
     environment:
@@ -118,6 +167,10 @@ services:
       PARTNER_GATEWAY_DB_POOL_MAX: "16"
       HER_E2E_MYSQL_HOST: mysql
       HER_E2E_MYSQL_PORT: "3306"
+      HER_INFRASTRUCTURE_DB: mysql://root@mysql:3306/her_infrastructure
+      HER_AUTH_DB: mysql://root@mysql:3306/her_auth
+      HER_VERIFICATION_DB: mysql://root@mysql:3306/her_verification
+      HER_RISK_DB: mysql://root@mysql:3306/her_risk
       HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
       PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
@@ -159,6 +212,31 @@ services:
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    develop:
+      watch:
+        - path: ./external-systems
+          target: /app/external-systems
+          action: sync+restart
+          ignore:
+            - "**/__pycache__/**"
+        - path: ./match_domain
+          target: /app/match_domain
+          action: sync+restart
+        - path: ./profile_service
+          target: /app/profile_service
+          action: sync+restart
+        - path: ./partner_search
+          target: /app/partner_search
+          action: sync+restart
+        - path: ./persona_memory_sync
+          target: /app/persona_memory_sync
+          action: sync+restart
+        - path: ./observability
+          target: /app/observability
+          action: sync+restart
+        - path: ./her_env.py
+          target: /app/her_env.py
+          action: sync+restart
     env_file:
       - .env
     environment:
@@ -168,6 +246,10 @@ services:
       PARTNER_GATEWAY_DB_POOL_MAX: "16"
       HER_E2E_MYSQL_HOST: mysql
       HER_E2E_MYSQL_PORT: "3306"
+      HER_INFRASTRUCTURE_DB: mysql://root@mysql:3306/her_infrastructure
+      HER_AUTH_DB: mysql://root@mysql:3306/her_auth
+      HER_VERIFICATION_DB: mysql://root@mysql:3306/her_verification
+      HER_RISK_DB: mysql://root@mysql:3306/her_risk
       HER_RELATION_LEDGER_DB: mysql://root@mysql:3306/her_relationship_ledger
       PARTNER_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking

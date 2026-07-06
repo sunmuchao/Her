@@ -70,6 +70,32 @@ from chat_system.storage import (  # type: ignore[import-untyped]
     DEFAULT_CHAT_MYSQL_DSN,
     connect_db as chat_connect_db,
 )
+# Temporary fallback: these systems were created after the image was built
+# TODO: Remove fallback after rebuilding the image
+try:
+    from chat_system.auth_accounts import connect_db as auth_connect_db  # type: ignore[import-untyped]
+    from auth_system.storage import HER_AUTH_DB  # type: ignore[import-untyped]
+except ImportError:
+    # Fallback: create a simple connect_db function for auth
+    def auth_connect_db(dsn: str):
+        import outer_system_mysql_schema as schema
+        config = schema.parse_mysql_dsn(dsn)
+        return schema.mysql_database_connect(config)
+    HER_AUTH_DB = "mysql://root@mysql:3306/her_auth"
+
+try:
+    from verification_system import connect_db as verification_connect_db  # type: ignore[import-untyped]
+    from verification_system.storage import DEFAULT_VERIFICATION_MYSQL_DSN  # type: ignore[import-untyped]
+except ImportError:
+    verification_connect_db = None
+    DEFAULT_VERIFICATION_MYSQL_DSN = "mysql://placeholder:3306/placeholder_db"
+
+try:
+    from risk_system import connect_db as risk_connect_db  # type: ignore[import-untyped]
+    from risk_system.storage import DEFAULT_RISK_MYSQL_DSN  # type: ignore[import-untyped]
+except ImportError:
+    risk_connect_db = None
+    DEFAULT_RISK_MYSQL_DSN = "mysql://placeholder:3306/placeholder_db"
 from discovery_system import create_default_discovery_service  # type: ignore[import-untyped]
 from matchmaking_system import connect_db as matchmaking_connect_db  # type: ignore[import-untyped]
 from matchmaking_system.storage import DEFAULT_MATCHMAKING_MYSQL_DSN  # type: ignore[import-untyped]
@@ -134,6 +160,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         recommendation_dsn: str | None = None,
         matchmaking_dsn: str | None = None,
         chat_dsn: str | None = None,
+        auth_dsn: str | None = None,
+        verification_dsn: str | None = None,
+        risk_dsn: str | None = None,
         relation_ledger_dsn: str | None = None,
         db_pool_max: int | None = None,
     ) -> None:
@@ -144,6 +173,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             "PARTNER_MATCHMAKING_DB", DEFAULT_MATCHMAKING_MYSQL_DSN
         )
         self._chat_dsn = chat_dsn or os.environ.get("PARTNER_CHAT_DB", DEFAULT_CHAT_MYSQL_DSN)
+        self._auth_dsn = auth_dsn or os.environ.get("HER_AUTH_DB", HER_AUTH_DB)
+        self._verification_dsn = verification_dsn or os.environ.get("HER_VERIFICATION_DB", DEFAULT_VERIFICATION_MYSQL_DSN)
+        self._risk_dsn = risk_dsn or os.environ.get("HER_RISK_DB", DEFAULT_RISK_MYSQL_DSN)
         self._relation_ledger_dsn = relation_ledger_dsn or os.environ.get(
             "HER_RELATION_LEDGER_DB", DEFAULT_RELATION_LEDGER_MYSQL_DSN
         )
@@ -151,14 +183,24 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         self._rec_pool: GatewayConnectionPool | None = None
         self._mm_pool: GatewayConnectionPool | None = None
         self._chat_pool: GatewayConnectionPool | None = None
+        self._auth_pool: GatewayConnectionPool | None = None
+        self._verification_pool: GatewayConnectionPool | None = None
+        self._risk_pool: GatewayConnectionPool | None = None
         self._ledger_pool: GatewayConnectionPool | None = None
         if pool_n > 0:
             self._rec_pool = GatewayConnectionPool(self._recommendation_dsn, "recommendation", max_size=pool_n)
             self._mm_pool = GatewayConnectionPool(self._matchmaking_dsn, "matchmaking", max_size=pool_n)
             self._chat_pool = GatewayConnectionPool(self._chat_dsn, "chat", max_size=pool_n)
+            # 创建 auth_pool（移除 connect_db 的导入依赖）
+            self._auth_pool = GatewayConnectionPool(self._auth_dsn, "auth", max_size=pool_n)
+            # Temporary fallback: skip pool creation if system is unavailable
+            if verification_connect_db is not None:
+                self._verification_pool = GatewayConnectionPool(self._verification_dsn, "verification", max_size=pool_n)
+            if risk_connect_db is not None:
+                self._risk_pool = GatewayConnectionPool(self._risk_dsn, "risk", max_size=pool_n)
             self._ledger_pool = GatewayConnectionPool(self._relation_ledger_dsn, "relationship_ledger", max_size=pool_n)
         self._discovery_service: Any = self._UNSET_DISCOVERY
-        self._auth_otp = AuthOtpService(chat_executor=self._with_chat)
+        self._auth_otp = AuthOtpService(auth_executor=self._with_auth)
         self._wechat_login_provider = _build_wechat_login_provider()
         self._one_tap_login_provider = _build_one_tap_login_provider()
         self._identity_resolver = IdentityResolver(session_resolver=self._resolve_auth_session_principal)
@@ -180,12 +222,17 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
     def _with_db(
         self,
         pool: GatewayConnectionPool | None,
-        connect_db: Callable[[str], Any],
+        connect_db: Callable[[str], Any] | None,
         dsn: str,
         fn: Callable[..., Any],
         *args: Any,
         **kwargs: Any,
     ) -> Any:
+        # Temporary fallback for missing systems
+        if connect_db is None:
+            LOGGER.warning(f"connect_db is None for DSN: {dsn}, feature unavailable")
+            raise RuntimeError(f"Database connection unavailable: {dsn}")
+
         # 数据库连接超时保护：最长等待 2 秒（优化用户体验）
         # 认证失败时快速返回401，避免用户长时间等待
         DB_TIMEOUT = 2.0
@@ -242,6 +289,36 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             **kwargs,
         )
 
+    def _with_auth(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return self._with_db(
+            self._auth_pool,
+            auth_connect_db,
+            self._auth_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
+
+    def _with_verification(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return self._with_db(
+            self._verification_pool,
+            verification_connect_db,
+            self._verification_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
+
+    def _with_risk(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        return self._with_db(
+            self._risk_pool,
+            risk_connect_db,
+            self._risk_dsn,
+            fn,
+            *args,
+            **kwargs,
+        )
+
     def _with_proxy_intro(self, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         from match_domain.proxy_intro_storage import use_matchmaking_storage
 
@@ -272,7 +349,9 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
             return None
 
         try:
-            resolved = self._with_chat(get_session_by_access_token, token)
+            # 🔧 FIX: auth_sessions 表在 her_auth 数据库，而不是 her_chat
+            # 从 _with_chat 改为 _with_auth，连接正确的数据库
+            resolved = self._with_auth(get_session_by_access_token, token)
         except Exception:
             return None
         if not resolved:
@@ -284,7 +363,8 @@ class PartnerGateway(AsyncJobGatewayMixin, GatewayAccessMixin):
         if not user_id or not session_id:
             return None
         try:
-            roles = self._with_chat(get_auth_session_roles, user_id)
+            # 🔧 FIX: auth_session_roles 也应该在 auth 数据库
+            roles = self._with_auth(get_auth_session_roles, user_id)
         except Exception:
             roles = ["end_user"]
         return ActorPrincipal(

@@ -1,5 +1,16 @@
 """Shared domain vocabulary for relationship-ledger migration."""
 
+from .face_embedding_extractor import (
+    extract_face_embedding,
+    compute_face_similarity,
+    DEEPFACE_AVAILABLE,
+)
+from .face_similarity_search import (
+    list_profile_face_embeddings,
+    upsert_profile_face_embedding,
+    find_similar_faces,
+)
+
 from .adapters import (
     build_canonical_event,
     canonical_pair_key_for_members,
@@ -328,4 +339,10 @@ __all__ = [
     "extract_collected_statements",
     "extract_profile_facts",
     "filter_explicit_patch",
+    "extract_face_embedding",
+    "compute_face_similarity",
+    "DEEPFACE_AVAILABLE",
+    "list_profile_face_embeddings",
+    "upsert_profile_face_embedding",
+    "find_similar_faces",
 ]

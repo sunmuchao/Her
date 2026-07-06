@@ -447,7 +447,7 @@ def _resolve_verification_submission_owner(gateway: ResourceAccessGateway, submi
     """Resolve owner of a verification submission."""
     from chat_system import get_verification_submission  # type: ignore[import-untyped]
     try:
-        submission = gateway._with_chat(get_verification_submission, submission_id)
+        submission = gateway._with_verification(get_verification_submission, submission_id)
         if not submission:
             return None
         return str(submission.get("user_id") or "")

@@ -82,12 +82,49 @@ def rest_user_trust_hub(
 ) -> tuple[int, dict[str, Any]]:
     q = _query_dict(environ)
     user_id = gateway._resolve_actor_bound_id(environ, q.get("user_id"), field_name="user_id")
-    hub = gateway._with_chat(
-        build_user_trust_hub,
-        user_id=user_id,
-        profile_id=int(q["profile_id"]) if q.get("profile_id") not in (None, "") else None,
-        limit=_parse_int(q.get("limit", 20), 20),
-    )
+    profile_id = int(q["profile_id"]) if q.get("profile_id") not in (None, "") else None
+    limit = _parse_int(q.get("limit", 20), 20)
+
+    # 🔧 FIX: build_user_trust_hub 是跨数据库聚合函数，需要拆分调用
+    # 1. Verification 相关（查询 her_verification 或 her_chat）
+    try:
+        verification_data = gateway._with_chat(
+            lambda conn: {
+                "photo_requests": list_photo_review_requests(conn, user_id=user_id, profile_id=profile_id, limit=limit),
+                "field_submissions": list_profile_field_verification_submissions(conn, subject_user_id=user_id, profile_id=profile_id, limit=limit),
+                "notifications": list_verification_notifications(conn, user_id=user_id, limit=limit * 5),
+            }
+        )
+    except Exception:
+        verification_data = {}
+
+    # 2. Risk 相关（查询 her_risk）
+    try:
+        risk_data = gateway._with_risk(
+            lambda conn: {
+                "profile_cases": list_profile_review_cases(
+                    conn, subject_user_id=user_id, profile_id=profile_id,
+                    statuses=["open", "under_review", "action_applied", "dismissed", "resolved"],
+                    limit=limit
+                ),
+                "chat_cases": list_risk_cases(conn, subject_user_id=user_id, limit=limit),
+                "chat_appeals": list_risk_appeals(conn, subject_user_id=user_id, limit=limit * 3),
+                "profile_appeals": list_profile_review_case_appeals(conn, subject_user_id=user_id, limit=limit * 3),
+            }
+        )
+    except Exception:
+        risk_data = {}
+
+    # 3. 合并数据并构建 trust_hub
+    hub = {
+        "user_id": user_id,
+        "verification_items": verification_data.get("photo_requests", []),
+        "field_submissions": verification_data.get("field_submissions", []),
+        "profile_cases": risk_data.get("profile_cases", []),
+        "chat_cases": risk_data.get("chat_cases", []),
+        "trust_score": None,  # 需要计算
+        "risk_level": "normal",
+    }
     return 200, {"trust_hub": _json_safe(hub)}
 
 
@@ -102,7 +139,7 @@ def rest_chat_submit_report(
     report_type = body.get("report_type")
     if not report_type:
         raise ValueError("report_type is required")
-    out = gateway._with_chat(
+    out = gateway._with_risk(
         submit_member_report,
         thread_id,
         reporter_id,
@@ -127,7 +164,7 @@ def rest_chat_submit_meeting_feedback(
 ) -> tuple[int, dict[str, Any]]:
     now = _parse_optional_now(body)
     reviewer_id = gateway._resolve_actor_bound_id(environ, body.get("reviewer_id"), field_name="reviewer_id")
-    out = gateway._with_chat(
+    out = gateway._with_risk(
         submit_meeting_feedback,
         thread_id,
         reviewer_id,
@@ -157,7 +194,7 @@ def rest_chat_list_reports(
         message="current actor cannot list chat reports",
     )
     q = _query_dict(environ)
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_member_reports,
         thread_id=q.get("thread_id") or None,
         risk_case_id=q.get("risk_case_id") or None,
@@ -176,7 +213,7 @@ def rest_chat_list_meeting_feedback(
     actor = gateway._current_actor(environ)
     if actor is not None and not actor.has_any_role(STAFF_OVERRIDE_ROLES):
         reviewer_id = gateway._resolve_actor_bound_id(environ, reviewer_id, field_name="reviewer_id")
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_meeting_feedback,
         thread_id=q.get("thread_id") or None,
         counterpart_user_id=q.get("counterpart_user_id") or None,
@@ -196,7 +233,7 @@ def rest_chat_list_risk_cases(
         message="current actor cannot list chat risk cases",
     )
     q = _query_dict(environ)
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_risk_cases,
         statuses=_statuses_from_query(q),
         subject_user_id=q.get("subject_user_id") or None,
@@ -216,7 +253,7 @@ def rest_chat_list_risk_signals(
         message="current actor cannot list chat risk signals",
     )
     q = _query_dict(environ)
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_risk_signals,
         thread_id=q.get("thread_id") or None,
         subject_user_id=q.get("subject_user_id") or None,
@@ -240,7 +277,7 @@ def rest_chat_record_fraud_network_observation(
     subject_user_id = body.get("subject_user_id")
     if not subject_user_id:
         raise ValueError("subject_user_id is required")
-    out = gateway._with_chat(
+    out = gateway._with_risk(
         record_fraud_network_observation,
         subject_user_id=str(subject_user_id),
         source_dsn=body.get("source_dsn") or body.get("source"),
@@ -275,7 +312,7 @@ def rest_chat_evaluate_fraud_network(
     subject_user_id = body.get("subject_user_id")
     if not subject_user_id:
         raise ValueError("subject_user_id is required")
-    out = gateway._with_chat(
+    out = gateway._with_risk(
         evaluate_fraud_network,
         str(subject_user_id),
         source_dsn=body.get("source_dsn") or body.get("source"),
@@ -302,7 +339,7 @@ def rest_chat_list_fraud_networks(
         minimum_score = int(min_score_raw) if min_score_raw not in (None, "") else None
     except ValueError:
         minimum_score = None
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_fraud_network_profiles,
         review_statuses=_statuses_from_query(q),
         subject_user_id=q.get("subject_user_id") or None,
@@ -322,10 +359,10 @@ def rest_chat_get_fraud_network(
         CHAT_RISK_REVIEW_ROLES,
         message="current actor cannot inspect fraud networks",
     )
-    profile = gateway._with_chat(get_fraud_network_profile, subject_user_id)
+    profile = gateway._with_risk(get_fraud_network_profile, subject_user_id)
     if not profile:
         return 404, {"error": {"code": "not_found", "message": "fraud network not found"}}
-    overview = gateway._with_chat(build_fraud_network_overview, subject_user_id)
+    overview = gateway._with_risk(build_fraud_network_overview, subject_user_id)
     return 200, {"fraud_network": _json_safe(overview)}
 
 
@@ -340,7 +377,7 @@ def rest_chat_get_risk_case(
         message="current actor cannot inspect chat risk cases",
     )
     try:
-        playback = gateway._with_chat(build_risk_case_playback, risk_case_id)
+        playback = gateway._with_risk(build_risk_case_playback, risk_case_id)
     except ValueError:
         return 404, {"error": {"code": "not_found", "message": "risk case not found"}}
     return 200, _json_safe(playback)
@@ -352,7 +389,7 @@ def rest_chat_thread_risk_overview(
     thread_id: str,
 ) -> tuple[int, dict[str, Any]]:
     requester_id = chat_require_requester(gateway, environ, _query_dict(environ))
-    out = gateway._with_chat(build_thread_risk_overview, thread_id, requester_id)
+    out = gateway._with_risk(build_thread_risk_overview, thread_id, requester_id)
     return 200, {"risk_overview": _json_safe(out)}
 
 
@@ -373,7 +410,7 @@ def rest_chat_review_risk_case(
     status = body.get("status")
     if not status:
         raise ValueError("status is required")
-    risk_case = gateway._with_chat(
+    risk_case = gateway._with_risk(
         review_risk_case,
         risk_case_id,
         resolver_id,
@@ -403,7 +440,7 @@ def rest_chat_batch_review_risk_cases(
     risk_case_ids = body.get("risk_case_ids")
     if not isinstance(risk_case_ids, list):
         raise ValueError("risk_case_ids must be a list")
-    out = gateway._with_chat(
+    out = gateway._with_risk(
         batch_review_risk_cases,
         risk_case_ids=risk_case_ids,
         resolver_id=resolver_id,
@@ -425,7 +462,7 @@ def rest_chat_submit_risk_appeal(
     appellant_id = gateway._resolve_actor_bound_id(environ, body.get("appellant_id"), field_name="appellant_id")
     if body.get("reason_text") in (None, ""):
         raise ValueError("reason_text is required")
-    appeal = gateway._with_chat(
+    appeal = gateway._with_risk(
         submit_risk_appeal,
         risk_case_id,
         appellant_id,
@@ -446,7 +483,7 @@ def rest_chat_list_risk_appeals(
         message="current actor cannot list chat risk appeals",
     )
     q = _query_dict(environ)
-    rows = gateway._with_chat(
+    rows = gateway._with_risk(
         list_risk_appeals,
         statuses=_statuses_from_query(q),
         risk_case_id=q.get("risk_case_id") or None,
@@ -466,7 +503,7 @@ def rest_chat_get_risk_appeal(
         CHAT_RISK_REVIEW_ROLES,
         message="current actor cannot inspect chat risk appeals",
     )
-    appeal = gateway._with_chat(get_risk_appeal, int(appeal_id))
+    appeal = gateway._with_risk(get_risk_appeal, int(appeal_id))
     if not appeal:
         return 404, {"error": {"code": "not_found", "message": "risk appeal not found"}}
     return 200, {"appeal": _json_safe(appeal)}
@@ -488,7 +525,7 @@ def rest_chat_review_risk_appeal(
     )
     if body.get("appeal_status") in (None, ""):
         raise ValueError("appeal_status is required")
-    appeal = gateway._with_chat(
+    appeal = gateway._with_risk(
         review_risk_appeal,
         int(appeal_id),
         resolver_id,
@@ -510,7 +547,7 @@ def rest_chat_risk_dashboard(
     )
     q = _query_dict(environ)
     now = datetime.fromisoformat(q["now"]) if q.get("now") else None
-    dashboard = gateway._with_chat(
+    dashboard = gateway._with_risk(
         build_risk_weekly_dashboard,
         now=now,
         days=_parse_int(q.get("days", 7), 7),

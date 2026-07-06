@@ -199,6 +199,60 @@ def _merge_recommendation_subscription_fields(
         merged["subscription_title"] = subscription.get("title")
     return merged
 
+def compute_exposure_weight(profile: dict[str, Any]) -> float:
+    """
+    计算曝光权重（视频认证用户优先）
+
+    Args:
+        profile: 用户档案信息
+
+    Returns:
+        float: 曝光权重倍数（视频认证用户权重提升2倍）
+    """
+    base_weight = 1.0
+
+    photo_verification_level = str(profile.get("photo_verification_level") or "").strip().lower()
+
+    if photo_verification_level == "live_video_verified":
+        # 活体自拍视频认证用户：曝光权重提升2倍
+        return base_weight * 2.0
+    elif photo_verification_level == "human_verified":
+        # 真人照片认证：曝光权重提升1.5倍
+        return base_weight * 1.5
+    elif photo_verification_level == "offline_verified":
+        # 纱下核验：曝光权重提升2.5倍
+        return base_weight * 2.5
+    else:
+        # 普通上传照片：正常权重
+        return base_weight
+
+
+def apply_exposure_weight_to_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    为候选人应用曝光权重（视频认证用户优先）
+
+    Args:
+        candidates: 原始候选人列表
+
+    Returns:
+        list: 调整score后的候选人列表
+    """
+    for candidate in candidates:
+        exposure_weight = compute_exposure_weight(candidate)
+        if exposure_weight > 1.0:
+            # 调整score（视频认证用户score更高）
+            original_score = int(candidate.get("score") or 0)
+            adjusted_score = int(original_score * exposure_weight)
+            candidate["score"] = adjusted_score
+            candidate["exposure_weight"] = exposure_weight
+            candidate["original_score"] = original_score
+
+    # 按调整后的score重新排序
+    candidates.sort(key=lambda x: int(x.get("score") or 0), reverse=True)
+
+    return candidates
+
+
 def list_recommendations_for_subscription(
     conn,
     subscription_id: str,
@@ -653,6 +707,15 @@ def upsert_recommendation(
     candidate_id = result.get("id")
     if candidate_id is None:
         raise ValueError("Structured search results must contain a candidate id for Phase 3 history tracking.")
+
+    # 新增：应用曝光权重（视频认证用户优先）
+    exposure_weight = compute_exposure_weight(result)
+    if exposure_weight > 1.0:
+        original_score = int(result.get("score") or 0)
+        adjusted_score = int(original_score * exposure_weight)
+        result["score"] = adjusted_score
+        result["exposure_weight"] = exposure_weight
+        result["original_score"] = original_score
 
     existing = get_recommendation(conn, subscription["subscription_id"], int(candidate_id))
     final_review = review_candidate_for_proactive_delivery(
