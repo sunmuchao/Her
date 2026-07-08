@@ -4,6 +4,8 @@ import { getProfileId } from '@/lib/auth/session'
 export type ProfileFactsResponse = {
   profile_id: number
   profile_facts: Record<string, unknown>
+  photos?: string[]  // 后端返回的照片 URL 列表
+  access_method?: string  // 后端返回的访问方式
 }
 
 export type CollectedStatementsResponse = {
@@ -97,10 +99,18 @@ export function mapCollectedToPreferenceGrid(statements: Record<string, unknown>
 export async function fetchProfileFacts(): Promise<ProfileFactsResponse> {
   // /v1/profile/me 只返回当前用户的资料，不接受 profile_id 参数
   // 这是安全设计：防止 IDOR 攻击（通过修改参数偷看别人资料）
-  return gatewayJson<ProfileFactsResponse>(
+  const response = await gatewayJson<ProfileFactsResponse>(
     '/v1/profile/me',
     { includeAuth: true },
   )
+  console.log('[fetchProfileFacts] 后端返回数据:', {
+    profile_id: response.profile_id,
+    has_photos: 'photos' in response,
+    photos: response.photos,
+    photos_length: response.photos?.length,
+    profile_facts_keys: Object.keys(response.profile_facts || {}),
+  })
+  return response
 }
 
 export async function fetchCollectedStatements(profileId?: number): Promise<CollectedStatementsResponse> {
@@ -122,4 +132,51 @@ export function formatExplainSourceMap(sourceMap: Record<string, string>): strin
           : source
     return `${label}（来源：${sourceLabel}）`
   })
+}
+
+/**
+ * 更新用户照片（包含人脸比对检查）
+ *
+ * SECURITY: 只能更新当前用户的照片（auth_session绑定）
+ *
+ * Flow:
+ * 1. User uploads new photos
+ * 2. System checks if user has verified_face_anchor (from live video verification)
+ * 3. If anchor exists, check face similarity: new photo face vs video face
+ * 4. If similarity >= threshold (0.363), save photos
+ * 5. If verification_status was "rejected", auto-approve verification
+ */
+export async function updateProfilePhotosWithFaceCheck(params: {
+  photos: string[]
+  verification_status?: string
+}): Promise<{
+  success: boolean
+  error?: string
+  similarity_score: number
+  verification_auto_approved: boolean
+  message: string
+  photos_count?: number
+}> {
+  const response = await gatewayJson<{
+    success: boolean
+    error?: string
+    similarity_score: number
+    verification_auto_approved: boolean
+    message: string
+    photos_count?: number
+  }>(
+    '/v1/profile/photos/update-with-face-check',
+    {
+      includeAuth: true,
+      method: 'POST',
+      body: JSON.stringify(params),
+    },
+  )
+  console.log('[updateProfilePhotosWithFaceCheck] 后端返回数据:', {
+    success: response.success,
+    similarity_score: response.similarity_score,
+    verification_auto_approved: response.verification_auto_approved,
+    message: response.message,
+  })
+  return response
 }

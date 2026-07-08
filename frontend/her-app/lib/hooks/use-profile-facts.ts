@@ -6,7 +6,7 @@ import { queryKeys } from '@/lib/query-keys'
 
 export type ProfileFactsData = {
   profile_facts?: Record<string, unknown>
-  photos?: string[]
+  photos?: string[]  // 后端返回的照片 URL 列表
 }
 
 export function useProfileFacts() {

@@ -39,6 +39,7 @@ local_oss = [
   "opencv-python-headless>=4.8.0",
   "numpy>=1.26.0",
   "torch>=2.1.0",
+  "pymilvus>=2.3.0",  # Milvus向量数据库客户端（用于照片外貌描述向量入库）
 ]
 
 [project.scripts]

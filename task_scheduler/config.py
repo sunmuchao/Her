@@ -24,6 +24,7 @@ class SchedulerSettings:
     recommendation_db: str | None
     matchmaking_db: str | None
     chat_db: str | None
+    photo_analysis_db: str | None
     recommendation_async_job_sec: int
     recommendation_outbox_sec: int
     recommendation_refresh_subscriptions_sec: int
@@ -39,16 +40,19 @@ class SchedulerSettings:
     chat_async_job_sec: int
     chat_maintenance_sec: int
     chat_outbox_sec: int
+    photo_analysis_interval_sec: int
 
     @classmethod
     def from_environ(cls) -> SchedulerSettings:
         rec_db = _sched_db("HER_SCHED_RECOMMENDATION_DB", "PARTNER_RECOMMENDATION_DB")
         mm_db = _sched_db("HER_SCHED_MATCHMAKING_DB", "PARTNER_MATCHMAKING_DB")
         chat_db = _sched_db("HER_SCHED_CHAT_DB", "PARTNER_CHAT_DB")
+        photo_db = _sched_db("HER_SCHED_PHOTO_ANALYSIS_DB", "PERSONA_MEMORY_MYSQL_SOURCE")
         return cls(
             recommendation_db=rec_db,
             matchmaking_db=mm_db,
             chat_db=chat_db,
+            photo_analysis_db=photo_db,
             recommendation_async_job_sec=_env_int("HER_SCHED_RECOMMENDATION_ASYNC_JOB_SEC", 10),
             recommendation_outbox_sec=_env_int("HER_SCHED_RECOMMENDATION_OUTBOX_SEC", 30),
             recommendation_refresh_subscriptions_sec=_env_int("HER_SCHED_REFRESH_SUBSCRIPTIONS_SEC", 300),
@@ -64,4 +68,5 @@ class SchedulerSettings:
             chat_async_job_sec=_env_int("HER_SCHED_CHAT_ASYNC_JOB_SEC", 10),
             chat_maintenance_sec=_env_int("HER_SCHED_CHAT_MAINTENANCE_SEC", 120),
             chat_outbox_sec=_env_int("HER_SCHED_CHAT_OUTBOX_SEC", 15),
+            photo_analysis_interval_sec=_env_int("HER_SCHED_PHOTO_ANALYSIS_INTERVAL_SEC", 10),
         )

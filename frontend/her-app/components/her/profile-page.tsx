@@ -20,6 +20,7 @@ import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { buildProfileView, calculateVerificationProgress } from '@/lib/mappers/profile-view'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { patchPersonaTags } from '@/lib/api/endpoints/persona'
+import { convertMinioUrl } from '@/lib/api/endpoints/media'
 import { cn } from '@/lib/utils'
 import { ProgressRing } from './ui/progress-ring'
 import { FadeIn, PageTransition } from './ui/animations'
@@ -389,12 +390,11 @@ export default function ProfilePage({
             <div className="flex items-center gap-3 mb-3">
               <div className="relative">
                 <div className="w-16 h-16 rounded-full overflow-hidden">
-                  <Image
-                    src={profile.avatar}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={convertMinioUrl(profile.avatar)}
                     alt={profile.name}
-                    width={64}
-                    height={64}
-                    className="object-cover"
+                    className="w-full h-full object-cover"
                   />
                 </div>
                 {profile.verified && (

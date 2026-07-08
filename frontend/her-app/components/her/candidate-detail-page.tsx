@@ -162,6 +162,9 @@ export default function CandidateDetailPage({
     return sections
   }
 
+  // Declare resolvedCandidateId before using it in useEffect
+  const resolvedCandidateId = candidate?.id || candidateId
+
   useEffect(() => {
     detailOpenedAtRef.current = Date.now()
     photoSwipeCountRef.current = 0
@@ -394,7 +397,7 @@ export default function CandidateDetailPage({
     ? (DEMO_CANDIDATES_DATABASE[candidateId] || DEFAULT_DEMO_CANDIDATE)
     : null
   const subscriptionId = candidate?.subscriptionId
-  const resolvedCandidateId = candidate?.id || candidateId
+  // resolvedCandidateId is declared above (before useEffect)
   // 主动发起场景：需要有 candidateId 和 subscriptionId/sessionId
   // 被动推荐场景：只需要有 caseId
   const canExpressInterest = viewType === 'interest' && caseId

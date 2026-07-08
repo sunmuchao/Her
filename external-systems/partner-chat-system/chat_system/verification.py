@@ -210,6 +210,100 @@ def _live_video_local_module():
     return module
 
 
+def _get_video_asset_path(conn, submission_id: str) -> str | None:
+    """
+    获取视频资产的存储路径
+
+    Args:
+        conn: 数据库连接
+        submission_id: 提交ID
+
+    Returns:
+        str: 视频文件路径
+        None: 如果不存在
+    """
+    try:
+        row = conn.execute(
+            """
+            SELECT asset_path
+            FROM verification_assets
+            WHERE submission_id = ?
+              AND asset_type = 'video'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (submission_id,),
+        ).fetchone()
+
+        return str(row.get("asset_path") or "") if row else None
+
+    except Exception:
+        return None
+
+
+def _extract_best_face_frame(video_path: str, machine_review_result: dict[str, Any]) -> dict[str, Any] | None:
+    """
+    从视频中提取最佳人脸帧
+
+    Args:
+        video_path: 视频文件路径
+        machine_review_result: 机器审核结果（包含人脸检测信息）
+
+    Returns:
+        dict: 包含frame_path、frame_index、confidence_score等信息
+        None: 如果无法提取
+    """
+    import cv2
+    import tempfile
+    from pathlib import Path
+
+    try:
+        resolved_path = Path(video_path).expanduser().resolve()
+        if not resolved_path.exists():
+            return None
+
+        capture = cv2.VideoCapture(str(resolved_path))
+        if not capture.isOpened():
+            return None
+
+        # 从机器审核结果中获取最佳帧信息
+        same_person_result = machine_review_result.get("same_person_result") or {}
+        analyzed_frames = same_person_result.get("analyzed_frames") or []
+
+        if not analyzed_frames:
+            # 如果机器审核没有记录帧信息，选择中间帧（默认策略）
+            frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            best_frame_index = int(frame_count * 0.5) if frame_count > 0 else 0
+            best_confidence_score = 0.0
+        else:
+            # 从机器审核结果中选择最佳帧（人脸检测置信度最高的帧）
+            best_frame = max(analyzed_frames, key=lambda f: f.get("confidence_score") or 0)
+            best_frame_index = best_frame.get("frame_index") or 0
+            best_confidence_score = best_frame.get("confidence_score") or 0.0
+
+        capture.set(cv2.CAP_PROP_POS_FRAMES, best_frame_index)
+        ok, frame = capture.read()
+
+        if not ok or frame is None:
+            capture.release()
+            return None
+
+        capture.release()
+
+        # 临时保存帧到文件（用于提取人脸向量）
+        temp_frame_path = tempfile.mktemp(suffix=".jpg")
+        cv2.imwrite(temp_frame_path, frame)
+
+        return {
+            "frame_path": temp_frame_path,
+            "frame_index": best_frame_index,
+            "confidence_score": best_confidence_score,
+        }
+
+    except Exception as exc:  # noqa: BLE001
+        return None
+
+
 def _evaluate_speech_challenge(metadata: dict[str, Any]) -> dict[str, Any]:
     action_result = _normalize_action_result(metadata)
     action_challenge = _normalize_metadata(metadata.get("action_challenge"))
@@ -1186,9 +1280,9 @@ def _resolve_verification_thresholds() -> dict[str, Any]:
         "liveness_score_min": 85,
         "liveness_score_fail": 60,
 
-        # 人脸匹配阈值
+        # 人脸匹配阈值（硬性要求：必须>=70才能通过认证）
         "face_match_score_min": 85,
-        "face_match_score_fail": 40,
+        "face_match_score_fail": 70,  # 提高阈值（从40提高到70）
 
         # 动作挑战阈值
         "challenge_score_min": 80,
@@ -1256,10 +1350,16 @@ def _resolve_machine_review_outcome(
     speech_result = _as_text(speech_review.get("speech_result"))
 
     # 使用动态阈值判断
-    if severe_flags or face_match_score < thresholds["face_match_score_fail"]:
+    if severe_flags or face_match_score < thresholds["face_match_score_fail"]:  # 70
+        recommended_decision = REVIEW_DECISION_REJECT
         recommended_next_step = MACHINE_NEXT_STEP_STRONG_IDENTITY
         confidence_band = "high"
-        summary = "同人比对过低或命中高风险标记，先转人工复核，并建议升级强实名"
+
+        # 如果是人脸不匹配导致的拒绝，明确告知用户
+        if face_match_score < 70 and not severe_flags:
+            summary = f"人脸匹配分数过低（{face_match_score}分，需要>=70分），照片与真人视频不匹配，拒绝通过认证"
+        else:
+            summary = "同人比对过低或命中高风险标记，先转人工复核，并建议升级强实名"
     elif (
         speech_result == "fail"
         or liveness_score < thresholds["liveness_score_fail"]
@@ -2466,6 +2566,58 @@ def review_live_video_verification(
         sync_result = _sync_live_video_status_to_profile(current, reviewed_at=ts)
         next_status = SUBMISSION_STATUS_APPROVED
         approved_at = ts
+
+        # 新增：保存视频人脸向量到verified_face_anchors表
+        try:
+            from match_domain.face_embedding_extractor import extract_face_embedding
+            from profile_service import upsert_verified_face_anchor
+
+            profile_id = current.get("profile_id")
+            source_dsn = current.get("source_dsn")
+
+            # 获取视频资产路径
+            video_asset_path = _get_video_asset_path(conn, submission_id)
+
+            if video_asset_path and profile_id and source_dsn:
+                # 从机器审核结果中获取最佳人脸帧信息
+                machine_review_result = json_loads(current.get("machine_review_outcome_json") or {})
+                best_frame_info = _extract_best_face_frame(video_asset_path, machine_review_result)
+
+                if best_frame_info and best_frame_info.get("frame_path"):
+                    # 提取人脸向量
+                    face_embedding_result = extract_face_embedding(best_frame_info["frame_path"])
+
+                    if face_embedding_result and face_embedding_result.get("success"):
+                        # 保存到verified_face_anchors表
+                        upsert_verified_face_anchor(
+                            source_dsn=source_dsn,
+                            profile_id=int(profile_id),
+                            anchor_version=f"live-video-{submission_id}",
+                            patch={
+                                "verification_asset_type": "live_video",
+                                "anchor_source": submission_id,
+                                "quality_score": face_embedding_result.get("face_detection_confidence"),
+                                "confidence_score": best_frame_info.get("confidence_score"),
+                                "embedding_json": face_embedding_result["face_embedding"],
+                                "is_active": 1,
+                                "metadata_json": {
+                                    "submission_id": submission_id,
+                                    "reviewer_id": reviewer_id,
+                                    "frame_index": best_frame_info.get("frame_index"),
+                                },
+                            },
+                        )
+
+                    # 清理临时文件
+                    try:
+                        import os as _os
+                        _os.unlink(best_frame_info["frame_path"])
+                    except Exception:  # noqa: BLE001
+                        pass
+
+        except Exception as anchor_error:  # noqa: BLE001
+            # 保存视频人脸向量失败不影响审核流程，记录日志
+            pass
 
         # 新增：触发照片分析事件
         try:

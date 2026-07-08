@@ -30,6 +30,7 @@ JOB_MM_ASYNC_WORKER = "matchmaking.async_job_worker"
 JOB_CHAT_MAINTENANCE = "chat.maintenance"
 JOB_CHAT_OUTBOX = "chat.outbox_worker"
 JOB_CHAT_ASYNC_WORKER = "chat.async_job_worker"
+JOB_PHOTO_ANALYSIS = "photo_feature_refresh"
 
 
 @dataclass(frozen=True)
@@ -200,3 +201,26 @@ def make_chat_job(job_id: str, fn: Callable[..., Any], **kwargs: Any) -> Callabl
         ensure_on_path=ensure_chat_system_on_path,
         load_runtime=_load_chat_runtime,
     )
+
+
+def make_photo_analysis_job(job_id: str, fn: Callable[..., Any], **kwargs: Any) -> Callable[[], None]:
+    """照片分析任务构建器 - 特殊处理，不需要initialize_database"""
+    # 照片分析worker自己处理数据库连接，所以直接包装函数
+    # 将source_dsn映射到db参数（如果存在）
+    if "source_dsn" in kwargs and "db" not in kwargs:
+        kwargs["db"] = kwargs["source_dsn"]
+
+    def run() -> None:
+        try:
+            # photo_analysis job需要source_dsn参数，而不是db
+            # 所以我们需要从kwargs中提取正确的参数
+            fn_kwargs = {k: v for k, v in kwargs.items() if k != "db"}
+            result = fn(**fn_kwargs)
+            _log_summary(job_id, result)
+        except Exception as exc:
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.error("%s failed: %s", job_id, str(exc)[:200])
+            raise
+
+    return run

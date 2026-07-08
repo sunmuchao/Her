@@ -416,13 +416,13 @@ export default function OpsWorkbenchPage({ onBack }: OpsWorkbenchPageProps) {
                                 )}
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="font-medium">{job.task_id || `task_${idx}`}</span>
+                                  <span className="font-medium">{String(job.task_id || `task_${idx}`)}</span>
                                   <span className={cn(
                                     'ml-2',
                                     job.status === 'failed' ? 'text-red-700' : 'text-muted-foreground'
                                   )}>
                                     {job.status === 'failed' && '⚠️ '}
-                                    {job.status || 'unknown'}
+                                    {String(job.status || 'unknown')}
                                   </span>
                                 </div>
                                 {job.status === 'failed' && (

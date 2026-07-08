@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import math
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
+
+_logger = logging.getLogger(__name__)
 
 from profile_service import (
     get_face_consistency_score,
@@ -731,6 +734,138 @@ def _time_decay_multiplier(
     return max(0.15, 0.5 ** (age_seconds / half_life_seconds))
 
 
+def compute_style_preference_bonus(
+    candidate_photo_features: dict[str, Any] | None,
+    user_appearance_preference: dict[str, Any] | None,
+) -> float:
+    """
+    计算风格偏好加分（正确的逻辑）
+
+    【核心改进】
+    1. 只看风格标签是否匹配（不看颜值评分）
+    2. 颜值评分已经在候选人基础分里了，不应重复加分
+    3. 风格匹配才是真正的个性化偏好
+
+    【逻辑】
+    1. 提取候选人的风格标签
+    2. 提取用户的偏好风格标签和权重
+    3. 计算风格匹配得分
+
+    Args:
+        candidate_photo_features: 候选人外貌特征
+        user_appearance_preference: 用户外貌偏好
+
+    Returns:
+        float: 风格偏好加分（正数=匹配，负数=不匹配）
+    """
+    feature_row = dict(candidate_photo_features or {})
+    preference_row = dict(user_appearance_preference or {})
+
+    # 1. 提取候选人的风格标签
+    candidate_keywords = list(feature_row.get("appearance_keywords_json") or [])
+    if not candidate_keywords:
+        tags_json = list(feature_row.get("appearance_tags_json") or [])
+        candidate_keywords = [
+            str(t.get("label") or t.get("keyword") or "").strip()
+            for t in tags_json
+            if t
+        ]
+
+    if not candidate_keywords:
+        return 0.0  # 候选人没有风格标签，不加分也不减分
+
+    # 2. 提取用户的偏好风格标签和权重
+    preferred_tags = list(preference_row.get("preferred_style_tags") or [])
+    preferred_weights = dict(preference_row.get("preferred_style_weights") or {})
+    disliked_tags = list(preference_row.get("disliked_style_tags") or [])
+
+    if not preferred_tags and not disliked_tags:
+        return 0.0  # 用户没有偏好数据，不加分也不减分
+
+    # 3. 计算风格匹配得分
+    bonus = 0.0
+
+    # 正向匹配：候选人风格符合用户偏好
+    for keyword in candidate_keywords:
+        if keyword in preferred_weights:
+            weight = preferred_weights[keyword]
+            bonus += weight * 5.0  # 每个匹配标签加分（权重×5）
+
+    # 负向匹配：候选人风格不符合用户偏好
+    for keyword in candidate_keywords:
+        if keyword in disliked_tags:
+            bonus -= 5.0  # 每个不匹配标签减分
+
+    # 限制加分范围（-20到+30）
+    bonus = max(-20.0, min(30.0, bonus))
+
+    return round(bonus, 2)
+
+
+def compute_photo_bonus_breakdown_v2(
+    candidate_photo_features: dict[str, Any] | None,
+    user_appearance_preference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    计算照片加分（新版本，正确的逻辑）
+
+    【核心改进】
+    分离"质量加分"和"风格偏好加分"：
+    - quality_bonus：照片质量和真实性加分（全局，所有人都喜欢）
+    - style_preference_bonus：风格偏好加分（个性化，每个人不同）
+
+    【重要】
+    不再使用颜值评分作为偏好维度：
+    - 颜值评分已经在候选人基础分里了
+    - 颜值评分不应在偏好匹配时再加分（重复加分）
+
+    Args:
+        candidate_photo_features: 候选人外貌特征
+        user_appearance_preference: 用户外貌偏好
+
+    Returns:
+        dict: 包含质量加分、风格偏好加分、总加分
+    """
+    feature_row = dict(candidate_photo_features or {})
+    preference_row = dict(user_appearance_preference or {})
+
+    # 1. 质量加分（全局，所有人都喜欢）
+    quality_bonus = 0.0
+
+    # 照片质量加分（最高3分）
+    photo_quality = _clamp_score(feature_row.get("photo_quality_score"), default=50.0)
+    if photo_quality >= 80:
+        quality_bonus += 3.0
+    elif photo_quality >= 70:
+        quality_bonus += 2.0
+
+    # 照片真实性加分（最高3分）
+    authenticity = _clamp_score(
+        feature_row.get("photo_authenticity_score"), default=50.0
+    )
+    if authenticity >= 80:
+        quality_bonus += 3.0
+    elif authenticity >= 70:
+        quality_bonus += 2.0
+
+    # 2. 风格偏好加分（个性化，每个人不同）
+    style_bonus = compute_style_preference_bonus(feature_row, preference_row)
+
+    # 3. 总加分
+    total_bonus = quality_bonus + style_bonus
+
+    return {
+        "quality_bonus": round(quality_bonus, 2),
+        "style_preference_bonus": round(style_bonus, 2),
+        "total_bonus": round(total_bonus, 2),
+        "breakdown": {
+            "photo_quality_bonus": round(3.0 if photo_quality >= 80 else 2.0 if photo_quality >= 70 else 0.0, 2),
+            "authenticity_bonus": round(3.0 if authenticity >= 80 else 2.0 if authenticity >= 70 else 0.0, 2),
+            "style_match_bonus": round(style_bonus, 2),
+        },
+    }
+
+
 def compute_photo_bonus_breakdown(
     candidate_photo_features: dict[str, Any] | None,
     user_appearance_preference: dict[str, Any] | None = None,
@@ -1145,6 +1280,11 @@ def build_photo_feature_patch(
     photo_entries: list[dict[str, Any]],
     existing_feature_row: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """
+    构建照片特征更新数据
+
+    【重构】强制使用AI真实分析，删除硬编码公式
+    """
     normalized_profile = dict(profile_row or {})
     normalized_entries = [dict(item) for item in photo_entries or [] if isinstance(item, dict)]
     photo_sources = [str(item.get("photo_source") or "").strip() for item in normalized_entries if str(item.get("photo_source") or "").strip()]
@@ -1161,110 +1301,132 @@ def build_photo_feature_patch(
     primary_entry = PrimaryPhotoSelector.select(normalized_entries, detections) or normalized_entries[0]
     primary_source = str(primary_entry.get("photo_source") or photo_sources[0]).strip()
     photo_count = len(photo_sources)
-    verified_level = str(
-        normalized_profile.get("photo_verification_level")
-        or normalized_profile.get("verified_level")
-        or ""
-    ).strip().lower()
-    age_value = normalized_profile.get("age")
-    try:
-        age_bias = max(-8.0, min(8.0, (float(age_value) - 28.0) * 0.7))
-    except (TypeError, ValueError):
-        age_bias = 0.0
+    profile_id = int(normalized_profile.get("id") or 0)
 
-    verification_bonus = {
-        "offline": 16.0,
-        "id": 14.0,
-        "photo": 10.0,
-        "uploaded": 7.0,
-        "basic": 4.0,
-    }.get(verified_level, 0.0)
-    source_seed = f"{normalized_profile.get('id') or ''}|{primary_source}|{signature}"
-    clean_score = min(100.0, 45.0 + verification_bonus + photo_count * 5.0 + _stable_bucket(source_seed, salt="clean", lower=0, upper=20))
-    cover_authenticity_score = compute_cover_authenticity_score(
-        profile_row=normalized_profile,
-        photo_entries=normalized_entries,
-    )
-    cover_detail_consistency_score = compute_cover_detail_consistency_score(normalized_entries)
-    authenticity_score = min(
-        100.0,
-        (
-            (42.0 + verification_bonus * 1.4 + photo_count * 4.0 + _stable_bucket(source_seed, salt="auth", lower=0, upper=18)) * 0.45
-            + cover_authenticity_score * 0.30
-            + cover_detail_consistency_score * 0.25
-        ),
-    )
-    quality_score = PhotoQualityScorer.score(
-        profile_row=normalized_profile,
-        photo_entries=normalized_entries,
-        detections=detections,
-    )
-    mature_score = min(100.0, max(0.0, 38.0 + age_bias + _stable_bucket(source_seed, salt="mature", lower=0, upper=40)))
-    gentle_score = min(100.0, 32.0 + _stable_bucket(source_seed, salt="gentle", lower=0, upper=45))
-    sunny_score = min(100.0, 30.0 + _stable_bucket(source_seed, salt="sunny", lower=0, upper=50))
-    stylish_score = min(100.0, 28.0 + photo_count * 3.0 + _stable_bucket(source_seed, salt="stylish", lower=0, upper=42))
-    face_score = round((clean_score + mature_score + gentle_score + sunny_score + stylish_score) / 5.0, 2)
-    appearance_score = round((quality_score * 0.22) + (authenticity_score * 0.18) + (face_score * 0.60), 2)
-    top_labels = _top_dimension_labels(
-        {
-            "mature_score": mature_score,
-            "clean_score": clean_score,
-            "gentle_score": gentle_score,
-            "sunny_score": sunny_score,
-            "stylish_score": stylish_score,
+    # 如果profile_id无效，返回失败状态
+    if profile_id <= 0:
+        return {
+            "analysis_status": "failed",
+            "embedding_status": "pending",
+            "last_error": "invalid_profile_id",
+            "photo_set_version": photo_set_version,
+            "primary_photo_id": None,
         }
-    )
-    appearance_summary = AppearanceSummaryGenerator.generate(
-        style_scores={
-            "mature_score": mature_score,
-            "clean_score": clean_score,
-            "gentle_score": gentle_score,
-            "sunny_score": sunny_score,
-            "stylish_score": stylish_score,
-        },
-        attribute_scores={
-            "eye_size_score": 36.0 + gentle_score * 0.24,
-            "face_roundness_score": 30.0 + sunny_score * 0.18,
-            "skin_clarity_score": 30.0 + clean_score * 0.46,
-            "smile_intensity_score": 24.0 + sunny_score * 0.42,
-        },
-    )
-    appearance_tags_json = [{"label": label} for label in top_labels]
-    existing_version = int(existing_feature_row.get("photo_set_version") or 0) if isinstance(existing_feature_row, dict) else 0
-    embedding_status = "pending"
-    if existing_version == photo_set_version and existing_feature_row:
-        current_summary = str(existing_feature_row.get("appearance_summary") or "").strip()
-        current_status = str(existing_feature_row.get("embedding_status") or "").strip()
-        if current_summary == appearance_summary and current_status:
-            embedding_status = current_status
-    return {
-        "primary_photo_id": None,
-        "photo_set_version": photo_set_version,
-        "analysis_status": "done",
-        "embedding_status": embedding_status,
-        "face_score_global": round(face_score, 2),
-        "appearance_score_global": appearance_score,
-        "photo_quality_score": round(quality_score, 2),
-        "photo_authenticity_score": round(authenticity_score, 2),
-        "mature_score": round(mature_score, 2),
-        "clean_score": round(clean_score, 2),
-        "gentle_score": round(gentle_score, 2),
-        "sunny_score": round(sunny_score, 2),
-        "stylish_score": round(stylish_score, 2),
-        "appearance_summary": appearance_summary,
-        "appearance_tags_json": appearance_tags_json,
 
-        # 新增：AI颜值评分和AI口语化描述
-        "beauty_score": None,  # 将在refresh_profile_photo_features中填充
-        "beauty_score_model": None,
-        "beauty_score_reasoning": None,
-        "appearance_keywords_json": None,
-        "appearance_style_type": None,
-        "dominant_features_json": None,
+    # 【强制AI分析】调用AI真实分析
+    try:
+        from .beauty_score_analyzer import analyze_beauty_score
+        from .appearance_description_generator import generate_appearance_description
 
-        "analysis_model": "deterministic-photo-feature-v1",
-        "last_error": None,
-    }
+        _logger.info(f"[build_photo_feature_patch] 开始AI分析: profile_id={profile_id}, photo_url={primary_source}")
+
+        # 1. AI颜值评分
+        beauty_result = analyze_beauty_score(primary_source)
+        if not beauty_result.get("success"):
+            return {
+                "analysis_status": "failed",
+                "embedding_status": "pending",
+                "last_error": f"AI颜值评分失败: {beauty_result.get('error', 'unknown')[:180]}",
+                "photo_set_version": photo_set_version,
+                "primary_photo_id": None,
+            }
+
+        beauty_score = float(beauty_result.get("beauty_score", 0))
+        beauty_score_reasoning = str(beauty_result.get("reasoning", "")).strip()
+
+        # 2. AI外貌描述（同时写入向量库）
+        appearance_result = generate_appearance_description(primary_source, profile_id=profile_id)
+        if not appearance_result.get("success"):
+            return {
+                "analysis_status": "failed",
+                "embedding_status": "pending",
+                "last_error": f"AI外貌描述失败: {appearance_result.get('error', 'unknown')[:180]}",
+                "photo_set_version": photo_set_version,
+                "primary_photo_id": None,
+            }
+
+        appearance_summary = str(appearance_result.get("appearance_summary", "")).strip()
+        appearance_keywords = list(appearance_result.get("appearance_keywords", []))
+
+        # 3. 计算照片质量评分（保留技术指标）
+        quality_score = PhotoQualityScorer.score(
+            profile_row=normalized_profile,
+            photo_entries=normalized_entries,
+            detections=detections,
+        )
+
+        # 4. 计算真实性评分（保留技术指标）
+        cover_authenticity_score = compute_cover_authenticity_score(
+            profile_row=normalized_profile,
+            photo_entries=normalized_entries,
+        )
+        cover_detail_consistency_score = compute_cover_detail_consistency_score(normalized_entries)
+        authenticity_score = min(
+            100.0,
+            cover_authenticity_score * 0.50 + cover_detail_consistency_score * 0.50,
+        )
+
+        # 5. 计算汇总评分（基于AI真实评分）
+        face_score_global = beauty_score
+        appearance_score_global = round(
+            (beauty_score * 0.50 + quality_score * 0.30 + authenticity_score * 0.20),
+            2
+        )
+
+        _logger.info(
+            f"[build_photo_feature_patch] ✅ AI分析完成: "
+            f"beauty_score={beauty_score}, "
+            f"appearance_summary={appearance_summary[:50]}"
+        )
+
+        # 6. 构建返回数据
+        return {
+            "primary_photo_id": None,
+            "photo_set_version": photo_set_version,
+            "analysis_status": "done",
+            "embedding_status": "pending",
+            "analysis_model": "ai-analysis-v1",
+
+            # 【AI真实评分】
+            "beauty_score": round(beauty_score, 2),
+            "beauty_score_model": beauty_result.get("model"),
+            "beauty_score_reasoning": beauty_score_reasoning,
+
+            "face_score_global": round(face_score_global, 2),
+            "appearance_score_global": appearance_score_global,
+
+            # 【AI真实描述】
+            "appearance_summary": appearance_summary,
+            "appearance_tags_json": [{"label": tag} for tag in appearance_keywords[:5]],
+            "appearance_keywords_json": appearance_keywords,
+            "appearance_style_type": appearance_result.get("appearance_style_type"),
+            "dominant_features_json": appearance_result.get("dominant_features"),
+
+            # 【保留的技术指标】
+            "photo_quality_score": round(quality_score, 2),
+            "photo_authenticity_score": round(authenticity_score, 2),
+
+            # 【废弃的硬编码字段】（全部设为None）
+            "mature_score": None,
+            "clean_score": None,
+            "gentle_score": None,
+            "sunny_score": None,
+            "stylish_score": None,
+
+            "last_error": None,
+        }
+
+    except Exception as e:
+        _logger.error(f"[build_photo_feature_patch] AI分析失败: {e}")
+
+        # AI分析失败，返回错误状态（不fallback到硬编码公式）
+        return {
+            "analysis_status": "failed",
+            "embedding_status": "pending",
+            "last_error": f"AI分析失败: {str(e)[:200]}",
+            "photo_set_version": photo_set_version,
+            "primary_photo_id": None,
+        }
 
 
 def _save_text_embedding(*, subject_id: int, vector_type: str, text: str) -> dict[str, Any]:
@@ -2178,21 +2340,6 @@ class AppearanceTagExtractor:
         return _top_dimension_labels(dict(style_scores or {}), limit=limit)
 
 
-class AppearanceSummaryGenerator:
-    @staticmethod
-    def generate(
-        *,
-        style_scores: dict[str, Any] | None,
-        attribute_scores: dict[str, Any] | None = None,
-    ) -> str:
-        style_labels = AppearanceTagExtractor.extract(style_scores, limit=3)
-        attributes = dict(attribute_scores or {})
-        youthfulness = YouthfulnessScorer.score(attributes)
-        youth_text = "带一点幼态感" if youthfulness >= 65 else "更偏成熟利落"
-        if len(style_labels) < 3:
-            style_labels = (style_labels + ["顺眼", "自然", "干净"])[:3]
-        return f"照片整体给人{style_labels[0]}的感觉，第一眼偏{style_labels[1]}，整体风格接近{style_labels[2]}，{youth_text}。"
-
 def load_profile_photo_feature_versions(
     *,
     source_dsn: str | None,
@@ -2439,6 +2586,188 @@ def record_feedback_event(
         session_id=session_id,
         metadata=metadata,
     )
+
+
+def build_style_preference_from_feedback(
+    *,
+    source_dsn: str | None,
+    user_key: str,
+    profile_id: int | None,
+    scene: str | None = None,
+    event_limit: int = 200,
+    now: datetime | None = None,
+    table_name: str = DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE,
+) -> dict[str, Any]:
+    """
+    根据用户反馈构建风格偏好（正确的逻辑）
+
+    【核心改进】
+    1. 统计风格标签频率（不是评分平均分）
+    2. 颜值评分不作为偏好维度（所有人都喜欢颜值高的）
+    3. 风格标签才是真正的个性化偏好
+
+    【逻辑】
+    1. 加载用户反馈事件（正向和负向）
+    2. 加载候选人外貌特征（只看风格标签）
+    3. 统计风格标签频率和权重
+    4. 生成风格偏好总结
+    5. 存储到数据库
+    6. 同步到向量库
+
+    Args:
+        source_dsn: 数据源
+        user_key: 用户标识
+        profile_id: 用户档案ID
+        scene: 场景（如 "discovery"）
+        event_limit: 事件数量限制
+        now: 当前时间
+        table_name: 表名
+
+    Returns:
+        dict: 存储结果
+    """
+    if not source_dsn:
+        return {"saved": False, "error": "source_not_configured"}
+
+    # 1. 加载用户反馈事件
+    events = list_appearance_feedback_events(
+        source_dsn=source_dsn,
+        user_key=user_key,
+        profile_id=profile_id,
+        scene=scene,
+        limit=event_limit,
+    )
+
+    if not events:
+        return {"saved": False, "error": "no_feedback_events"}
+
+    # 2. 加载候选人外貌特征（只看风格标签，不看颜值评分）
+    candidate_ids = sorted(
+        {
+            int(event.get("candidate_profile_id") or 0)
+            for event in events
+            if int(event.get("candidate_profile_id") or 0) > 0
+        }
+    )
+
+    feature_map = load_candidate_photo_features(
+        source_dsn=source_dsn,
+        profile_ids=candidate_ids,
+        table_name=DEFAULT_PROFILE_PHOTO_FEATURES_TABLE,
+    )
+
+    # 3. 统计风格标签频率（核心逻辑）
+    style_tag_weights: dict[str, float] = {}
+    positive_count = 0
+    negative_count = 0
+
+    for event in events:
+        candidate_id = int(event.get("candidate_profile_id") or 0)
+        feature_row = feature_map.get(candidate_id)
+
+        if not feature_row:
+            continue
+
+        # 获取候选人的风格标签（不是颜值评分）
+        appearance_keywords = list(feature_row.get("appearance_keywords_json") or [])
+        if not appearance_keywords:
+            # 从 appearance_tags_json 提取
+            tags_json = list(feature_row.get("appearance_tags_json") or [])
+            appearance_keywords = [
+                str(t.get("label") or t.get("keyword") or "").strip()
+                for t in tags_json
+                if t
+            ]
+
+        # 计算事件权重（正向或负向）
+        event_type = str(event.get("event_type") or "").strip()
+        base_weight = _DEFAULT_EVENT_WEIGHTS.get(event_type, 0.0)
+
+        # 应用时间衰减（45天半衰期）
+        time_decay = _time_decay_multiplier(event.get("created_at"), now=now)
+        signed_weight = base_weight * time_decay
+
+        # 统计风格标签权重
+        for keyword in appearance_keywords:
+            if not keyword:
+                continue
+
+            if keyword not in style_tag_weights:
+                style_tag_weights[keyword] = 0.0
+
+            style_tag_weights[keyword] += signed_weight
+
+        # 统计正向负向样本数
+        if signed_weight > 0:
+            positive_count += 1
+        elif signed_weight < 0:
+            negative_count += 1
+
+    # 4. 提取正向偏好和负向偏好
+    preferred_tags = []
+    disliked_tags = []
+
+    for tag, weight in style_tag_weights.items():
+        if weight > 0:
+            preferred_tags.append((tag, weight))
+        elif weight < 0:
+            disliked_tags.append((tag, abs(weight)))
+
+    # 按权重排序（权重越高，偏好越强）
+    preferred_tags_sorted = sorted(preferred_tags, key=lambda x: x[1], reverse=True)
+    disliked_tags_sorted = sorted(disliked_tags, key=lambda x: x[1], reverse=True)
+
+    # 5. 生成风格偏好总结
+    summary_parts = []
+
+    if preferred_tags_sorted:
+        top_3_tags = [tag for tag, _ in preferred_tags_sorted[:3]]
+        summary_parts.append(f"特别喜欢{','.join(top_3_tags)}风格")
+
+    if disliked_tags_sorted:
+        top_2_tags = [tag for tag, _ in disliked_tags_sorted[:2]]
+        summary_parts.append(f"不太喜欢{','.join(top_2_tags)}风格")
+
+    style_preference_summary = "。".join(summary_parts) if summary_parts else ""
+
+    # 6. 存储到数据库
+    preferred_tags_list = [tag for tag, _ in preferred_tags_sorted[:10]]
+    preferred_weights_dict = dict(
+        [(tag, round(weight, 2)) for tag, weight in preferred_tags_sorted[:10]]
+    )
+    disliked_tags_list = [tag for tag, _ in disliked_tags_sorted[:5]]
+
+    saved = upsert_user_appearance_preference(
+        source_dsn=source_dsn,
+        table_name=table_name,
+        user_key=user_key,
+        profile_id=profile_id,
+        patch={
+            "preferred_style_tags": preferred_tags_list,
+            "preferred_style_weights": preferred_weights_dict,
+            "disliked_style_tags": disliked_tags_list,
+            "style_preference_summary": style_preference_summary,
+            "positive_sample_count": positive_count,
+            "negative_sample_count": negative_count,
+            "last_preference_rebuild_at": now or datetime.now(),
+            "preference_status": "done",
+            "embedding_status": "pending",
+        },
+    )
+
+    # 7. 同步到向量库（用于语义检索）
+    if style_preference_summary:
+        try:
+            sync_user_appearance_preference_embedding(
+                source_dsn=source_dsn,
+                user_key=user_key,
+                profile_id=profile_id,
+                table_name=table_name,
+            )
+        except Exception:
+            pass  # 向量同步失败不影响主流程
+
+    return saved
 
 
 def _build_preference_patch_from_weighted_rows(
@@ -2868,6 +3197,144 @@ def _derive_event_weight(event: dict[str, Any]) -> float:
     return base_weight
 
 
+def upsert_vector(
+    *,
+    profile_id: int,
+    vector_type: str,
+    vector_data: list[float],
+    vector_model: str | None = None,
+    metadata: dict[str, Any] | None = None,
+    source_dsn: str | None = None,
+) -> dict[str, Any]:
+    """
+    将向量数据写入Milvus向量库
+
+    Args:
+        profile_id: 用户ID
+        vector_type: 向量类型（如"face_embedding"、"appearance_profile"）
+        vector_data: 向量数据（如512维人脸向量、1024维风格向量）
+        vector_model: 向量模型名称（如"Facenet512"）
+        metadata: 元数据（如{"photo_url": "..."}）
+        source_dsn: 数据源DSN（可选）
+
+    Returns:
+        dict: 包含saved、vector_id等信息
+    """
+    try:
+        from .vector_store_lite import VectorStoreLite
+
+        if profile_id <= 0 or not vector_data:
+            return {"saved": False, "reason": "missing_profile_id_or_vector"}
+
+        # 创建向量存储实例
+        vector_store = VectorStoreLite()
+
+        try:
+            # 使用save_vector_with_version方法写入向量
+            result = vector_store.save_vector_with_version(
+                user_id=profile_id,
+                vector_type=vector_type,
+                embedding=vector_data,
+                metadata=metadata or {},
+                model_version=vector_model or "unknown",
+            )
+
+            _logger.info(
+                f"[upsert_vector] ✅ 向量入库成功: "
+                f"profile_id={profile_id}, "
+                f"vector_type={vector_type}, "
+                f"vector_id={result.get('vector_id')}"
+            )
+
+            return {
+                "saved": True,
+                "vector_id": result.get("vector_id"),
+                "vector_type": vector_type,
+                "profile_id": profile_id,
+            }
+
+        finally:
+            # 确保关闭连接（避免Event loop is closed错误）
+            vector_store.close()
+
+    except Exception as e:
+        _logger.error(f"[upsert_vector] 向量入库失败: {e}")
+        return {
+            "saved": False,
+            "reason": str(e),
+            "profile_id": profile_id,
+            "vector_type": vector_type,
+        }
+
+
+def search_vectors(
+    *,
+    vector_type: str,
+    query_vector: list[float],
+    top_k: int = 10,
+    similarity_threshold: float = 0.7,
+    metric_type: str = "COSINE",
+) -> list[dict[str, Any]]:
+    """
+    从Milvus向量库检索相似向量
+
+    Args:
+        vector_type: 向量类型（如"face_embedding"、"appearance_profile"）
+        query_vector: 查询向量
+        top_k: 返回结果数量
+        similarity_threshold: 相似度阈值（如0.7表示70%相似）
+        metric_type: 相似度计算方法（COSINE/L2/IP）
+
+    Returns:
+        list: 相似向量列表，包含profile_id、score等信息
+    """
+    try:
+        from .vector_store_lite import VectorStoreLite
+
+        if not query_vector:
+            return []
+
+        # 创建向量存储实例
+        vector_store = VectorStoreLite()
+
+        try:
+            # 使用search_similar_users方法检索向量
+            results = vector_store.search_similar_users(
+                query_embedding=query_vector,
+                top_k=top_k * 3,  # 多召回一些，再过滤
+                vector_type=vector_type,
+            )
+
+            # 过滤低相似度结果
+            filtered_results = []
+            for result in results:
+                similarity = float(result.get("score", 0.0))
+                if similarity >= similarity_threshold:
+                    filtered_results.append({
+                        "profile_id": result.get("user_id"),
+                        "score": similarity,
+                        "metadata": result.get("metadata", {}),
+                        "vector_type": vector_type,
+                    })
+
+            _logger.info(
+                f"[search_vectors] ✅ 向量检索完成: "
+                f"vector_type={vector_type}, "
+                f"total={len(results)}, "
+                f"filtered={len(filtered_results)}"
+            )
+
+            return filtered_results[:top_k]
+
+        finally:
+            # 确保关闭连接
+            vector_store.close()
+
+    except Exception as e:
+        _logger.error(f"[search_vectors] 向量检索失败: {e}")
+        return []
+
+
 __all__ = [
     "APPEARANCE_PREFERENCE_VECTOR_TYPE",
     "APPEARANCE_PROFILE_VECTOR_TYPE",
@@ -2876,7 +3343,6 @@ __all__ = [
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
     "AppearanceStyleScorer",
-    "AppearanceSummaryGenerator",
     "AppearanceTagExtractor",
     "AppearanceWeightStrategy",
     "EnvironmentGapAssessment",
@@ -2933,4 +3399,6 @@ __all__ = [
     "resolve_global_bonus_multiplier",
     "resolve_preference_weight_multiplier",
     "sync_user_appearance_preference_embedding",
+    "upsert_vector",  # 【新增】向量入库函数
+    "search_vectors",  # 【新增】向量检索函数
 ]

@@ -19,6 +19,7 @@ from .jobs import (
     JOB_MM_PAIRS,
     JOB_MM_REFRESH,
     JOB_MM_STALE,
+    JOB_PHOTO_ANALYSIS,
     JOB_REC_ASYNC_WORKER,
     JOB_REC_CLOSE_TIMEOUT,
     JOB_REC_DELIVER,
@@ -27,6 +28,7 @@ from .jobs import (
     JOB_REC_REFRESH,
     make_chat_job,
     make_matchmaking_job,
+    make_photo_analysis_job,
     make_proxy_intro_job,
     make_recommendation_job,
 )
@@ -304,11 +306,45 @@ def _chat_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSpec]:
     ]
 
 
+def _photo_analysis_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSpec]:
+    """照片分析任务配置"""
+    if not settings.photo_analysis_db:
+        return []
+
+    db = settings.photo_analysis_db
+    built_jobs: dict[str, Callable[[], None]] | None = None
+
+    def get_jobs() -> dict[str, Callable[[], None]]:
+        nonlocal built_jobs
+        if built_jobs is None:
+            from match_domain.photo_event_bus import run_photo_analysis_job_worker  # noqa: PLC0415
+
+            built_jobs = {
+                JOB_PHOTO_ANALYSIS: make_photo_analysis_job(
+                    JOB_PHOTO_ANALYSIS,
+                    run_photo_analysis_job_worker,
+                    source_dsn=db,  # run_photo_analysis_job_worker需要source_dsn参数
+                    limit=10,  # 每次处理10个任务
+                    worker_name="scheduler-photo-worker",
+                ),
+            }
+        return built_jobs
+
+    return [
+        _ConfiguredJobSpec(
+            JOB_PHOTO_ANALYSIS,
+            settings.photo_analysis_interval_sec,
+            lambda: get_jobs()[JOB_PHOTO_ANALYSIS],
+        ),
+    ]
+
+
 def _configured_job_specs(settings: SchedulerSettings) -> list[_ConfiguredJobSpec]:
     return [
         *_recommendation_job_specs(settings),
         *_matchmaking_job_specs(settings),
         *_chat_job_specs(settings),
+        *_photo_analysis_job_specs(settings),
     ]
 
 
@@ -320,6 +356,8 @@ def register_jobs(scheduler: BaseScheduler, settings: SchedulerSettings) -> list
         logger.warning("HER_SCHED_MATCHMAKING_DB unset; matchmaking scheduler jobs skipped")
     if not settings.chat_db:
         logger.warning("HER_SCHED_CHAT_DB unset; chat scheduler jobs skipped")
+    if not settings.photo_analysis_db:
+        logger.warning("HER_SCHED_PHOTO_ANALYSIS_DB unset; photo analysis scheduler jobs skipped")
 
     registered: list[str] = []
     for spec in _configured_job_specs(settings):

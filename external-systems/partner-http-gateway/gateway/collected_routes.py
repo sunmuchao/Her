@@ -213,12 +213,16 @@ def rest_profile_me(gateway: CollectedGateway, environ: dict[str, Any]) -> tuple
         # 查询照片数据
         photos = []
         try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"[rest_profile_me] 开始查询照片: source_dsn={normalized_source}, table_name={table_name}, profile_id={profile_id}")
             photos = list_profile_photos(
                 source_dsn=normalized_source,
                 source_table_name=table_name or "profiles",
                 profile_id=int(profile_id),
                 photos_table_name="profile_photos",
             )
+            logger.info(f"[rest_profile_me] 照片查询完成: photos_count={len(photos)}, photos={[p.get('photo_url') for p in photos]}")
         except Exception as photo_error:
             # 照片查询失败不影响主流程，记录日志
             import logging
@@ -229,7 +233,7 @@ def rest_profile_me(gateway: CollectedGateway, environ: dict[str, Any]) -> tuple
         return 200, {
             "profile_id": int(profile_id),
             "profile_facts": _json_safe(extract_profile_facts(row)),
-            "photos": [photo.get("photo_url") for photo in photos if photo.get("photo_url")],
+            "photos": [photo.get("photo_source") for photo in photos if photo.get("photo_source")],
             "access_method": access_method,  # Include for transparency
         }
     except TimeoutError as e:
@@ -343,6 +347,167 @@ def rest_persona_collected(gateway: CollectedGateway, environ: dict[str, Any]) -
         return 500, {"error": {"code": "internal_error", "message": str(e)}}
 
 
+def rest_profile_update_photos_with_face_check(
+    gateway: CollectedGateway,
+    environ: dict[str, Any],
+) -> tuple[int, dict[str, Any]]:
+    """Update profile photos with face check against video anchor.
+
+    SECURITY REQUIREMENT:
+    - Auth_session users: Only update their own profile
+    - Staff override: Can update any profile (audited)
+
+    Flow:
+    1. User uploads new photos
+    2. System checks if user has verified_face_anchor (from live video verification)
+    3. If anchor exists, check face similarity: new photo face vs video face
+    4. If similarity >= threshold (0.363), save photos
+    5. If verification_status was "rejected", auto-approve verification
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from .http_helpers import _parse_json_body, _read_body
+    from profile_service import update_profile_photos_with_face_check  # type: ignore[import-untyped]
+
+    # Parse request body
+    body = _parse_json_body(_read_body(environ))
+    logger.info(f"[rest_profile_update_photos_with_face_check] 请求体: {body}")
+    logger.info(f"[rest_profile_update_photos_with_face_check] photos参数: {body.get('photos')}, 类型: {type(body.get('photos'))}, 长度: {len(body.get('photos', []))}")
+
+    # Get actor
+    actor = gateway._current_actor(environ)
+    logger.info(f"[rest_profile_update_photos_with_face_check] actor: {actor.actor_id if actor else None}, is_auth_session: {gateway._is_auth_session_end_user(actor) if actor else False}")
+
+    if actor is None:
+        logger.warning("[rest_profile_update_photos_with_face_check] 返回401: actor为空")
+        return 401, {
+            "error": {
+                "code": "unauthorized",
+                "message": "Authentication required.",
+            }
+        }
+
+    # Resolve profile_id with ownership check
+    profile_id = None
+    access_method = None
+
+    # For auth_session end users, bind to their profile
+    if gateway._is_auth_session_end_user(actor):
+        resolved = gateway._resolve_end_user_principal(environ, require_profile=True)
+        logger.info(f"[rest_profile_update_photos_with_face_check] resolved对象: {resolved}, profile_id: {resolved.profile_id if resolved else None}")
+        if resolved is not None and resolved.profile_id is not None:
+            profile_id = int(resolved.profile_id)
+            access_method = "auth_session_binding"
+            logger.info(f"[rest_profile_update_photos_with_face_check] profile_id解析成功: {profile_id}")
+
+            # SECURITY: Block body parameter override
+            body_profile_id = body.get("profile_id")
+            if body_profile_id is not None:
+                try:
+                    requested = int(body_profile_id)
+                except (ValueError, TypeError):
+                    requested = None
+                if requested is not None and requested != profile_id:
+                    # Log IDOR attempt
+                    from observability import audit_event
+                    audit_event(
+                        action="gateway.photos_update_idor_attempt",
+                        resource_type="profile",
+                        resource_id=str(requested),
+                        outcome="blocked",
+                        reason="auth_session_user_attempted_body_param_override",
+                        actor_id=actor.actor_id,
+                        http_method=environ.get("REQUEST_METHOD"),
+                        path=environ.get("PATH_INFO"),
+                    )
+                    return 403, {
+                        "error": {
+                            "code": "forbidden",
+                            "message": "You can only update your own profile photos.",
+                        }
+                    }
+    else:
+        # Non-auth_session users: require staff role for arbitrary profile access
+        body_profile_id = body.get("profile_id")
+        if body_profile_id is not None:
+            try:
+                profile_id = int(body_profile_id)
+            except (ValueError, TypeError):
+                return 400, {"error": {"code": "invalid_request", "message": "Invalid profile_id format"}}
+            if actor.has_any_role(STAFF_OVERRIDE_ROLES):
+                access_method = "staff_override"
+                # Audit staff access
+                from observability import audit_event
+                audit_event(
+                    action="gateway.photos_update_staff_override",
+                    resource_type="profile",
+                    resource_id=str(profile_id),
+                    outcome="allowed",
+                    reason="staff_override_access",
+                    actor_id=actor.actor_id,
+                    actor_roles=list(actor.roles),
+                    http_method=environ.get("REQUEST_METHOD"),
+                    path=environ.get("PATH_INFO"),
+                )
+            else:
+                return 403, {
+                    "error": {
+                        "code": "forbidden",
+                        "message": "Non-auth_session users need staff override role to update profile photos.",
+                    }
+                }
+
+    if profile_id is None:
+        logger.warning("[rest_profile_update_photos_with_face_check] 返回400: profile_id为空")
+        return 400, {"error": {"code": "invalid_request", "message": "profile_id is required"}}
+
+    logger.info(f"[rest_profile_update_photos_with_face_check] 最终profile_id: {profile_id}")
+
+    # Validate photos parameter
+    photos = body.get("photos")
+    if not photos or not isinstance(photos, list):
+        logger.warning(f"[rest_profile_update_photos_with_face_check] 返回400: photos参数无效, photos={photos}, type={type(photos)}")
+        return 400, {"error": {"code": "invalid_request", "message": "photos must be a non-empty array"}}
+    if len(photos) > 6:
+        logger.warning(f"[rest_profile_update_photos_with_face_check] 返回400: photos数量超限, len={len(photos)}")
+        return 400, {"error": {"code": "invalid_request", "message": "Maximum 6 photos allowed"}}
+
+    logger.info(f"[rest_profile_update_photos_with_face_check] photos验证通过: {photos}")
+
+    # Get source
+    q = _query_dict(environ)
+    source = (q.get("source") or body.get("source") or _default_profile_source()).strip()
+    if not source:
+        return 503, {"error": {"code": "profile_source_not_configured", "message": "profile source is not configured"}}
+
+    normalized_source, table_name = _parse_profile_source(source)
+
+    try:
+        # Call backend function
+        result = update_profile_photos_with_face_check(
+            source_dsn=normalized_source,
+            profile_id=profile_id,
+            new_photos=photos,
+            source_table_name=table_name or "profiles",
+            verification_status=body.get("verification_status"),
+        )
+
+        # Add access_method for transparency
+        result["access_method"] = access_method
+
+        # Determine HTTP status
+        if result.get("success"):
+            return 200, _json_safe(result)
+        else:
+            return 400, _json_safe(result)
+
+    except TimeoutError as e:
+        return 503, {"error": {"code": "db_timeout", "message": f"数据库连接超时: {str(e)}"}}
+    except Exception as e:
+        return 500, {"error": {"code": "internal_error", "message": str(e)}}
+
+
 def dispatch_collected_rest(
     gateway: CollectedGateway,
     environ: dict[str, Any],
@@ -353,6 +518,8 @@ def dispatch_collected_rest(
         return rest_profile_me(gateway, environ)
     if path == "/v1/persona/collected" and method == "GET":
         return rest_persona_collected(gateway, environ)
+    if path == "/v1/profile/photos/update-with-face-check" and method == "POST":
+        return rest_profile_update_photos_with_face_check(gateway, environ)
     return None
 
 
@@ -360,4 +527,5 @@ __all__ = [
     "dispatch_collected_rest",
     "rest_persona_collected",
     "rest_profile_me",
+    "rest_profile_update_photos_with_face_check",
 ]

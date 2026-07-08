@@ -140,8 +140,75 @@ def compute_face_similarity(embedding1: list[float], embedding2: list[float]) ->
     return similarity
 
 
+def extract_and_store_face_embedding(photo_url: str, profile_id: int, source_dsn: str | None = None) -> dict[str, Any]:
+    """
+    从照片中提取人脸向量（512维），并存入MySQL和Milvus向量库
+
+    Args:
+        photo_url: 照片URL（可以是本地路径或远程URL）
+        profile_id: 用户ID
+        source_dsn: 数据源DSN（可选，用于写入MySQL）
+
+    Returns:
+        dict: 包含人脸向量、检测置信度等信息
+        None: 如果没有检测到人脸
+    """
+    # 1. 提取人脸向量（原有逻辑）
+    result = extract_face_embedding(photo_url)
+
+    if not result or not result.get("success"):
+        return result
+
+    # 2. 存入MySQL（原有逻辑，如果提供了source_dsn）
+    if source_dsn:
+        try:
+            from profile_service import upsert_profile_face_embedding
+
+            upsert_profile_face_embedding(
+                source_dsn=source_dsn,
+                profile_id=profile_id,
+                face_embedding_json=json.dumps(result["face_embedding"]),
+                face_embedding_model="Facenet512",
+                face_embedding_dimension=512,
+                face_detection_confidence=result.get("face_detection_confidence"),
+                face_bbox_json=json.dumps(result.get("face_bbox")) if result.get("face_bbox") else None,
+                is_primary_face=True,
+                cache_status="computed",
+            )
+
+        except Exception as mysql_error:
+            # MySQL写入失败不影响主流程
+            pass
+
+    # 3. 【新增】写入Milvus向量库
+    try:
+        from persona_memory_sync.persona_memory_lib import upsert_vector
+
+        upsert_vector(
+            profile_id=profile_id,
+            vector_type="face_embedding",  # 新增向量类型
+            vector_data=result["face_embedding"],
+            vector_model="Facenet512",
+            metadata={
+                "photo_url": photo_url,
+                "face_detection_confidence": result.get("face_detection_confidence"),
+                "face_bbox": result.get("face_bbox"),
+            }
+        )
+
+        result["milvus_saved"] = True
+        return result
+
+    except Exception as milvus_error:
+        # Milvus写入失败不影响主流程，但记录状态
+        result["milvus_saved"] = False
+        result["milvus_error"] = str(milvus_error)
+        return result
+
+
 __all__ = [
     "extract_face_embedding",
+    "extract_and_store_face_embedding",  # 新增
     "compute_face_similarity",
     "DEEPFACE_AVAILABLE",
 ]

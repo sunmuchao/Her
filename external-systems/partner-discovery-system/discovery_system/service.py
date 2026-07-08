@@ -2615,7 +2615,7 @@ class DiscoveryService:
         )
         try:
             from match_domain.appearance_features import (
-                rebuild_user_preference_from_history,
+                build_style_preference_from_feedback,  # 新增：使用正确的偏好学习函数
                 refresh_profile_photo_features_from_record,
             )
 
@@ -2630,7 +2630,8 @@ class DiscoveryService:
                 )
                 candidate_feature = dict(refreshed or {})
             if candidate_feature:
-                rebuild_user_preference_from_history(
+                # 【改进】使用新的偏好学习函数（基于风格标签，不是评分平均分）
+                build_style_preference_from_feedback(
                     source_dsn=persona_source,
                     user_key=str(session.requester_id),
                     profile_id=int(session.profile_id or 0) or None,

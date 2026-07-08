@@ -2057,3 +2057,48 @@ SELECT
   public_notes AS notes
 FROM {profile_table_q}
 """.strip()
+
+
+def upsert_vector(
+    profile_id: int,
+    vector_type: str,
+    vector_data: List[float],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """向量入库函数（包装VectorStoreLite）
+
+    Args:
+        profile_id: 用户profile_id
+        vector_type: 向量类型（如 "appearance_profile", "appearance_preference"）
+        vector_data: 向量数据（float列表）
+        metadata: 元数据（可选）
+
+    Returns:
+        入库结果字典
+    """
+    from match_domain.vector_store_lite import VectorStoreLite  # noqa: PLC0415
+
+    vector_store = VectorStoreLite()
+    try:
+        result = vector_store.save_vector_with_version(
+            user_id=profile_id,
+            vector_type=vector_type,
+            embedding=vector_data,
+            raw_text=str(metadata or {}).get("appearance_summary", "") if metadata else "",
+            conversation_id=f"{vector_type}-{profile_id}",
+        )
+        return {
+            "success": bool(result.get("success")),
+            "profile_id": profile_id,
+            "vector_type": vector_type,
+            "result": result,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "profile_id": profile_id,
+            "vector_type": vector_type,
+        }
+    finally:
+        vector_store.close()

@@ -1437,6 +1437,12 @@ def submit_onboarding_profile(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     ts = _utcnow(now)
+
+    # 新增：记录接收到的 photos 参数（用于排查照片保存问题）
+    logger.info(f"[submit_onboarding_profile] 接收参数: user_id={user_id}, photos={photos}, photos_type={type(photos)}, photos_count={len(photos) if photos else 0}")
+    if photos:
+        logger.info(f"[submit_onboarding_profile] photos 详细内容: {photos[:3] if len(photos) > 3 else photos}, each_type={[type(p) for p in photos[:3]]}")
+
     user = _user_by_id(conn, user_id)
     if not user or user.get("account_status") != ACCOUNT_STATUS_ACTIVE:
         raise AuthDomainError(401, "unauthorized", "登录状态已失效，请重新登录")
@@ -1577,6 +1583,8 @@ def submit_onboarding_profile(
             # 获取persona_source_dsn（用于照片特征分析）
             persona_source_dsn = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE") or source_dsn
 
+            logger.info(f"[submit_onboarding_profile] 准备触发照片分析事件: profile_id={profile_id}, persona_source_dsn={persona_source_dsn}")
+
             event = build_photo_analysis_event(
                 event_type="photo_uploaded",
                 profile_id=int(profile_id),
@@ -1588,9 +1596,10 @@ def submit_onboarding_profile(
                 metadata={"photos_count": len(photos), "write_mode": write_mode},
             )
             publish_photo_analysis_event(event)
-        except Exception:
-            # 照片分析事件触发失败不影响主流程，只记录日志
-            pass
+            logger.info(f"[submit_onboarding_profile] 照片分析事件触发成功: profile_id={profile_id}, event_type={event.event_type}")
+        except Exception as photo_event_error:
+            # 照片分析事件触发失败不影响主流程，记录日志
+            logger.warning(f"[submit_onboarding_profile] 照片分析事件触发失败: profile_id={profile_id}, error={photo_event_error}")
 
     next_status = (
         ONBOARDING_STATUS_COMPLETED

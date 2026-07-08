@@ -34,6 +34,7 @@ from .api import (
     upsert_verified_face_anchor,
     upsert_user_appearance_preference,
     upsert_profile_for_onboarding,
+    update_profile_photos_with_face_check,
 )
 from .persona_bridge import apply_persona_patch, render_public_profile
 
@@ -73,4 +74,5 @@ __all__ = [
     "upsert_verified_face_anchor",
     "upsert_user_appearance_preference",
     "upsert_profile_for_onboarding",
+    "update_profile_photos_with_face_check",
 ]

@@ -15,7 +15,8 @@ import { SelectDropdown } from '@/components/her/ui/select-dropdown'
 import { useProfilePageData } from '@/lib/hooks/use-profile-page-data'
 import { PageHeader } from '@/components/her/ui/page-header'
 import { SlideInTransition } from '@/components/her/ui/page-transitions'
-import { uploadImage, compressImage } from '@/lib/api/endpoints/media'
+import { uploadImage, compressImage, convertMinioUrl } from '@/lib/api/endpoints/media'
+import { updateProfilePhotosWithFaceCheck } from '@/lib/api/endpoints/collected'
 
 interface EditProfilePageProps {
   onBack: () => void
@@ -30,6 +31,7 @@ interface ProfileData {
   birthday: string
   currentCity: string
   photos: string[]
+  avatarIndex: number  // 新增：头像索引（默认为0，即第一张照片）
   relationshipGoal: string
   marriageStatus: string
   hasChildren: string
@@ -147,6 +149,8 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const [activePhotoMenu, setActivePhotoMenu] = useState<number | null>(null) // 新增：当前打开菜单的照片索引
+  const [photoUploadError, setPhotoUploadError] = useState<string | null>(null) // 新增：照片上传错误信息
   const photoInputId = useId()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
@@ -160,6 +164,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     birthday: '',
     currentCity: '',
     photos: [],
+    avatarIndex: 0,  // 新增：默认第一张照片为头像
     relationshipGoal: '',
     marriageStatus: '',
     hasChildren: '',
@@ -185,10 +190,43 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
   // 数据加载完成后初始化表单
   useEffect(() => {
     if (!isLoading && (auth || facts)) {
+      console.log('[edit-profile-page] 数据加载完成:', {
+        has_facts: !!facts,
+        facts_keys: facts ? Object.keys(facts) : [],
+        facts_photos: facts?.photos,
+        facts_photos_length: facts?.photos?.length,
+      })
       const rawProfile = facts?.profile_facts ?? {}
       const user = auth?.user ?? {}
       const onboardingBasicInfo = auth?.onboarding?.basic_info ?? {}
       const authProfile = auth?.profile ?? {}
+
+      // 新增：获取avatar_url，用于确定头像索引
+      const avatarUrl = firstString(
+        rawProfile.avatar_url,
+        authProfile.avatar_url,
+        user.avatar_url,
+      )
+
+      // 新增：构建照片列表，并根据avatar_url确定头像索引
+      const allPhotos = [
+        ...firstStringArray(facts?.photos),
+        ...firstStringArray(rawProfile.photos, authProfile.photos),
+        ...firstStringArray(rawProfile.photo_urls, authProfile.photo_urls),
+        ...(() => {
+          const avatar = firstString(rawProfile.avatar_url, authProfile.avatar_url, user.avatar_url)
+          return avatar ? [avatar] : []
+        })(),
+      ].filter((photo, index, arr) => arr.indexOf(photo) === index).slice(0, 6)
+
+      // 新增：根据avatar_url确定头像索引
+      let avatarIndex = 0
+      if (avatarUrl && allPhotos.length > 0) {
+        const avatarPhotoIndex = allPhotos.findIndex(photo => photo === avatarUrl)
+        if (avatarPhotoIndex !== -1) {
+          avatarIndex = avatarPhotoIndex
+        }
+      }
 
       setProfile({
         // 已有字段...
@@ -218,15 +256,8 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           authProfile.city,
           authProfile.settlement_city,
         ),
-        photos: [
-          ...firstStringArray(facts?.photos),
-          ...firstStringArray(rawProfile.photos, authProfile.photos),
-          ...firstStringArray(rawProfile.photo_urls, authProfile.photo_urls),
-          ...(() => {
-            const avatar = firstString(rawProfile.avatar_url, authProfile.avatar_url, user.avatar_url)
-            return avatar ? [avatar] : []
-          })(),
-        ].filter((photo, index, arr) => arr.indexOf(photo) === index).slice(0, 6),
+        photos: allPhotos,
+        avatarIndex: avatarIndex,  // 新增：头像索引
         relationshipGoal:
           normalizeRelationshipGoal(rawProfile.relationship_goal) ||
           normalizeRelationshipGoal(onboardingBasicInfo.relationship_goal) ||
@@ -269,6 +300,8 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     if (!files || files.length === 0) return
 
     setIsUploading(true)
+    setPhotoUploadError(null) // 清除之前的错误信息
+
     try {
       const newPhotos: string[] = []
       for (const file of Array.from(files)) {
@@ -281,11 +314,53 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
         // Step 3: 保存media_url（而非base64 DataURL）
         newPhotos.push(result.mediaUrl)
       }
+
+      // Step 4: 构建完整照片列表（包括已有照片和新上传的照片）
+      const allPhotos = [...profile.photos, ...newPhotos].slice(0, 6)
+
+      // Step 5: 获取profile_id
+      const profileId = facts?.profile_id || auth?.profile?.profile_id || auth?.onboarding?.profile_id
+      if (!profileId) {
+        notifyError('无法获取用户信息，请先完成注册')
+        return
+      }
+
+      // Step 6: 调用照片更新API（包含人脸比对检查）
+      const updateResult = await updateProfilePhotosWithFaceCheck({
+        photos: allPhotos,
+      })
+
+      if (!updateResult.success) {
+        // 照片保存失败（人脸不匹配）
+        notifyError(updateResult.error || '照片保存失败')
+
+        // 显示详细信息
+        if (updateResult.similarity_score < 0.363) {
+          setPhotoUploadError(
+            `检测到照片与真人视频不匹配（相似度：${(updateResult.similarity_score * 100).toFixed(1)}%）。\n\n` +
+            `可能原因：\n` +
+            `1. 照片不是你本人\n` +
+            `2. 照片过度美颜或滤镜处理\n` +
+            `3. 照片模糊或光线不佳\n\n` +
+            `请上传与真人一致的照片。`
+          )
+        }
+        return
+      }
+
+      // 照片保存成功
       setProfile(prev => ({
         ...prev,
-        photos: [...prev.photos, ...newPhotos].slice(0, 6)
+        photos: allPhotos
       }))
-      notifySuccess('照片上传成功')
+
+      // 显示提示信息
+      if (updateResult.verification_auto_approved) {
+        notifySuccess('照片更新成功，认证已通过！您可以正常使用平台了。')
+      } else {
+        notifySuccess(updateResult.message || '照片上传成功')
+      }
+
     } catch (error) {
       notifyError(error, '照片上传失败')
     } finally {
@@ -297,9 +372,30 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
   }
 
   const removePhoto = (index: number) => {
+    setProfile(prev => {
+      const newPhotos = prev.photos.filter((_, i) => i !== index)
+      // 新增：调整avatarIndex
+      let newAvatarIndex = prev.avatarIndex
+      if (index === prev.avatarIndex) {
+        // 如果删除的是头像照片，默认设置下一张（或第一张）为头像
+        newAvatarIndex = Math.min(prev.avatarIndex, newPhotos.length - 1)
+      } else if (index < prev.avatarIndex) {
+        // 如果删除的照片在头像之前，avatarIndex需要减1
+        newAvatarIndex = prev.avatarIndex - 1
+      }
+      return {
+        ...prev,
+        photos: newPhotos,
+        avatarIndex: newAvatarIndex
+      }
+    })
+  }
+
+  // 新增：设置头像
+  const setAvatar = (index: number) => {
     setProfile(prev => ({
       ...prev,
-      photos: prev.photos.filter((_, i) => i !== index)
+      avatarIndex: index
     }))
   }
 
@@ -345,6 +441,15 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
     setIsSubmitting(true)
 
     try {
+      // 新增：调整照片顺序，把头像照片放在第一位
+      const reorderedPhotos = profile.avatarIndex === 0
+        ? profile.photos  // 如果头像已经是第一张，不需要调整
+        : [
+            profile.photos[profile.avatarIndex],  // 头像照片移到第一位
+            ...profile.photos.slice(0, profile.avatarIndex),  // 原头像之前的照片
+            ...profile.photos.slice(profile.avatarIndex + 1)  // 原头像之后的照片
+          ]
+
       const result = await submitOnboarding({
         basic_info: {
           // 已有字段...
@@ -378,7 +483,7 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
         preference: {
           relationship_goal: profile.relationshipGoal,
         },
-        photos: profile.photos,
+        photos: reorderedPhotos,  // 使用重新排序后的照片列表
         mark_completed: false, // 编辑模式不标记完成
       })
 
@@ -451,6 +556,22 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           </div>
         )}
 
+        {/* Photo upload error */}
+        {photoUploadError && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 animate-fade-in-up">
+            <p className="text-sm text-destructive whitespace-pre-line">
+              {photoUploadError}
+            </p>
+            <button
+              type="button"
+              onClick={() => setPhotoUploadError(null)}
+              className="mt-2 text-xs text-destructive/80 hover:text-destructive underline"
+            >
+              关闭
+            </button>
+          </div>
+        )}
+
         {/* 卡片1：照片展示 */}
         <div className="rounded-2xl border-2 border-dashed border-border p-6 bg-card/50 mb-6">
           <input
@@ -476,26 +597,71 @@ export default function EditProfilePage({ onBack, onSaved }: EditProfilePageProp
           </label>
 
           <div className="flex flex-wrap gap-3 justify-center">
-            {profile.photos.map((photo, index) => (
-              <div
-                key={index}
-                className="relative w-20 h-20 rounded-xl overflow-hidden bg-secondary animate-scale-in"
-              >
-                <img
-                  src={photo}
-                  alt={`照片 ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                <button
-                  type="button"
-                  onClick={() => removePhoto(index)}
-                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center text-white hover:bg-black/80 transition-colors"
-                  aria-label={`删除照片 ${index + 1}`}
+            {profile.photos.map((photo, index) => {
+              const isAvatar = index === profile.avatarIndex
+              return (
+                <div
+                  key={index}
+                  className="relative w-20 h-20 rounded-xl bg-secondary animate-scale-in"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            ))}
+                  {/* 点击照片显示操作菜单 */}
+                  <button
+                    type="button"
+                    onClick={() => setActivePhotoMenu(activePhotoMenu === index ? null : index)}
+                    className="w-full h-full cursor-pointer rounded-xl overflow-hidden"
+                    aria-label={`照片 ${index + 1}${isAvatar ? '（当前头像）' : ''}`}
+                  >
+                    <img
+                      src={convertMinioUrl(photo)}
+                      alt={`照片 ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                    {/* 当前头像标识 */}
+                    {isAvatar && (
+                      <div className="absolute top-0 left-0 right-0 bg-primary/90 backdrop-blur-sm py-1 text-center rounded-t-xl">
+                        <span className="text-xs text-primary-foreground font-medium">头像</span>
+                      </div>
+                    )}
+                  </button>
+
+                  {/* 操作菜单 */}
+                  {activePhotoMenu === index && (
+                    <>
+                      {/* 关闭菜单的遮罩层 */}
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setActivePhotoMenu(null)}
+                      />
+                      {/* 弹出菜单 */}
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 bg-card rounded-xl shadow-lg border border-border overflow-hidden animate-fade-in-up">
+                        {!isAvatar && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAvatar(index)
+                              setActivePhotoMenu(null)
+                            }}
+                            className="w-full px-4 py-3 text-sm text-foreground hover:bg-primary/10 transition-colors text-center whitespace-nowrap"
+                          >
+                            设为头像
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            removePhoto(index)
+                            setActivePhotoMenu(null)
+                          }}
+                          className="w-full px-4 py-3 text-sm text-destructive hover:bg-destructive/10 transition-colors text-center whitespace-nowrap border-t border-border"
+                        >
+                          删除照片
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
 
             {profile.photos.length < 6 && (
               <label

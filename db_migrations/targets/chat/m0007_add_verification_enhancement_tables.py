@@ -41,7 +41,10 @@ def _new_tables():
 
 def _modified_tables():
     """获取需要修改的表定义"""
-    return tuple(table for table in _schema.chat_tables() if table.name in MODIFIED_TABLE_NAMES)
+    # profile_field_verification_submissions 在 verification_tables() 中
+    chat_modified = tuple(table for table in _schema.chat_tables() if table.name in MODIFIED_TABLE_NAMES)
+    verification_modified = tuple(table for table in _schema.verification_tables() if table.name in MODIFIED_TABLE_NAMES)
+    return chat_modified + verification_modified
 
 
 def apply(mysql_conn, _context: MigrationContext) -> None:
@@ -56,16 +59,27 @@ def apply(mysql_conn, _context: MigrationContext) -> None:
         _schema.ensure_unique_keys(mysql_conn, table, prefix=None)
         _schema.ensure_indexes(mysql_conn, table, prefix=None)
 
-    # 2. 修改现有表，添加新字段和索引
+    # 1.5. 确保需要修改的表存在（如果不存在则创建）
     modified_tables = _modified_tables()
     for table in modified_tables:
-        _schema.ensure_table_columns(mysql_conn, table, prefix=None)
-        _schema.ensure_indexes(mysql_conn, table, prefix=None)
-        print(f"Updated table: {table.name}")
+        if not _schema.table_exists(mysql_conn, table.name):
+            _schema.ensure_table(mysql_conn, table, prefix=None, config=_context.config)
+            print(f"Created missing table: {table.name}")
+            _schema.ensure_table_columns(mysql_conn, table, prefix=None)
+            _schema.ensure_unique_keys(mysql_conn, table, prefix=None)
+            _schema.ensure_indexes(mysql_conn, table, prefix=None)
+
+    # 2. 修改现有表，添加新字段和索引
+    for table in modified_tables:
+        if _schema.table_exists(mysql_conn, table.name):
+            _schema.ensure_table_columns(mysql_conn, table, prefix=None)
+            _schema.ensure_indexes(mysql_conn, table, prefix=None)
+            print(f"Updated table: {table.name}")
 
     # 3. 插入初始数据
     # 插入认证等级权重初始数据
-    mysql_conn.execute("""
+    cursor = mysql_conn.cursor()
+    cursor.execute("""
         INSERT INTO verification_level_weights
         (level_name, weight, label, expires_after_days, created_at)
         VALUES
@@ -78,7 +92,7 @@ def apply(mysql_conn, _context: MigrationContext) -> None:
     print("Inserted verification_level_weights initial data")
 
     # 插入敏感数据治理策略初始数据
-    mysql_conn.execute("""
+    cursor.execute("""
         INSERT INTO verification_data_governance_policies
         (policy_key, retention_days, encryption_required, access_scope, created_at, updated_at)
         VALUES
@@ -109,16 +123,15 @@ def validate(mysql_conn, _context: MigrationContext) -> dict[str, list[str]]:
 
     # 验证初始数据
     # 检查认证等级权重数据
-    level_count = mysql_conn.execute(
-        "SELECT COUNT(*) FROM verification_level_weights"
-    ).fetchone()[0]
+    cursor = mysql_conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM verification_level_weights")
+    level_count = cursor.fetchone()[0]
     if level_count != 4:
         results["initial_data"] = [f"Expected 4 level weights, found {level_count}"]
 
     # 检查敏感数据治理策略数据
-    policy_count = mysql_conn.execute(
-        "SELECT COUNT(*) FROM verification_data_governance_policies"
-    ).fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM verification_data_governance_policies")
+    policy_count = cursor.fetchone()[0]
     if policy_count != 4:
         results["initial_data"] = [f"Expected 4 governance policies, found {policy_count}"]
 

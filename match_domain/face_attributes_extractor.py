@@ -139,23 +139,80 @@ def extract_face_attributes(photo_url: str) -> dict[str, Any]:
 
 
 def _compute_eye_size(points: list[tuple[int, int]]) -> float:
-    """计算眼睛大小评分（0-100）"""
-    # 眼睛关键点：36-41（左眼），42-47（右眼）
-    # 眼睛宽度：外角到内角的距离
-    left_eye_width = points[39][0] - points[36][0]
-    right_eye_width = points[45][0] - points[42][0]
+    """
+    计算眼睛大小评分（基于眼睛面积/脸部面积比例）
 
-    # 眼睛高度：上眼皮到下眼皮的垂直距离
-    left_eye_height = (abs(points[37][1] - points[41][1]) + abs(points[38][1] - points[40][1])) / 2
-    right_eye_height = (abs(points[43][1] - points[47][1]) + abs(points[44][1] - points[46][1])) / 2
+    改进方案：使用眼睛面积占比脸部面积，避免近景远景的影响
 
-    # 眼睛大小 = 宽度 + 高度的平均值
-    eye_size = (left_eye_width + right_eye_width + left_eye_height + right_eye_height) / 4
+    Args:
+        points: 68个关键点坐标
 
-    # 标准化为0-100评分（基于典型人脸尺寸）
-    score = min(100.0, max(0.0, eye_size * 1.5))
+    Returns:
+        float: 眼睛大小评分（0-100）
+    """
+    # 1. 提取左眼关键点（36-41）
+    left_eye_points = points[36:42]
+
+    # 2. 提取右眼关键点（42-47）
+    right_eye_points = points[42:48]
+
+    # 3. 计算眼睛面积（多边形面积）
+    left_eye_area = _compute_polygon_area(left_eye_points)
+    right_eye_area = _compute_polygon_area(right_eye_points)
+    eye_area = (left_eye_area + right_eye_area) / 2
+
+    # 4. 计算脸部面积（轮廓关键点0-16）
+    face_outline_points = points[0:17]
+    face_area = _compute_polygon_area(face_outline_points)
+
+    # 5. 计算眼睛占比（避免近景远景影响）
+    eye_face_ratio = eye_area / face_area if face_area > 0 else 0
+
+    # 6. 转换为0-100评分（比例越高分数越高）
+    # 假设eye_face_ratio在0.05-0.15之间为正常范围
+    min_ratio = 0.05
+    max_ratio = 0.15
+
+    if eye_face_ratio <= min_ratio:
+        score = 0
+    elif eye_face_ratio >= max_ratio:
+        score = 100
+    else:
+        score = (eye_face_ratio - min_ratio) / (max_ratio - min_ratio) * 100
+
+    _logger.info(
+        f"[eye_size] 眼睛面积占比计算: "
+        f"eye_area={eye_area:.1f}, "
+        f"face_area={face_area:.1f}, "
+        f"ratio={eye_face_ratio:.3f}, "
+        f"score={score:.2f}"
+    )
 
     return round(score, 2)
+
+
+def _compute_polygon_area(points: list[tuple[int, int]]) -> float:
+    """
+    计算多边形面积（使用Shoelace公式）
+
+    Args:
+        points: 多边形顶点坐标列表
+
+    Returns:
+        float: 多边形面积
+    """
+    n = len(points)
+    if n < 3:
+        return 0.0
+
+    # Shoelace公式：A = 0.5 * |Σ(x_i * y_{i+1} - x_{i+1} * y_i)|
+    area = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        area += points[i][0] * points[j][1]
+        area -= points[j][0] * points[i][1]
+
+    return abs(area) / 2.0
 
 
 def _classify_eye_shape(points: list[tuple[int, int]]) -> str:

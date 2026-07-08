@@ -262,7 +262,8 @@ export default function ChatPage({ chatId, caseId, counterpartId, counterpartNam
     let cancelled = false
     async function loadCallHistory() {
       try {
-        const result = await listCallSessionsByCase(resolvedCaseId, requesterId, 10)
+        // TypeScript narrowing: we already checked resolvedCaseId && requesterId above
+        const result = await listCallSessionsByCase(resolvedCaseId!, requesterId!, 10)
         if (!cancelled) {
           setCallHistoryCount(result.call_count || result.call_sessions?.length || 0)
         }

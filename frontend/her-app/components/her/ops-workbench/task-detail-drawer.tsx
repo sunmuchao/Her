@@ -192,7 +192,7 @@ export default function TaskDetailDrawer({ taskId, pollPath, onClose, onRetry }:
         {/* 底部操作按钮 */}
         {task && !isLoading && !error && (
           <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30">
-            {task.status === 'failed' && onRetry && (
+            {task.status === 'failed' && onRetry && resolvedTaskId && (
               <button
                 type="button"
                 onClick={() => onRetry(resolvedTaskId)}

@@ -21,6 +21,9 @@ const nextConfig = {
       // 本地资料库头像（virtual_profile_photos / partner-search seed）
       { protocol: 'https', hostname: 'cdn.her.local' },
       { protocol: 'https', hostname: 'img.her.local' },
+      // MinIO 本地存储（Docker 内部 URL 转换后的外部访问地址）
+      { protocol: 'http', hostname: 'localhost', port: '9000' },
+      { protocol: 'http', hostname: '127.0.0.1', port: '9000' },
     ],
   },
 

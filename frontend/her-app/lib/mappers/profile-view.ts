@@ -70,21 +70,25 @@ function buildFallbackVerificationItems(rawProfile: Record<string, unknown>): Ve
     {
       name: '身份认证',
       status: videoVerified ? 'verified' : 'unverified',
+      statusText: videoVerified ? '已认证' : '未认证',
       description: videoVerified ? '已完成真人核验' : '录制一段简短视频完成认证',
     },
     {
       name: '学历认证',
       status: 'unverified',
+      statusText: '未认证',
       description: '上传学位证书或学信网截图',
     },
     {
       name: '职业认证',
       status: 'unverified',
+      statusText: '未认证',
       description: '上传工牌或在职证明',
     },
     {
       name: '收入认证',
       status: 'unverified',
+      statusText: '未认证',
       description: '上传近三个月收入材料',
     },
   ]

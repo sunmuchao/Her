@@ -256,7 +256,8 @@ export function useVerificationFlow(onBack: () => void) {
     let cancelled = false
     async function loadDetail() {
       try {
-        const detail = await fetchVerificationDetail(submissionId)
+        // TypeScript narrowing: we already checked submissionId above
+        const detail = await fetchVerificationDetail(submissionId!)
         if (!cancelled) {
           setLatestFieldSubmission(detail)
         }

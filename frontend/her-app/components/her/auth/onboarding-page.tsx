@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useId } from 'react'
-import { ChevronLeft, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2 } from 'lucide-react'
+import { ChevronLeft, X, Check, ImagePlus, Heart, Users, Sparkles, Loader2, Crown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { submitOnboarding } from '@/lib/auth/auth-api'
 import { applyLoginPayload } from '@/lib/auth/session'
@@ -10,6 +10,7 @@ import { notifyError, notifySuccess } from '@/lib/notify'
 import { Button } from '@/components/ui/button'
 import { CitySelector } from '@/components/her/ui/city-selector'
 import { DateWheelPicker } from '@/components/her/ui/date-wheel-picker'
+import { uploadImage, compressImage } from '@/lib/api/endpoints/media'
 
 const STORAGE_KEY = 'her_onboarding_draft'
 
@@ -27,6 +28,7 @@ interface ProfileData {
   birthday: string
   currentCity: string
   photos: string[]
+  avatarIndex: number  // 新增：头像索引（默认为0，即第一张照片）
   relationshipGoal: string
   marriageStatus: string
   hasChildren: string
@@ -39,46 +41,10 @@ const EMPTY_PROFILE: ProfileData = {
   birthday: '',
   currentCity: '',
   photos: [],
+  avatarIndex: 0,  // 新增：默认第一张照片为头像
   relationshipGoal: '',
   marriageStatus: '',
   hasChildren: '',
-}
-
-// Compress image before upload
-async function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        let width = img.width
-        let height = img.height
-
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width
-          width = maxWidth
-        }
-
-        canvas.width = width
-        canvas.height = height
-
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'))
-          return
-        }
-
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.onerror = reject
-      img.src = e.target?.result as string
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
 }
 
 export default function OnboardingPage({ 
@@ -183,6 +149,24 @@ export default function OnboardingPage({
     // Submit on final step
     setIsSubmitting(true)
     try {
+      // 新增：调整照片顺序，把头像照片放在第一位
+      const reorderedPhotos = profile.avatarIndex === 0
+        ? profile.photos  // 如果头像已经是第一张，不需要调整
+        : [
+            profile.photos[profile.avatarIndex],  // 头像照片移到第一位
+            ...profile.photos.slice(0, profile.avatarIndex),  // 原头像之前的照片
+            ...profile.photos.slice(profile.avatarIndex + 1)  // 原头像之后的照片
+          ]
+
+      console.log('[handleNext] 提交到后端', {
+        currentStep: currentStep,
+        photosCount: profile.photos.length,
+        avatarIndex: profile.avatarIndex,
+        reorderedPhotos: reorderedPhotos,
+        photosType: typeof reorderedPhotos,
+        photosArrayType: reorderedPhotos.map(p => typeof p),
+      })
+
       const result = await submitOnboarding({
         basic_info: {
           name: profile.name,
@@ -197,9 +181,10 @@ export default function OnboardingPage({
         preference: {
           relationship_goal: profile.relationshipGoal,
         },
-        photos: profile.photos,
+        photos: reorderedPhotos,  // 使用重新排序后的照片列表
         mark_completed: true,
       })
+      console.log('[handleNext] 提交成功，返回结果', result)
       applyLoginPayload({
         user: {
           user_id: result.user?.user_id,
@@ -218,6 +203,7 @@ export default function OnboardingPage({
       notifySuccess('资料已保存')
       onComplete()
     } catch (error) {
+      console.error('[handleNext] 提交失败', error)
       notifyError(error, '资料保存失败，请重试')
     } finally {
       setIsSubmitting(false)
@@ -238,19 +224,48 @@ export default function OnboardingPage({
     const files = e.target.files
     if (!files || files.length === 0) return
 
+    console.log('[handlePhotoUpload] 开始处理照片上传', {
+      filesCount: files.length,
+      currentPhotos: profile.photos,
+    })
+
     setIsUploading(true)
     try {
       const newPhotos: string[] = []
       for (const file of Array.from(files)) {
-        const compressed = await compressImage(file)
-        newPhotos.push(compressed)
+        console.log('[handlePhotoUpload] 处理文件', {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+        })
+
+        // Step 1: 前端压缩（使用API的compressImage函数）
+        const compressedFile = await compressImage(file)
+        console.log('[handlePhotoUpload] 压缩完成', {
+          compressedSize: compressedFile.size,
+        })
+
+        // Step 2: 上传到MinIO（使用API的uploadImage函数）
+        const result = await uploadImage(compressedFile)
+        console.log('[handlePhotoUpload] 上传完成，mediaUrl', result.mediaUrl)
+
+        // Step 3: 保存media_url（而非base64 DataURL）
+        newPhotos.push(result.mediaUrl)
       }
+
+      console.log('[handlePhotoUpload] 所有照片处理完成', {
+        newPhotosCount: newPhotos.length,
+        newPhotos: newPhotos,
+      })
+
       setProfile(prev => ({
         ...prev,
         photos: [...prev.photos, ...newPhotos].slice(0, 6)
       }))
+      notifySuccess('照片上传成功')
     } catch (error) {
-      notifyError(error, '图片处理失败')
+      console.error('[handlePhotoUpload] 照片上传失败', error)
+      notifyError(error, '照片上传失败')
     } finally {
       setIsUploading(false)
       // Reset input
@@ -261,9 +276,30 @@ export default function OnboardingPage({
   }
 
   const removePhoto = (index: number) => {
+    setProfile(prev => {
+      const newPhotos = prev.photos.filter((_, i) => i !== index)
+      // 新增：调整avatarIndex
+      let newAvatarIndex = prev.avatarIndex
+      if (index === prev.avatarIndex) {
+        // 如果删除的是头像照片，默认设置下一张（或第一张）为头像
+        newAvatarIndex = Math.min(prev.avatarIndex, newPhotos.length - 1)
+      } else if (index < prev.avatarIndex) {
+        // 如果删除的照片在头像之前，avatarIndex需要减1
+        newAvatarIndex = prev.avatarIndex - 1
+      }
+      return {
+        ...prev,
+        photos: newPhotos,
+        avatarIndex: newAvatarIndex
+      }
+    })
+  }
+
+  // 新增：设置头像
+  const setAvatar = (index: number) => {
     setProfile(prev => ({
       ...prev,
-      photos: prev.photos.filter((_, i) => i !== index)
+      avatarIndex: index
     }))
   }
 
@@ -408,15 +444,22 @@ export default function OnboardingPage({
                 
                 <div className="flex flex-wrap gap-3 justify-center">
                   {profile.photos.map((photo, index) => (
-                    <div 
-                      key={index} 
+                    <div
+                      key={index}
                       className="relative w-20 h-20 rounded-xl overflow-hidden bg-secondary animate-scale-in"
                     >
-                      <img 
-                        src={photo} 
+                      <img
+                        src={photo}
                         alt={`照片 ${index + 1}`}
                         className="w-full h-full object-cover"
                       />
+                      {/* 新增：头像标识 */}
+                      {index === profile.avatarIndex && (
+                        <div className="absolute top-1 left-1 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                          <Crown className="w-3 h-3 text-primary-foreground" />
+                        </div>
+                      )}
+                      {/* 删除按钮 */}
                       <button
                         type="button"
                         onClick={() => removePhoto(index)}
@@ -425,6 +468,18 @@ export default function OnboardingPage({
                       >
                         <X className="w-3 h-3" />
                       </button>
+                      {/* 新增：设置头像按钮（仅在不是头像时显示） */}
+                      {index !== profile.avatarIndex && (
+                        <button
+                          type="button"
+                          onClick={() => setAvatar(index)}
+                          className="absolute bottom-1 left-1/2 -translate-x-1/2 w-auto px-2 py-1 rounded-full bg-primary/80 flex items-center justify-center text-primary-foreground hover:bg-primary transition-colors text-xs"
+                          aria-label={`将照片 ${index + 1} 设为头像`}
+                        >
+                          <Crown className="w-3 h-3 mr-1" />
+                          设为头像
+                        </button>
+                      )}
                     </div>
                   ))}
                   

@@ -96,6 +96,14 @@ export type ReviewResult = {
   review_id?: string
 }
 
+export type ReviewQueueParams = {
+  status?: string
+  field_key?: string
+  page?: number
+  limit?: number
+  signal?: AbortSignal
+}
+
 type DeclaredValueFieldKey = 'education' | 'occupation' | 'job' | 'income'
 
 const FIELD_KEY_MAP: Record<string, string> = {

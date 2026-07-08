@@ -21,11 +21,34 @@ export type UploadMediaResponse = {
 }
 
 /**
+ * 将 MinIO Docker 内部 URL 转换为浏览器可访问的外部 URL
+ *
+ * 问题：Docker 内部 URL 使用 hostname 'minio'，浏览器无法访问
+ * 解决：将 'minio:9000' 替换为 'localhost:9000'
+ *
+ * 示例：
+ * - 输入: http://minio:9000/her-media/chat/usr-xxx/photo.jpg
+ * - 输出: http://localhost:9000/her-media/chat/usr-xxx/photo.jpg
+ */
+export function convertMinioUrl(url: string): string {
+  if (!url) return url
+
+  // 将 Docker 内部 hostname 替换为 localhost
+  return url.replace(/http:\/\/minio:9000/, 'http://localhost:9000')
+}
+
+/**
  * 上传图片到 MinIO
  */
 export async function uploadImage(
   file: File,
 ): Promise<UploadMediaResponse> {
+  console.log('[uploadImage] 开始上传照片', {
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+  })
+
   const formData = new FormData()
   formData.append('file', file)
   formData.append('media_type', 'image')
@@ -49,10 +72,23 @@ export async function uploadImage(
 
   if (!response.ok) {
     const errorText = await response.text()
+    console.error('[uploadImage] 上传失败', errorText)
     throw new Error(`上传失败: ${errorText}`)
   }
 
-  return response.json()
+  const rawData = await response.json()
+  console.log('[uploadImage] 上传成功，原始返回数据', rawData)
+
+  // ⚠️ 后端返回下划线命名，转换为驼峰命名以匹配 TypeScript 类型定义
+  const result: UploadMediaResponse = {
+    mediaId: rawData.media_id,
+    mediaUrl: rawData.media_url,  // ⚠️ 关键转换：media_url → mediaUrl
+    mediaType: rawData.media_type,
+    metadata: rawData.metadata,
+  }
+
+  console.log('[uploadImage] 转换后的数据', result)
+  return result
 }
 
 /**

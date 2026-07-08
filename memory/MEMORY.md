@@ -2,6 +2,8 @@
 
 ## Session & Vector Logic
 
+- [用户交互行为数据AI Native完整改造方案](user-behavior-data-ai-native-refactor-plan.md) — 2026-07-08：从硬编码规则转向AI决策引擎的完整方案（移除阈值判断、补充缺失数据、新增AI场景，推荐阅读）
+- [外貌偏好学习改进方案落地完成](appearance-preference-improvement-complete.md) — 2026-07-08：分离质量和风格偏好，删除颜值平均分逻辑，修复重复加分问题（推荐阅读）
 - [会话结束和搜索完整逻辑](session-end-and-search-complete-flow.md) — 会话结束后写入画像+搜索推荐的完整系统逻辑梳理（推荐阅读）
 - [会话结束写入向量库逻辑](session-end-to-vector-logic.md) — 会话结束后写入向量库和摘要信息的完整链路
 - [发现页搜索推荐逻辑](discovery-page-search-logic.md) — 发现页搜索推荐的完整流程与数据结构
