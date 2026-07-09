@@ -1,57 +1,65 @@
-# 开发环境配置：代码挂载 + 快速重启
-# 使用方法：docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# 开发环境覆盖：后端源码挂载，改代码后重启容器即可生效
+# 使用方法：
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# 常用命令：
+#   docker compose restart gateway-public gateway-ops gateway-internal
+#   docker compose restart scheduler
+
+x-her-backend-code: &her_backend_code
+  - ./external-systems:/app/external-systems
+  - ./match_domain:/app/match_domain
+  - ./observability:/app/observability
+  - ./async_jobs:/app/async_jobs
+  - ./task_scheduler:/app/task_scheduler
+  - ./db_migrations:/app/db_migrations
+  - ./relationship_ledger:/app/relationship_ledger
+  - ./partner_search:/app/partner_search
+  - ./persona_memory_sync:/app/persona_memory_sync
+  - ./profile_service:/app/profile_service
+  - ./assessment:/app/assessment
+  - ./scripts:/app/scripts
+  - ./config:/app/config
+  - ./her_env.py:/app/her_env.py
+  - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
+  - ./her_monorepo_bootstrap.py:/app/her_monorepo_bootstrap.py
+  - ./mysql_source_config.py:/app/mysql_source_config.py
+  - ./outer_mysql_compat.py:/app/outer_mysql_compat.py
+  - ./outer_system_mysql_schema.py:/app/outer_system_mysql_schema.py
+  - ./partner_moderation.py:/app/partner_moderation.py
+  - ./profile_detail_reader.py:/app/profile_detail_reader.py
+  - ./profile_source_refs.py:/app/profile_source_refs.py
+  - ./profile_status_audit_log.py:/app/profile_status_audit_log.py
+  - ./profile_status_service.py:/app/profile_status_service.py
+  - ./her_json_utils.py:/app/her_json_utils.py
+  - ./her_production.py:/app/her_production.py
 
 services:
   gateway-public:
-    # 使用本地已构建的镜像（避免重复构建）
-    image: her-gateway-public:latest
+    volumes: *her_backend_code
+    environment:
+      HER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
 
-    # 添加代码挂载（改代码后重启即可，无需重建）
-    volumes:
-      - ./external-systems:/app/external-systems
-      - ./match_domain:/app/match_domain
-      - ./profile_service:/app/profile_service
-      - ./observability:/app/observability
-      - ./partner_search:/app/partner_search
-      - ./persona_memory_sync:/app/persona_memory_sync
-      - ./assessment:/app/assessment
-      - ./config:/app/config
-      - ./scripts:/app/scripts
-      - ./relationship_ledger:/app/relationship_ledger
-      - ./async_jobs:/app/async_jobs
-      - ./task_scheduler:/app/task_scheduler
-      - ./db_migrations:/app/db_migrations
-      # 挂载根目录的 Python 文件
-      - ./her_env.py:/app/her_env.py
-      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
-
-    # 开发环境：启用调试日志
+  gateway-ops:
+    volumes: *her_backend_code
     environment:
       HER_LOG_LEVEL: DEBUG
       PYTHONUNBUFFERED: "1"
 
   gateway-internal:
-    image: her-gateway-internal:latest
-    volumes:
-      - ./external-systems:/app/external-systems
-      - ./match_domain:/app/match_domain
-      - ./profile_service:/app/profile_service
-      - ./observability:/app/observability
-      - ./partner_search:/app/partner_search
-      - ./persona_memory_sync:/app/persona_memory_sync
-      - ./relationship_ledger:/app/relationship_ledger
-      - ./async_jobs:/app/async_jobs
-      - ./task_scheduler:/app/task_scheduler
-      - ./her_env.py:/app/her_env.py
-      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
+    volumes: *her_backend_code
+    environment:
+      HER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
 
-  gateway-ops:
-    image: her-gateway-ops:latest
-    volumes:
-      - ./external-systems:/app/external-systems
-      - ./match_domain:/app/match_domain
-      - ./profile_service:/app/profile_service
-      - ./observability:/app/observability
-      - ./partner_search:/app/partner_search
-      - ./her_env.py:/app/her_env.py
-      - ./her_repo_path_bootstrap.py:/app/her_repo_path_bootstrap.py
+  scheduler:
+    volumes: *her_backend_code
+    environment:
+      HER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
+
+  bootstrap:
+    volumes: *her_backend_code
+    environment:
+      HER_LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: "1"
