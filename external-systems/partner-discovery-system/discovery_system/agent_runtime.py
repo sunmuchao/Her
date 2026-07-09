@@ -1012,7 +1012,7 @@ class AgentsSdkDiscoveryAgentRuntime:
             - age_min/age_max: 年龄范围
             - cities: 城市列表
             - relationship_goals: 关系目标
-            - beauty_score_min: 颜值评分下限（0-100）← 新增
+            - beauty_score_min: 内部外形筛选强度阈值（0-100）← 仅内部使用，不可对用户直说
 
             性格匹配（向量搜索，可选）：
             - personality_match_json: 性格特质匹配条件
@@ -1058,8 +1058,23 @@ class AgentsSdkDiscoveryAgentRuntime:
             - personality_match_json: 性格匹配条件的JSON字符串（可选）
             - limit: 最终返回数量（默认5，最大10）
             - exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
-            - beauty_score_min: 颜值评分下限（0-100，默认0表示不筛选）
+            - beauty_score_min: 内部外形筛选阈值（0-100，默认0表示不筛选）
             - appearance_match_json: 外貌匹配条件的JSON字符串（可选）
+
+            【重要：对用户的表达约束】
+            - 你可以内部使用 beauty_score_min / appearance_match_json 来完成检索
+            - 但回复用户时，禁止提及：
+              - “80分以上”
+              - “颜值评分”
+              - “打分”
+              - “阈值”
+              - `beauty_score_min`
+            - 外貌筛选成功后，应改说：
+              - “我按你更在意的外形感觉重新筛了一批”
+              - “这批整体更符合你的审美方向”
+              - “先给你看几位更有眼缘的”
+            - 候选人分组标题也不要写“高颜值推荐”或“80分以上推荐”
+              应写成“更符合你审美的这几位”或“这批更有眼缘”
 
             `exclude_current_results` 使用规则：
             - 用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"：
