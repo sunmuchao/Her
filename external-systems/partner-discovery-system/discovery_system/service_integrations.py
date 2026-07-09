@@ -440,16 +440,20 @@ def search_partner_candidates(
     personality_match: dict[str, Any] = {},  # ← 新增参数：性格匹配条件
     limit: int,
     exclude_current_results: bool = False,  # ← 新增参数：排除当前已展示候选人
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 新增参数：外貌向量搜索
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    appearance_match: dict[str, Any] = {},
     source: str | None = None,
     load_profile: Callable[..., Any] | None = None,
     search: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """搜索候选人（支持性格向量筛选）
+    """搜索候选人（支持性格向量筛选 + 外貌向量搜索）
 
     Args:
         session: 会话对象
-        criteria: 结构化查询条件（硬约束：性别、年龄、城市）
-        personality_match: 性格匹配条件（软约束：向量筛选）
+        criteria: 结构化查询条件（硬约束：性别、年龄、城市、颜值评分）
+        personality_match: 性格匹配条件（向量搜索）
             示例：
             {
                 "match_traits": ["外向", "温柔"],
@@ -459,6 +463,14 @@ def search_partner_candidates(
             - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
         limit: 结果数量限制
         exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
+        appearance_match: 外貌匹配条件（向量搜索）
+            示例：
+            {
+                "text": "清秀",
+                "similarity_threshold": 0.70
+            }
+            - text: 搜索文本（风格标签或口语化描述）
+            - similarity_threshold: 相似度阈值（0.0-1.0，默认0.70）
         source: 数据源
         load_profile: 加载用户profile的函数
         search: 搜索执行函数
@@ -467,9 +479,11 @@ def search_partner_candidates(
         搜索结果，包含候选人列表 + 摘要信息 + 筛选统计
     """
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 转换 personality_match 为 vector_filter_json
+    # 转换向量筛选条件
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     vector_filter_json = None
+
+    # 1. 性格向量筛选
     if personality_match:
         match_traits = personality_match.get("match_traits") or []
         similarity_threshold = float(personality_match.get("similarity_threshold") or 0.75)
@@ -485,20 +499,39 @@ def search_partner_candidates(
                 }
             }
             _logger.info(
-                "【性格匹配转换】personality_match=%s → vector_filter_json=%s",
-                personality_match,
-                vector_filter_json
+                "【性格向量搜索】match_traits=%s threshold=%s",
+                match_traits, similarity_threshold
+            )
+
+    # 2. 外貌向量筛选（新增）
+    if appearance_match:
+        appearance_text = appearance_match.get("text") or ""
+        appearance_threshold = float(appearance_match.get("similarity_threshold") or 0.70)
+
+        if appearance_text:
+            # 合并到 vector_filter_json
+            if vector_filter_json is None:
+                vector_filter_json = {"include": {}}
+
+            vector_filter_json["include"]["appearance_profile"] = {
+                "text": appearance_text,
+                "similarity_threshold": appearance_threshold
+            }
+
+            _logger.info(
+                "【外貌向量搜索】text=%s threshold=%s",
+                appearance_text, appearance_threshold
             )
 
     return search_partner_candidates_with(
         session,
         criteria=criteria,
         limit=limit,
-        exclude_current_results=exclude_current_results,  # ← 传递排除参数
+        exclude_current_results=exclude_current_results,
         source=source if source is not None else profile_source(),
         load_profile=load_profile or load_self_profile,
         search=search or search_profiles,
-        vector_filter_json=vector_filter_json,  # ← 传递转换后的参数
+        vector_filter_json=vector_filter_json,  # ← 传递向量筛选条件
     )
 
 
@@ -1084,6 +1117,14 @@ def persist_search_run(
     search_response: dict[str, Any],
     now: datetime,
 ) -> int | None:
+    # ✅ 可观测性增强：入口日志，记录关键参数
+    _logger.info(
+        "【persist_search_run 入口】session_id=%s result_count=%s has_match=%s",
+        session.session_id,
+        search_response.get("result_count"),
+        search_response.get("has_match"),
+    )
+
     error_summary = search_error_summary(search_response)
     session.state["last_search_result_count"] = int(search_response.get("result_count") or 0)
     session.state["last_search_has_match"] = bool(search_response.get("has_match"))
@@ -1097,7 +1138,37 @@ def persist_search_run(
     source = str(request_meta.get("source") or "").strip()
     if not source:
         session.state.pop("last_search_run_id", None)
+        _logger.warning(
+            "【persist_search_run 跳过】session_id=%s reason=no_source",
+            session.session_id,
+        )
         return None
+
+    # ✅ 可观测性增强：检查 search_response 中是否包含 datetime 对象
+    # 遍历 response 的关键字段，检测是否有非 JSON 兼容类型
+    def _detect_non_json_types(obj: Any, path: str = "") -> list[str]:
+        """递归检测对象中的非 JSON 兼容类型"""
+        non_json_types = []
+        if isinstance(obj, datetime):
+            non_json_types.append(f"{path}: datetime")
+        elif isinstance(obj, set):
+            non_json_types.append(f"{path}: set")
+        elif isinstance(obj, dict):
+            for key, value in obj.items():
+                non_json_types.extend(_detect_non_json_types(value, f"{path}.{key}"))
+        elif isinstance(obj, (list, tuple)):
+            for idx, item in enumerate(obj):
+                non_json_types.extend(_detect_non_json_types(item, f"{path}[{idx}]"))
+        return non_json_types
+
+    detected_types = _detect_non_json_types(search_response, "response")
+    if detected_types:
+        _logger.warning(
+            "【persist_search_run 检测到非JSON类型】session_id=%s detected_types=%s",
+            session.session_id,
+            detected_types[:10],  # 只记录前10个，避免日志过长
+        )
+
     search_run_id = storage.create_search_run(
         session_id=session.session_id,
         requester_id=session.requester_id,

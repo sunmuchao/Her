@@ -87,6 +87,13 @@ services:
         - path: ./her_repo_path_bootstrap.py
           target: /app/her_repo_path_bootstrap.py
           action: sync+restart
+        # ✅ 新增：根目录Python文件同步
+        - path: ./outer_mysql_compat.py
+          target: /app/outer_mysql_compat.py
+          action: sync+restart
+        - path: ./outer_system_mysql_schema.py
+          target: /app/outer_system_mysql_schema.py
+          action: sync+restart
     env_file:
       - .env
     environment:

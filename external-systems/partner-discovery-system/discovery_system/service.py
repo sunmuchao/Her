@@ -499,53 +499,70 @@ class DiscoveryService:
         session.state["create_session_mode"] = open_mode
 
         if _discovery_fast_open_enabled() and open_mode == "profile_first":
-            # 先补推送“有人想认识你”的被动推荐，避免 fast-open 直接返回时漏掉这类卡片。
+            # ✅ 修复：改为同步执行，确保前端立即拿到包含搜索结果的 session
+            # 问题：之前使用后台线程异步执行，前端拿到空 session 后不会自动刷新
+            # 解决：同步执行搜索，让前端直接拿到完整结果
             self._check_and_push_proxy_intro_cases(session, profile_id, current)
-            session.state["fast_open_pending"] = True
-            session.view = {
-                "timeline": list(session.view.get("timeline") or []) + [
-                    assistant_message(
-                        f"{session.session_id}-opening",
-                        "我先根据你的资料筛一轮，马上把结果发你。",
-                        created_at=current,
-                    ),
-                ],
-                "criteria_chips": [],
-                "suggested_actions": [],
-                "composer": composer("小雅正在根据你的资料筛选...", disabled=True),
-            }
-            self.storage.save_session(session)
-            turn_id = self.storage.create_turn(
-                session_id=session.session_id,
-                request_kind="session_opened_pending",
-                user_message_text=None,
-                consumed_action_id=None,
-                agent_decision={
-                    "phase": "collecting_preferences",
-                    "assistant_message": "我先根据你的资料筛一轮，马上把结果发你。",
-                },
-                view_snapshot=clone_view(session.view),
-                created_at=current,
-                trace_id=trace_id,
-            )
-            self._persist_view_snapshot(
-                session,
-                turn_id=turn_id,
-                created_at=current,
-                trace_id=trace_id,
-            )
-            self._increment_metric("sessions.created")
-            self._increment_metric("turns.created")
-            self._increment_metric("sessions.create.profile_first.fast_open")
-            threading.Thread(
-                target=self._complete_profile_first_session_open,
-                kwargs={
-                    "session_id": session.session_id,
-                    "current": current,
-                    "trace_id": trace_id,
-                },
-                daemon=True,
-            ).start()
+
+            # 同步执行 fast open 补首轮结果
+            try:
+                runtime_result, open_tool_calls = self._profile_first_session_open(session)
+                search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
+                self.storage.save_session(session)
+
+                turn_id = self.storage.create_turn(
+                    session_id=session.session_id,
+                    request_kind="session_opened",
+                    user_message_text=None,
+                    consumed_action_id=None,
+                    agent_decision=self._decision_payload(runtime_result.decision),
+                    view_snapshot=clone_view(session.view),
+                    created_at=current,
+                    search_run_id=search_run_id,
+                    trace_id=trace_id,
+                )
+                self._persist_view_snapshot(
+                    session,
+                    turn_id=turn_id,
+                    created_at=current,
+                    trace_id=trace_id,
+                )
+                self._record_tool_calls(
+                    session_id=session.session_id,
+                    turn_id=turn_id,
+                    tool_calls=open_tool_calls,
+                    search_run_id=search_run_id,
+                    created_at=current,
+                    trace_id=trace_id,
+                )
+                self._increment_metric("sessions.created")
+                self._increment_metric("turns.created")
+                self._increment_metric("sessions.fast_open.completed")
+
+                # 推送候选人准备通知
+                self._push_candidates_ready_notification(
+                    session_id=session.session_id,
+                    profile_id=session.profile_id,
+                    search_run_id=search_run_id,
+                )
+
+            except Exception:
+                _logger.exception("[Discovery Fast Open] 补首轮结果失败: session_id=%s", session.session_id)
+                # 失败时返回基础 session
+                session.view = {
+                    "timeline": list(session.view.get("timeline") or []) + [
+                        assistant_message(
+                            f"{session.session_id}-opening",
+                            "我先根据你的资料筛一轮，马上把结果发你。",
+                            created_at=current,
+                        ),
+                    ],
+                    "criteria_chips": [],
+                    "suggested_actions": [],
+                    "composer": composer("小雅正在根据你的资料筛选...", disabled=True),
+                }
+                self.storage.save_session(session)
+
             return self._session_payload(session)
 
         # ✅ 新增：检查并推送待推送的被动推荐案件（有人想认识你）

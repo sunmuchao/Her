@@ -314,6 +314,29 @@ def build_mysql_prefilter(
     # 5. 关系目标：必须硬筛选（核心条件）
     add_in("relationship_goal", criteria.get("relationship_goals"), allow_missing=True)
 
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 新增：颜值评分筛选（数据库筛选）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    beauty_score_min = criteria.get("beauty_score_min")
+    if beauty_score_min is not None:
+        # JOIN profile_photo_features 表进行筛选
+        # 注意：这里使用 EXISTS 子查询，确保只返回有颜值评分且评分达标的用户
+        base_clauses.append(
+            "EXISTS (SELECT 1 FROM profile_photo_features ppf "
+            "WHERE ppf.profile_id = p.id "
+            "AND ppf.beauty_score >= %s "
+            "AND ppf.analysis_status = 'done')"
+        )
+        base_params.append(float(beauty_score_min))
+
+        # 记录日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"【SQL筛选】beauty_score >= {beauty_score_min}")
+
+    # 注意：appearance_keywords 不在这里筛选
+    # 风格标签通过向量搜索实现（见 service_integrations.py）
+
     # 6. 抽烟：改为期望匹配（习惯可以协商）
     # add_exact("smoking", criteria.get("smoking"), allow_missing=True)  ← 移除硬筛选
 

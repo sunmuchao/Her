@@ -106,6 +106,12 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const sseConnectedRef = useRef(false)
   const [isSseConnected, setIsSseConnected] = useState(false)
 
+  // ✅ 新增：防止新建会话后立即重复加载
+  const isNewSessionJustCreatedRef = useRef(false)
+
+  // ✅ 新增：标记新建会话正在进行中，防止loadSession useEffect重复触发
+  const isCreatingNewSessionRef = useRef(false)
+
   const applyMappedView = useCallback((mapped: MappedDiscoveryView) => {
     const timelineItems = mapped.timelineItems.map((item) => {
       if (
@@ -264,6 +270,12 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   }, [])
 
   useEffect(() => {
+    // ✅ 防止新建会话时触发loadSession useEffect重复执行
+    if (isCreatingNewSessionRef.current) {
+      console.log('[DEBUG loadSession] 正在创建新会话，跳过loadSession')
+      return
+    }
+
     let cancelled = false
     const isCancelled = () => cancelled
 
@@ -481,6 +493,12 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   }
 
   const reloadSession = useCallback(async () => {
+    // ✅ 防止新建会话后立即重复加载
+    if (isNewSessionJustCreatedRef.current) {
+      console.log('[DEBUG reloadSession] 新建会话刚完成，跳过重复加载')
+      return
+    }
+
     const profileId = getProfileId()
     if (!profileId || !sessionId) return
     try {
@@ -588,13 +606,27 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
   const createNewSession = useCallback(async () => {
     const profileId = getProfileId()
     if (!profileId) return null
+
+    // ✅ 标记正在创建新会话，防止loadSession useEffect重复触发
+    isCreatingNewSessionRef.current = true
+    console.log('[DEBUG createNewSession] 开始创建新会话，设置防触发标记')
+
     setIsLoadingSession(true)
     try {
       const created = await createDiscoverySession({ profileId })
       const sid = created.session?.session_id || null
       if (sid) {
+        // ✅ 标记新建会话已完成，防止后续立即重复加载
+        isNewSessionJustCreatedRef.current = true
         applyDiscoveryResponse(created, profileId, '/v1/discovery/sessions')
         notifySuccess('已创建新会话')
+
+        // ✅ 等待1秒后解除标记，让后续的SSE/轮询可以正常工作
+        setTimeout(() => {
+          isNewSessionJustCreatedRef.current = false
+          isCreatingNewSessionRef.current = false
+          console.log('[DEBUG createNewSession] 解除所有防重复标记')
+        }, 1000)
       }
       return sid
     } catch (error) {

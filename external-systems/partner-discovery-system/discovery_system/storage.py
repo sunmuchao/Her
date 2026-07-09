@@ -8,6 +8,7 @@ The discovery service can run in two modes:
 
 from __future__ import annotations
 
+import logging
 import os
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ from uuid import uuid4
 from ._path_bootstrap import ensure_her_repo_on_sys_path
 
 ensure_her_repo_on_sys_path(Path(__file__))
+
+_logger = logging.getLogger(__name__)
 
 from her_external_systems import (  # noqa: E402
     MySQLCompatConnection,
@@ -968,6 +971,39 @@ class MySQLDiscoveryStorage:
     ) -> int:
         conn = self._open()
         try:
+            # ✅ 可观测性增强：记录即将写入的数据摘要
+            _logger.info(
+                "【create_search_run 开始】session_id=%s result_count=%s has_match=%s",
+                session_id,
+                response.get("result_count"),
+                response.get("has_match"),
+            )
+
+            # ✅ 可观测性增强：尝试序列化 response，失败时记录详细错误
+            try:
+                response_json = json_dumps(response)
+            except TypeError as e:
+                # 序列化失败，记录详细的错误信息
+                _logger.error(
+                    "【create_search_run 序列化失败】session_id=%s error=%s response_keys=%s",
+                    session_id,
+                    str(e),
+                    list(response.keys()),
+                )
+                # 尝试逐个字段序列化，找出问题字段
+                for key, value in response.items():
+                    try:
+                        json_dumps({key: value})
+                    except TypeError:
+                        _logger.error(
+                            "【create_search_run 问题字段】session_id=%s field=%s type=%s value_preview=%s",
+                            session_id,
+                            key,
+                            type(value).__name__,
+                            str(value)[:200],  # 只记录前200字符，避免日志过长
+                        )
+                raise
+
             conn.execute(
                 """
                 INSERT INTO discovery_search_runs (
@@ -985,13 +1021,25 @@ class MySQLDiscoveryStorage:
                     int(limit_count),
                     int(response.get("result_count") or 0),
                     1 if response.get("has_match") else 0,
-                    json_dumps(response),
+                    response_json,
                     created_at,
                 ),
             )
             search_run_id = int(conn.lastrowid)
             conn.commit()
+            _logger.info(
+                "【create_search_run 成功】session_id=%s search_run_id=%s",
+                session_id,
+                search_run_id,
+            )
             return search_run_id
+        except Exception as e:
+            _logger.error(
+                "【create_search_run 失败】session_id=%s error=%s",
+                session_id,
+                str(e),
+            )
+            raise
         finally:
             conn.close()
 

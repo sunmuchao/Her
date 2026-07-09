@@ -996,31 +996,56 @@ class AgentsSdkDiscoveryAgentRuntime:
             personality_match_json: str = "",
             limit: int = 5,
             exclude_current_results: bool = False,
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 新增参数：外貌筛选（数据库筛选 + 向量搜索）
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            beauty_score_min: float = 0.0,
+            appearance_match_json: str = "",
         ) -> dict[str, Any]:
             """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。
 
             这是"重新搜人"的唯一工具。是否排除当前已展示候选人，必须由你显式决定并通过参数传入，
             不要假设系统会自动理解"换一批"。
 
-            支持的筛选条件（硬约束）：
+            支持的筛选条件（硬约束，数据库筛选）：
             - gender: 性别（male/female）
             - age_min/age_max: 年龄范围
             - cities: 城市列表
             - relationship_goals: 关系目标
+            - beauty_score_min: 颜值评分下限（0-100）← 新增
 
-            性格匹配（向量筛选，可选）：
+            性格匹配（向量搜索，可选）：
             - personality_match_json: 性格特质匹配条件
               示例：{"match_traits": ["外向", "温柔"], "similarity_threshold": 0.75}
               - match_traits: 想要匹配的性格特质列表
               - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
               - Agent可根据对话上下文自主调整阈值（高要求用0.8，宽松用0.6）
 
-            不支持的筛选条件（已在数据库层移除）：
-            - mbti_types: MBTI类型筛选（已被移除，Agent根据personality_signals自主判断）
+            【新增】外貌风格匹配（向量搜索，可选）：
+            - appearance_match_json: 外貌描述匹配条件
+              示例：{"text": "清秀", "similarity_threshold": 0.70}
+              - text: 搜索文本（风格标签或口语化描述）
+                - 标签示例："清秀"、"温柔"、"阳光"
+                - 口语化示例："纯欲风"、"知性美"、"文艺范"
+              - similarity_threshold: 相似度阈值（0.0-1.0，默认0.70）
+
+            使用场景：
+            ┌─────────────────────────┬──────────────────────────┬─────────────────────┐
+            │ 用户说                  │ Agent应该传的参数        │ 检索方式            │
+            ├─────────────────────────┼──────────────────────────┼─────────────────────┤
+            │ "找长得漂亮的"          │ beauty_score_min=80      │ 数据库筛选（数值）  │
+            │ "找清秀型的"            │ appearance_match_json    │ 向量搜索（标签）    │
+            │                         │ ={"text":"清秀"}         │                     │
+            │ "找纯欲风的"            │ appearance_match_json    │ 向量搜索（口语化）  │
+            │                         │ ={"text":"纯欲风"}       │                     │
+            │ "找清秀又漂亮的"        │ beauty_score_min=75      │ 数据库+向量组合     │
+            │                         │ + appearance_match_json  │                     │
+            └─────────────────────────┴──────────────────────────┴─────────────────────┘
 
             返回数据：
             - 基础信息：姓名、年龄、城市、职业等
             - 性格数据：personality_signals包含MBTI、依恋风格、价值观等原始数据
+            - 外貌数据：beauty_score、appearance_keywords等
             - candidate_context：数据完整度指示器，帮助Agent判断推荐理由的详细程度
               - evidence_level：数据丰富程度（high/medium/low）
               - reason_mode：可用的推理深度（rich_reasoning/limited_reasoning/profile_only）
@@ -1033,6 +1058,8 @@ class AgentsSdkDiscoveryAgentRuntime:
             - personality_match_json: 性格匹配条件的JSON字符串（可选）
             - limit: 最终返回数量（默认5，最大10）
             - exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
+            - beauty_score_min: 颜值评分下限（0-100，默认0表示不筛选）
+            - appearance_match_json: 外貌匹配条件的JSON字符串（可选）
 
             `exclude_current_results` 使用规则：
             - 用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"：
@@ -1048,14 +1075,14 @@ class AgentsSdkDiscoveryAgentRuntime:
             - 避免因数量限制过小导致向量筛选后结果为空
 
             第二阶段：向量筛选 + 截断
-            - 对第一阶段的候选人做性格向量筛选
+            - 对第一阶段的候选人做性格向量筛选 + 外貌向量筛选
             - 向量筛选后截断为 limit 数量返回
             - 确保"无性格数据"的候选人不会被错误过滤
 
             返回：
             - has_match: 是否找到候选人（True/False）
             - result_count: 候选人数量
-            - results: 候选人列表（包含性格原始数据）
+            - results: 候选人列表（包含性格原始数据 + 外貌数据）
 
             【重要】Agent下一步动作（必须遵循）：
             - 用户想"换一批/看其他/再看看别人"：
@@ -1070,13 +1097,15 @@ class AgentsSdkDiscoveryAgentRuntime:
               → 替代方案：放宽条件、扩大搜索范围、创建订阅等
               → 不能直接输出文本消息结束
             """
-            # 🔍 可观测性埋点：记录Agent传递的criteria_json原始参数
+            # 🔍 可观测性埋点：记录Agent传递的参数
             _logger.info(
-                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s exclude_current_results=%s",
-                repr(criteria_json)[:200],  # 使用repr避免字符串转义问题
+                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s exclude_current_results=%s beauty_score_min=%s appearance_match_json=%s",
+                repr(criteria_json)[:200],
                 repr(personality_match_json)[:200],
                 limit,
                 exclude_current_results,
+                beauty_score_min,
+                repr(appearance_match_json)[:200],
             )
 
             criteria = json.loads(str(criteria_json or "{}"))
@@ -1101,6 +1130,32 @@ class AgentsSdkDiscoveryAgentRuntime:
                     _logger.warning("personality_match_json decode failed: %s", str(exc)[:100])
                     personality_match = {}
 
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 新增：外貌参数处理
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 1. 颜值评分筛选（数据库）
+            if beauty_score_min > 0:
+                criteria["beauty_score_min"] = float(beauty_score_min)
+                _logger.info(f"【外貌筛选-数据库】beauty_score_min={beauty_score_min}")
+
+            # 2. 外貌向量搜索
+            appearance_match = {}
+            if appearance_match_json and appearance_match_json.strip():
+                try:
+                    appearance_match = json.loads(appearance_match_json)
+                    if not isinstance(appearance_match, dict):
+                        _logger.warning("appearance_match_json must decode into a JSON object, got %s", type(appearance_match))
+                        appearance_match = {}
+                    else:
+                        _logger.info(
+                            "【外貌筛选-向量】text=%s threshold=%s",
+                            appearance_match.get("text"),
+                            appearance_match.get("similarity_threshold")
+                        )
+                except json.JSONDecodeError as exc:
+                    _logger.warning("appearance_match_json decode failed: %s", str(exc)[:100])
+                    appearance_match = {}
+
             # ✅ 方案C：放宽limit上限，支持两阶段搜索
             # 第一阶段搜索至少50个，第二阶段截断为用户要求的limit
             # 所以上限放宽到50（而不是10）
@@ -1110,6 +1165,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 personality_match,
                 normalized_limit,
                 exclude_current_results=bool(exclude_current_results),
+                appearance_match=appearance_match,  # ← 传递外貌向量搜索参数
             )
             tool_state["last_search_response"] = response
             return _summarize_search_response_for_model(response)

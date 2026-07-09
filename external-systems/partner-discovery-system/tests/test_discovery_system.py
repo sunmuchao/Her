@@ -2868,6 +2868,7 @@ class DiscoveryProfileFirstSessionTests(unittest.TestCase):
         self.assertEqual(search_mock.call_args.kwargs["limit"], 5)
 
         timeline = created["view"]["timeline"]
+        self.assertEqual(len(timeline), 2)
         self.assertEqual(timeline[0]["item_type"], "assistant_message")
         self.assertIn("有没有眼缘", timeline[0]["body"])
         self.assertEqual(timeline[-1]["item_type"], "result_group")
