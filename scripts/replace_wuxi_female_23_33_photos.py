@@ -205,6 +205,24 @@ def save_manifest(payload: dict[str, Any]) -> None:
     MANIFEST_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def collect_existing_source_files() -> dict[tuple[int, str], Path]:
+    out: dict[tuple[int, str], Path] = {}
+    if not POOL_DIR.exists():
+        return out
+    for path in POOL_DIR.glob("wuxi_female_*_*.jpg"):
+        stem = path.stem
+        parts = stem.split("_")
+        if len(parts) < 4:
+            continue
+        try:
+            age = int(parts[2])
+        except ValueError:
+            continue
+        style = "_".join(parts[3:])
+        out[(age, style)] = path
+    return out
+
+
 def ensure_asset_pool(api_key: str, *, force_regenerate: bool = False) -> list[GeneratedAsset]:
     manifest = load_manifest()
     existing_assets: list[GeneratedAsset] = []
@@ -229,15 +247,25 @@ def ensure_asset_pool(api_key: str, *, force_regenerate: bool = False) -> list[G
     POOL_DIR.mkdir(parents=True, exist_ok=True)
     client, bucket = minio_client()
     built_assets: list[GeneratedAsset] = []
+    local_sources = {} if force_regenerate else collect_existing_source_files()
 
     for age in range(23, 34):
         for style_name, style_hint in STYLE_PRESETS:
             prompt = build_prompt(age, style_hint)
-            task_id = submit_generation(api_key, prompt)
-            remote_url = poll_generation(api_key, task_id)
-            image_bytes = download_image(remote_url)
             source_name = f"wuxi_female_{age}_{style_name}.jpg"
             source_path = POOL_DIR / source_name
+            remote_url = ""
+
+            existing_path = local_sources.get((age, style_name))
+            if existing_path and existing_path.exists():
+                image_bytes = existing_path.read_bytes()
+                source_path = existing_path
+            else:
+                task_id = submit_generation(api_key, prompt)
+                remote_url = poll_generation(api_key, task_id)
+                image_bytes = download_image(remote_url)
+                source_path.write_bytes(image_bytes)
+
             source_path.write_bytes(image_bytes)
             image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
             uploaded_urls: list[str] = []
@@ -349,6 +377,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Only update the first N matched profiles.")
     parser.add_argument("--skip-generate", action="store_true", help="Reuse existing pool manifest only.")
     parser.add_argument("--force-regenerate", action="store_true", help="Ignore old pool and regenerate images.")
+    parser.add_argument("--generate-only", action="store_true", help="Only build the image pool, do not update DB.")
     return parser.parse_args()
 
 
@@ -372,6 +401,10 @@ def main() -> None:
         if not args.skip_generate
         else ensure_asset_pool(api_key="", force_regenerate=False)
     )
+    if args.generate_only:
+        print(f"Generated or resumed {len(assets)} pooled assets.")
+        return
+
     updated = replace_profile_photos(profiles, assets)
     print(f"Updated {updated} profiles.")
 
