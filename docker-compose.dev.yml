@@ -57,9 +57,3 @@ services:
     environment:
       HER_LOG_LEVEL: DEBUG
       PYTHONUNBUFFERED: "1"
-
-  bootstrap:
-    volumes: *her_backend_code
-    environment:
-      HER_LOG_LEVEL: DEBUG
-      PYTHONUNBUFFERED: "1"
