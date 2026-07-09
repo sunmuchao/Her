@@ -2552,6 +2552,67 @@ class DiscoveryServiceTests(unittest.TestCase):
         self.assertTrue(captured_criteria[0]["exclude_current_results"])
         self.assertEqual(set(captured_criteria[0]["criteria"].get("exclude_ids") or []), {1001, 1003})
 
+    def test_direct_search_tool_can_pass_appearance_match_to_search_tool(self) -> None:
+        service = DiscoveryService(
+            storage=InMemoryDiscoveryStorage(),
+            runtime=_RefreshSearchRuntime(),
+        )
+        created = service.create_session(requester_id=70001, profile_id=10001)
+        session_id = created["session"]["session_id"]
+        session = service.storage.get_session(session_id)
+        assert session is not None
+        session.phase = "results_shown"
+        service.storage.save_session(session)
+
+        captured_calls: list[dict[str, object]] = []
+
+        def _fake_search_partner_candidates(
+            _session,
+            *,
+            criteria,
+            personality_match,
+            appearance_match,
+            limit,
+            exclude_current_results=False,
+        ):
+            captured_calls.append(
+                {
+                    "criteria": dict(criteria),
+                    "personality_match": dict(personality_match or {}),
+                    "appearance_match": dict(appearance_match or {}),
+                    "limit": int(limit),
+                    "exclude_current_results": bool(exclude_current_results),
+                }
+            )
+            return {
+                "has_match": True,
+                "result_count": 1,
+                "results": [
+                    {
+                        "id": 2002,
+                        "name": "候选人B",
+                        "score": 95,
+                        "matched_on": ["城市一致"],
+                        "profile": {"age": 28, "city": "无锡"},
+                    }
+                ],
+            }
+
+        with mock.patch.object(service, "_search_partner_candidates", side_effect=_fake_search_partner_candidates):
+            run_input = service._build_runtime_input(session, now=datetime.now())
+            response = run_input.search_partner_candidates(
+                {"gender": "女", "cities": ["无锡"], "beauty_score_min": 80},
+                {},
+                5,
+                exclude_current_results=True,
+                appearance_match={"text": "清秀", "similarity_threshold": 0.72},
+            )
+
+        self.assertTrue(response["has_match"])
+        self.assertEqual(len(captured_calls), 1)
+        self.assertEqual(captured_calls[0]["appearance_match"], {"text": "清秀", "similarity_threshold": 0.72})
+        self.assertTrue(captured_calls[0]["exclude_current_results"])
+
     def test_agents_runtime_refresh_message_tool_payload_can_include_exclude_current_results(self) -> None:
         runtime = AgentsSdkDiscoveryAgentRuntime()
         session = InMemoryDiscoveryAgentSessionStore().get_session("discovery-session-refresh-search")

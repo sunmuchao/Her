@@ -1660,11 +1660,14 @@ class DiscoveryService:
             limit: int | None = None,
             *,
             exclude_current_results: bool = False,
+            appearance_match: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
             resolved_personality_match: dict[str, Any]
+            resolved_appearance_match: dict[str, Any]
             resolved_limit: int
             if isinstance(personality_match, int) and limit is None:
                 resolved_personality_match = {}
+                resolved_appearance_match = {}
                 resolved_limit = personality_match
             else:
                 resolved_personality_match = (
@@ -1672,11 +1675,17 @@ class DiscoveryService:
                     if isinstance(personality_match, dict)
                     else {}
                 )
+                resolved_appearance_match = (
+                    dict(appearance_match or {})
+                    if isinstance(appearance_match, dict)
+                    else {}
+                )
                 resolved_limit = int(limit or 5)
             response = self._search_partner_candidates(
                 session,
                 criteria=criteria,
                 personality_match=resolved_personality_match,
+                appearance_match=resolved_appearance_match,
                 limit=resolved_limit,
                 exclude_current_results=exclude_current_results,
             )
@@ -1686,6 +1695,7 @@ class DiscoveryService:
                 {
                     "criteria": deepcopy(criteria),
                     "personality_match": deepcopy(resolved_personality_match),
+                    "appearance_match": deepcopy(resolved_appearance_match),
                     "limit": resolved_limit,
                     "exclude_current_results": exclude_current_results,
                 },
@@ -2509,6 +2519,7 @@ class DiscoveryService:
         *,
         criteria: dict[str, Any],
         personality_match: dict[str, Any] = {},  # ← 新增参数
+        appearance_match: dict[str, Any] = {},
         limit: int,
         exclude_current_results: bool = False,
     ) -> dict[str, Any]:
@@ -2547,6 +2558,7 @@ class DiscoveryService:
             session,
             criteria=criteria,
             personality_match=personality_match,  # ← 传递参数
+            appearance_match=appearance_match,
             limit=limit,
             exclude_current_results=exclude_current_results,
             source=self._profile_source(),
