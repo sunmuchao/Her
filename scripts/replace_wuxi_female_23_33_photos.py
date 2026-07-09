@@ -31,11 +31,12 @@ DASHSCOPE_TASK_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
 MODEL_NAME = "wanx2.1-t2i-turbo"
 
 STYLE_PRESETS = [
-    ("clean", "清爽自然，轻妆，像认真交友软件头像"),
-    ("gentle", "温柔亲和，笑容自然，生活化但精致"),
-    ("bright", "明亮元气，精神状态好，干净利落"),
-    ("professional", "都市通勤感，知性自然，不强烈摆拍"),
-    ("soft", "柔和甜感，但不过度幼态，不网红滤镜"),
+    ("plain", "素人感，轻微皮肤纹理，淡妆或接近素颜，不过度精致"),
+    ("clean", "清爽自然，轻妆，像认真交友软件头像，不过分惊艳"),
+    ("gentle", "温柔亲和，笑容自然，生活化，不像棚拍模特"),
+    ("bright", "明亮元气，精神状态好，但保留普通真人感"),
+    ("professional", "都市通勤感，知性自然，不强烈摆拍，不像网红"),
+    ("soft", "柔和甜感，但不过度幼态，不网红滤镜，五官不要过分完美"),
 ]
 
 VARIANT_SPECS = [
@@ -89,6 +90,9 @@ def build_prompt(age: int, style_hint: str) -> str:
         "面部占画面60%以上，五官清晰，眼神自然，黑发，肤色自然，"
         "没有男性特征，没有侧脸，没有遮挡，没有多余肢体，没有文字水印，"
         "浅色干净背景，交友资料头像风格，手机或轻单反真实拍摄感，"
+        "不要明星脸，不要网红脸，不要过度磨皮，不要过分精致，不要高奢时尚大片感，"
+        "允许普通素人长相，允许轻微黑眼圈、轻微皮肤纹理、轻微脸型差异，"
+        "不同脸型、不同鼻型、不同唇形、不同妆感，整体像真实资料库用户，"
         f"{style_hint}"
     )
 
@@ -201,24 +205,25 @@ def save_manifest(payload: dict[str, Any]) -> None:
     MANIFEST_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def ensure_asset_pool(api_key: str) -> list[GeneratedAsset]:
+def ensure_asset_pool(api_key: str, *, force_regenerate: bool = False) -> list[GeneratedAsset]:
     manifest = load_manifest()
     existing_assets: list[GeneratedAsset] = []
-    for item in manifest.get("assets") or []:
-        uploaded_urls = list(item.get("uploaded_urls") or [])
-        if len(uploaded_urls) >= len(VARIANT_SPECS):
-            existing_assets.append(
-                GeneratedAsset(
-                    age=int(item["age"]),
-                    style=str(item["style"]),
-                    source_path=str(item["source_path"]),
-                    prompt=str(item["prompt"]),
-                    remote_url=str(item["remote_url"]),
-                    uploaded_urls=uploaded_urls,
+    if not force_regenerate:
+        for item in manifest.get("assets") or []:
+            uploaded_urls = list(item.get("uploaded_urls") or [])
+            if len(uploaded_urls) >= len(VARIANT_SPECS):
+                existing_assets.append(
+                    GeneratedAsset(
+                        age=int(item["age"]),
+                        style=str(item["style"]),
+                        source_path=str(item["source_path"]),
+                        prompt=str(item["prompt"]),
+                        remote_url=str(item["remote_url"]),
+                        uploaded_urls=uploaded_urls,
+                    )
                 )
-            )
-    if existing_assets:
-        return existing_assets
+        if existing_assets:
+            return existing_assets
 
     TMP_ROOT.mkdir(parents=True, exist_ok=True)
     POOL_DIR.mkdir(parents=True, exist_ok=True)
@@ -343,6 +348,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Replace Wuxi female 23-33 profile photos")
     parser.add_argument("--limit", type=int, default=None, help="Only update the first N matched profiles.")
     parser.add_argument("--skip-generate", action="store_true", help="Reuse existing pool manifest only.")
+    parser.add_argument("--force-regenerate", action="store_true", help="Ignore old pool and regenerate images.")
     return parser.parse_args()
 
 
@@ -361,7 +367,11 @@ def main() -> None:
     if args.skip_generate and not MANIFEST_PATH.exists():
         raise RuntimeError("--skip-generate requires an existing manifest")
 
-    assets = ensure_asset_pool(api_key) if not args.skip_generate else ensure_asset_pool(api_key="")
+    assets = (
+        ensure_asset_pool(api_key, force_regenerate=args.force_regenerate)
+        if not args.skip_generate
+        else ensure_asset_pool(api_key="", force_regenerate=False)
+    )
     updated = replace_profile_photos(profiles, assets)
     print(f"Updated {updated} profiles.")
 
