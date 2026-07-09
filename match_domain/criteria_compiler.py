@@ -100,16 +100,32 @@ def _build_relationship_goals(profile_facts: Mapping[str, Any] | None, fallback:
     """Build relationship goals from profile facts.
 
     注意：relationship_goal 现在在 profiles 表中（硬条件），不在 persona 表的 self_relationship_goal
+
+    修复：确保返回的是数据库标准值（英文）
     """
     if not profile_facts:
         return _unique_ordered(_as_list(fallback))
+
+    # 导入字段值映射器
+    from match_domain.field_value_mapper import FieldValueMapper
+
     self_goal = _clean_text(profile_facts.get("relationship_goal"))
-    if self_goal == "结婚导向":
-        return ["结婚导向"]
-    if self_goal in {"认真恋爱", "认真相处"}:
-        return ["认真恋爱", "结婚导向"]
-    if self_goal:
-        return [self_goal]
+    if not self_goal:
+        return _unique_ordered(_as_list(fallback))
+
+    # 使用FieldValueMapper规范化为数据库标准值
+    normalized_goal = FieldValueMapper.to_db_value("relationship_goal", self_goal)
+
+    if normalized_goal == "marriage":  # 结婚导向
+        # 只匹配同样想结婚的人
+        return ["marriage"]
+    elif normalized_goal == "dating":  # 认真恋爱
+        # 认真恋爱可以接受结婚导向的人
+        return ["dating", "marriage"]
+    elif normalized_goal:
+        # 其他情况，返回规范化后的值
+        return [normalized_goal]
+
     return _unique_ordered(_as_list(fallback))
 
 

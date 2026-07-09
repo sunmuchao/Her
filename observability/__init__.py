@@ -14,8 +14,14 @@ _LOGGER = logging.getLogger("her.pipeline")
 
 
 def _base_fields() -> dict[str, Any]:
+    # UTC 时间作为主时间戳（符合日志聚合系统标准）
+    ts_utc = datetime.now(timezone.utc).isoformat()
+    # 本地时间方便调试（ISO 8601 格式带时区信息）
+    ts_local = datetime.now().astimezone().isoformat()
+
     payload: dict[str, Any] = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": ts_utc,  # UTC 时间（主时间戳）
+        "ts_local": ts_local,  # 本地时间（调试用）
         "her_schema": "1",
     }
     trace_id = get_trace_id()

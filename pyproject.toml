@@ -40,6 +40,7 @@ local_oss = [
   "numpy>=1.26.0",
   "torch>=2.1.0",
   "pymilvus>=2.3.0",  # Milvus向量数据库客户端（用于照片外貌描述向量入库）
+  "milvus-lite>=2.3.0",  # Milvus Lite 本地数据库支持（用于向量入库）
 ]
 
 [project.scripts]

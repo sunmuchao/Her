@@ -106,7 +106,7 @@ services:
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
       PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
       PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
-      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles&charset=utf8mb4
       PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
       HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
       MINIO_ENDPOINT: minio:9000
@@ -176,7 +176,7 @@ services:
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
       PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
       PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
-      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles&charset=utf8mb4
       PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
       HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
       MINIO_ENDPOINT: minio:9000
@@ -255,7 +255,7 @@ services:
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
       PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
       PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
-      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles&charset=utf8mb4
       PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
       HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
       MINIO_ENDPOINT: minio:9000
@@ -301,7 +301,7 @@ services:
       PARTNER_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
       PARTNER_CHAT_DB: mysql://root@mysql:3306/her_chat
       PARTNER_DISCOVERY_DB: mysql://root@mysql:3306/her_discovery
-      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles
+      HER_DISCOVERY_PROFILE_SOURCE: mysql://root@mysql:3306/her?table=profiles&charset=utf8mb4
       PERSONA_MEMORY_MYSQL_SOURCE: mysql://root@mysql:3306/her?table=profiles
       HER_PROFILE_SOURCE_DSN: mysql://root@mysql:3306/her?table=profiles
       HER_SCHED_RECOMMENDATION_DB: mysql://root@mysql:3306/her_recommendation

@@ -2326,7 +2326,10 @@ def create_profile_row(
     source_table_name: str,
     fields: Mapping[str, Any],
 ) -> int:
-    """Insert a new row into the partner profile table and return its id."""
+    """Insert a new row into the partner profile table and return its id.
+
+    写入前会自动规范化字段值（中文 → 英文标准值）
+    """
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
@@ -2334,8 +2337,15 @@ def create_profile_row(
         if not schema.column_exists(raw_conn, source_table_name, "id"):
             raise ValueError(f"profile table {source_table_name} is missing id column")
 
+        # ====================================================================
+        # 字段值规范化：确保写入数据库的是标准值（英文）
+        # ====================================================================
+        from match_domain.field_value_mapper import FieldValueMapper
+        normalized_fields = FieldValueMapper.normalize_record(dict(fields), direction="display_to_db")
+        # ====================================================================
+
         insert_fields: dict[str, Any] = {}
-        for column, value in dict(fields).items():
+        for column, value in normalized_fields.items():
             if value is None:
                 continue
             if schema.column_exists(raw_conn, source_table_name, column):
@@ -2437,16 +2447,25 @@ def apply_profile_updates(
     profile_id: int,
     updates: Mapping[str, Any],
 ) -> dict[str, Any]:
+    """更新用户资料，自动规范化字段值（中文 → 英文标准值）"""
     _require_profile_source(source_dsn=source_dsn, source_table_name=source_table_name)
     profile_conn = _connect_profile_db(source_dsn, use_pool=True, timeout=10.0)
     try:
         raw_conn = profile_conn.driver_connection
         if not schema.column_exists(raw_conn, source_table_name, "id"):
             raise ValueError(f"profile table {source_table_name} is missing id column")
+
+        # ====================================================================
+        # 字段值规范化：确保写入数据库的是标准值（英文）
+        # ====================================================================
+        from match_domain.field_value_mapper import FieldValueMapper
+        normalized_updates = FieldValueMapper.normalize_record(dict(updates), direction="display_to_db")
+        # ====================================================================
+
         assignments: list[str] = []
         values: list[Any] = []
         updated_fields: list[str] = []
-        for column, value in dict(updates).items():
+        for column, value in normalized_updates.items():
             if value is None:
                 continue
             if not schema.column_exists(raw_conn, source_table_name, column):

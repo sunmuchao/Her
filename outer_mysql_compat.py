@@ -88,11 +88,32 @@ class MySQLCompatConnection:
         self._conn.close()
 
 
+from decimal import Decimal
+
+
+class DecimalEncoder(json.JSONEncoder):
+    """自定义JSON编码器，支持Decimal类型"""
+
+    def default(self, obj):
+        """处理无法直接序列化的类型"""
+        if isinstance(obj, Decimal):
+            # Decimal转换为float或int，避免精度丢失
+            if obj % 1 == 0:
+                return int(obj)
+            else:
+                return float(obj)
+        # 其他类型调用父类的default方法
+        return super().default(obj)
+
+
 def json_dumps(value: Any) -> str:
-    """JSON for persisted outer-system columns (sorted keys, UTF-8, ``None`` → ``{}``)."""
+    """JSON for persisted outer-system columns (sorted keys, UTF-8, ``None`` → ``{}``).
+
+    支持Decimal类型的序列化。
+    """
 
     payload: Any = {} if value is None else value
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, cls=DecimalEncoder)
 
 
 def json_loads(value: str | None, default: Any) -> Any:
