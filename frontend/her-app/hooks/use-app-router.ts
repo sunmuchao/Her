@@ -117,6 +117,8 @@ export function useAppRouter() {
       fromChatId?: string
       fromSubPage?: string
       inboxFilter?: string
+      from?: 'profile'
+      target?: 'video' | 'education' | 'occupation' | 'income'
     }) => {
       const href = pageToPath(page, {
         candidateId: params?.candidateId,
@@ -128,6 +130,8 @@ export function useAppRouter() {
         fromChatId: params?.fromChatId,
         fromSubPage: params?.fromSubPage,
         inboxFilter: params?.inboxFilter,
+        from: params?.from,
+        target: params?.target,
       })
       // session 已经在 pageToPath 中处理了，但这里需要额外处理 sessionId
       if (params?.sessionId && page === 'sub-candidate-detail') {
@@ -209,21 +213,12 @@ export function useAppRouter() {
 
   const handleStartVerification = useCallback(
     (from?: 'profile', target?: string) => {
-      let href = pageToPath('sub-verification')
-      const params = new URLSearchParams()
-      if (from === 'profile') {
-        params.set('from', 'profile')
-      }
-      if (target) {
-        params.set('target', target)
-      }
-      const query = params.toString()
-      if (query) {
-        href += `?${query}`
-      }
-      router.push(href)
+      pushPage('sub-verification', {
+        from: from,
+        target: target as 'video' | 'education' | 'occupation' | 'income' | undefined,
+      })
     },
-    [router],
+    [pushPage],
   )
 
   const handleBackFromVerification = useCallback(() => {

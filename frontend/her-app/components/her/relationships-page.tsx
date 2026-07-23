@@ -7,7 +7,7 @@ import { openProxyIntroChat, replyProxyIntroCase, closeProxyIntroCase } from '@/
 import { fetchCaseConversationTimeline } from '@/lib/api/endpoints/relations'
 import { markConversationRead, RELATIONSHIP_READ_EVENT } from '@/lib/api/endpoints/chat'
 import { getUserId } from '@/lib/auth/session'
-import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl, shouldBypassNextImageOptimization } from '@/lib/image-url'
 import type { ChatUserInfo } from '@/hooks/use-app-router'
 import type { CandidatePreview } from '@/lib/types/candidate'
 import { useRelationshipsPageData } from '@/lib/hooks/use-relationships-page-data'
@@ -623,6 +623,9 @@ export default function RelationshipsPage({
                               alt={item.counterpart_name || '对方'}
                               fill
                               className="object-cover"
+                              unoptimized={shouldBypassNextImageOptimization(
+                                resolveProfileImageUrl(item.counterpart_image ?? undefined, PLACEHOLDER_AVATAR),
+                              )}
                             />
                           </div>
                           <div className="flex-1 min-w-0">

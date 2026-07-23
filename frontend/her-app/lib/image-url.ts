@@ -7,6 +7,8 @@ export const PLACEHOLDER_AVATAR = `data:image/svg+xml,${PLACEHOLDER_AVATAR_SVG}`
 const DEV_PLACEHOLDER_AVATAR = PLACEHOLDER_AVATAR
 
 const LOCAL_CDN_HOSTS = new Set(['cdn.her.local', 'img.her.local'])
+const MINIO_INTERNAL_ORIGIN = 'http://minio:9000'
+const MINIO_BROWSER_ORIGIN = 'http://localhost:9000'
 
 export function isLocalDevCdnUrl(url: string): boolean {
   try {
@@ -16,13 +18,32 @@ export function isLocalDevCdnUrl(url: string): boolean {
   }
 }
 
+export function normalizeBrowserImageUrl(url: string): string {
+  if (!url) return url
+  return url.startsWith(MINIO_INTERNAL_ORIGIN)
+    ? `${MINIO_BROWSER_ORIGIN}${url.slice(MINIO_INTERNAL_ORIGIN.length)}`
+    : url
+}
+
+export function shouldBypassNextImageOptimization(url: string): boolean {
+  if (!url) return false
+  if (url.startsWith('data:image/')) return true
+  try {
+    const { hostname } = new URL(url)
+    return hostname === 'localhost' || hostname === '127.0.0.1' || isLocalDevCdnUrl(url)
+  } catch {
+    return false
+  }
+}
+
 /** Local seed URLs often have no DNS; use placeholder in dev so pages still render. */
 export function resolveProfileImageUrl(url: string | undefined, fallback = DEV_PLACEHOLDER_AVATAR): string {
   if (!url?.trim()) return fallback
-  if (process.env.NODE_ENV === 'development' && isLocalDevCdnUrl(url)) {
+  const normalizedUrl = normalizeBrowserImageUrl(url.trim())
+  if (process.env.NODE_ENV === 'development' && isLocalDevCdnUrl(normalizedUrl)) {
     return fallback
   }
-  return url
+  return normalizedUrl
 }
 
 export function mapProfileImageUrls(urls: string[], fallback = DEV_PLACEHOLDER_AVATAR): string[] {

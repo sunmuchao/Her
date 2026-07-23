@@ -7,7 +7,7 @@ APP_DIR="$ROOT_DIR/frontend/her-app"
 GATEWAY_DIR="$ROOT_DIR/external-systems/partner-http-gateway"
 VENV_PY="${ROOT_DIR}/.venv/bin/python"
 HOST="${PARTNER_GATEWAY_HOST:-127.0.0.1}"
-PORT="${PARTNER_GATEWAY_PORT:-8765}"
+PORT="${PARTNER_GATEWAY_PORT:-8080}"
 BASE_URL="${PARTNER_GATEWAY_BASE_URL:-http://${HOST}:${PORT}}"
 LOG_FILE="${HER_GATEWAY_LOG_FILE:-/tmp/her-partner-gateway-dev.log}"
 

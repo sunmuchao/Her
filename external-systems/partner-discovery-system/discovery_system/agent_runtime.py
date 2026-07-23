@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import atexit
+import html
 import json
 import logging
 import os
@@ -11,12 +11,17 @@ import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
+from urllib.parse import urljoin, urlparse
 
 import httpx  # ✅ 新增：用于配置精细的timeout
 
 _logger = logging.getLogger(__name__)
 
 from her_env import env_first, env_float, env_int  # ✅ 新增：导入env_int用于max_retries
+from match_domain import PhotoPreferenceIntent
+from match_domain.photo_intent_agent import build_visual_search_plan as _build_visual_search_plan_impl
+from match_domain.visual_capabilities import retrieve_visual_candidates
+from profile_service import list_profiles, resolve_profile_source
 from pydantic import BaseModel, Field
 
 from .decision_models import (
@@ -70,6 +75,12 @@ _BAILIAN_RESPONSES_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1
 _BAILIAN_RESPONSES_DEFAULT_MODEL = "qwen3.6-plus"
 _DISCOVERY_CONTEXT_WARN_CHARS = 16000
 _DISCOVERY_CONTEXT_ERROR_CHARS = 32000
+_IMAGE_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_META_IMAGE_RE = re.compile(
+    r"""<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image|og:image:url)["'][^>]+content=["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_IMG_SRC_RE = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.IGNORECASE)
 
 
 def _looks_like_placeholder_secret(value: str) -> bool:
@@ -126,6 +137,41 @@ def _convert_sets_to_lists(data: dict[str, Any]) -> dict[str, Any]:
         else:
             result[key] = value
     return result
+
+
+def _looks_like_image_url(url: str) -> bool:
+    normalized = str(url or "").strip().lower()
+    if not normalized.startswith(("http://", "https://")):
+        return False
+    path = urlparse(normalized).path
+    return path.endswith(
+        (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif", ".heic")
+    )
+
+
+def _extract_direct_image_urls_from_html(page_url: str, html_text: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw_url: str) -> None:
+        cleaned = html.unescape(str(raw_url or "").strip())
+        if not cleaned:
+            return
+        absolute = urljoin(page_url, cleaned)
+        if not _looks_like_image_url(absolute):
+            return
+        if absolute in seen:
+            return
+        seen.add(absolute)
+        candidates.append(absolute)
+
+    for match in _META_IMAGE_RE.findall(html_text):
+        _add(match)
+    for match in _IMG_SRC_RE.findall(html_text):
+        _add(match)
+    for match in _IMAGE_URL_RE.findall(html_text):
+        _add(match)
+    return candidates
 
 
 def _safe_json_length(value: Any) -> int:
@@ -378,36 +424,17 @@ def _resolve_discovery_model(*, wire_api: str) -> str:
     )
 
 
-# 全局单例：Agents SDK 的 AsyncOpenAI 客户端
+# 兼容保留：仅供旧测试/脚本调用，不再参与正式运行链路。
 _AGENTS_SDK_ASYNC_CLIENT: Any | None = None
 
 
-def _sync_cleanup_agents_sdk_client() -> None:
-    """同步清理方法（供 atexit 调用）
+def _build_agents_sdk_client() -> tuple[Any | None, str]:
+    """为单次 Agent 运行创建客户端配置。
 
-    ⚠️ 注意：atexit 不支持异步函数，所以需要创建新事件循环来清理
+    关键点：不要把 AsyncOpenAI 跨多个 asyncio.run() 复用。
+    否则底层 httpx/httpcore 连接会绑定到已关闭的 event loop，触发
+    "RuntimeError: Event loop is closed"。
     """
-    global _AGENTS_SDK_ASYNC_CLIENT
-
-    if _AGENTS_SDK_ASYNC_CLIENT is not None:
-        try:
-            # 创建新事件循环来运行异步清理
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(_AGENTS_SDK_ASYNC_CLIENT.close())
-            loop.close()
-            _AGENTS_SDK_ASYNC_CLIENT = None
-            _logger.info("Agents SDK AsyncOpenAI 客户端已通过 atexit 自动关闭")
-        except Exception as exc:
-            _logger.warning(f"atexit 清理失败（可能事件循环已关闭）：{exc}")
-
-
-def _configure_agents_sdk_provider() -> None:
-    """配置 Agents SDK 的 OpenAI 提供商（单例模式）
-
-    ⚠️ 重要：使用全局单例，避免每次运行 Agent 时创建新客户端
-    """
-    global _AGENTS_SDK_ASYNC_CLIENT
-
     from agents import set_default_openai_api, set_default_openai_client, set_tracing_disabled
     from her_production import assert_production_discovery_agent_isolation
     from openai import AsyncOpenAI
@@ -422,12 +449,6 @@ def _configure_agents_sdk_provider() -> None:
     assert_production_discovery_agent_isolation()
     wire_api = _resolve_discovery_wire_api()
     base_url = _resolve_discovery_base_url(wire_api=wire_api)
-
-    # 如果已经有全局客户端，跳过创建（单例模式）
-    if _AGENTS_SDK_ASYNC_CLIENT is not None:
-        _logger.debug("Agents SDK AsyncOpenAI 客户端已存在，跳过创建")
-        set_default_openai_api(wire_api)
-        return
 
     if base_url:
         api_key = _resolve_discovery_api_key()
@@ -460,47 +481,49 @@ def _configure_agents_sdk_provider() -> None:
                 default=3.0,  # 默认重试3次（增加容错能力）
             )),
         )
-        _AGENTS_SDK_ASYNC_CLIENT = client
-        _logger.info("Agents SDK AsyncOpenAI 客户端已创建（全局单例）")
-
-        # 自动注册 atexit 清理函数（程序退出时自动清理）
-        atexit.register(_sync_cleanup_agents_sdk_client)
-
+        _logger.info("Agents SDK AsyncOpenAI 客户端已创建（单次运行作用域）")
         set_default_openai_client(client, use_for_tracing=False)
         # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
         # it is not a remote provider request parameter.
         set_default_openai_api(wire_api)
         # ✅ Tracing已在函数开头强制禁用，无需再次调用
-        return
+        return client, wire_api
 
     # This only selects the Agents SDK wire API (`/responses` vs `/chat/completions`);
     # it is not a remote provider request parameter.
     set_default_openai_api(wire_api)
+    return None, wire_api
 
 
-async def cleanup_agents_sdk_client() -> None:
-    """清理 Agents SDK 的全局客户端
+def _configure_agents_sdk_provider() -> None:
+    """兼容旧入口：配置一次默认 provider/client。
 
-    ⚠️ 重要：程序退出时应调用此方法，避免 "Event loop is closed" 错误
-
-    使用方式：
-    ```python
-    try:
-        # 运行 Agent
-        result = runtime.run_turn(...)
-    finally:
-        await cleanup_agents_sdk_client()
-    ```
+    正式运行链路已改为每次 Agent 运行单独创建并关闭客户端，
+    这里只为保留旧测试与脚本入口，避免 import/调用直接失效。
     """
     global _AGENTS_SDK_ASYNC_CLIENT
 
     if _AGENTS_SDK_ASYNC_CLIENT is not None:
-        # 取消 atexit 注册（避免重复清理）
-        atexit.unregister(_sync_cleanup_agents_sdk_client)
+        return
 
-        await _AGENTS_SDK_ASYNC_CLIENT.close()
-        _AGENTS_SDK_ASYNC_CLIENT = None
-        _logger.info("Agents SDK AsyncOpenAI 客户端已关闭，资源已释放")
+    client, _ = _build_agents_sdk_client()
+    _AGENTS_SDK_ASYNC_CLIENT = client
+
+
+async def cleanup_agents_sdk_client() -> None:
+    """清理兼容模式下缓存的客户端。
+
+    历史实现依赖全局 AsyncOpenAI 单例，容易在 asyncio.run() 结束后触发
+    "Event loop is closed"。现在正式运行链路已改为单次 Agent 运行内创建并关闭。
+    """
+    global _AGENTS_SDK_ASYNC_CLIENT
+
+    if _AGENTS_SDK_ASYNC_CLIENT is None:
+        return None
+
+    await _AGENTS_SDK_ASYNC_CLIENT.close()
+    _AGENTS_SDK_ASYNC_CLIENT = None
+    return None
 
 
 def _compact_requester_profile(profile: dict[str, Any] | None) -> dict[str, Any]:
@@ -672,6 +695,52 @@ def _normalize_last_search(runtime_context: dict[str, Any] | None) -> dict[str, 
     if (runtime_context or {}).get("last_search_summary") is not None:
         return dict((runtime_context or {}).get("last_search_summary") or {})
     return None
+
+
+def _normalize_visual_context(runtime_context: dict[str, Any] | None) -> dict[str, Any] | None:
+    visual_context = (runtime_context or {}).get("visual_memory")
+    if visual_context is None:
+        visual_context = (runtime_context or {}).get("visual_context")
+    if visual_context is None:
+        return None
+    compact = dict(visual_context or {})
+    if "active_reference" in compact or "active_preference" in compact or "last_result" in compact:
+        active_preference = dict(compact.get("active_preference") or {})
+        last_result = dict(compact.get("last_result") or {})
+        return {
+            "has_reference_image": bool(dict(compact.get("active_reference") or {}).get("source")),
+            "active_visual_intent": {
+                "mode": active_preference.get("legacy_mode"),
+                "intent_type": active_preference.get("intent_type"),
+                "query_text": active_preference.get("query_text"),
+                "celebrity_name": active_preference.get("reference_person"),
+            },
+            "active_constraints": dict(compact.get("active_constraints") or {}),
+            "last_query_text": str(last_result.get("query_text") or "").strip() or None,
+            "last_result_profile_ids": list(last_result.get("profile_ids") or []),
+        }
+    return {
+        "has_reference_image": bool(compact.get("has_reference_image")),
+        "active_visual_intent": dict(compact.get("active_visual_intent") or {}),
+        "active_constraints": dict(compact.get("active_constraints") or {}),
+        "last_query_text": str(compact.get("last_query_text") or "").strip() or None,
+        "last_result_profile_ids": list(compact.get("last_result_profile_ids") or []),
+    }
+
+
+def _normalize_visual_memory(runtime_context: dict[str, Any] | None) -> dict[str, Any] | None:
+    visual_memory = (runtime_context or {}).get("visual_memory")
+    if visual_memory is None:
+        return None
+    compact = dict(visual_memory or {})
+    return {
+        "has_reference_image": bool(dict(compact.get("active_reference") or {}).get("source")),
+        "active_reference": dict(compact.get("active_reference") or {}),
+        "active_preference": dict(compact.get("active_preference") or {}),
+        "active_constraints": dict(compact.get("active_constraints") or {}),
+        "refinement_history": list(compact.get("refinement_history") or []),
+        "last_result": dict(compact.get("last_result") or {}),
+    }
 
 
 def _normalize_memory_summary(
@@ -901,6 +970,8 @@ def _build_runtime_prompt(
         "current_results": _normalize_current_results(runtime_context),
         "visible_actions": _compact_visible_actions(list(runtime_context.get("visible_actions") or [])),
         "last_search": _normalize_last_search(runtime_context),
+        "visual_context": _normalize_visual_context(runtime_context),
+        "visual_memory": _normalize_visual_memory(runtime_context),
     }
     memory_summary = _normalize_memory_summary(runtime_context, run_input.recent_timeline)
 
@@ -970,11 +1041,11 @@ class AgentsSdkDiscoveryAgentRuntime:
         action_context: dict[str, Any] | None,
     ) -> DiscoveryRuntimeResult:
         try:
-            from agents import Agent, AgentOutputSchema, Runner, function_tool
+            from agents import Agent, AgentOutputSchema, Runner, WebSearchTool, function_tool
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("Missing Agents SDK dependency. Install `openai-agents`.") from exc
 
-        _configure_agents_sdk_provider()
+        async_client, _ = _build_agents_sdk_client()
         tool_state: dict[str, Any] = {"last_search_response": None}
 
         @function_tool
@@ -997,10 +1068,14 @@ class AgentsSdkDiscoveryAgentRuntime:
             limit: int = 5,
             exclude_current_results: bool = False,
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 新增参数：外貌筛选（数据库筛选 + 向量搜索）
+            # 新增参数：外貌筛选（抽象化参数，Agent易用）
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            beauty_score_min: float = 0.0,
-            appearance_match_json: str = "",
+            appearance_level: str = "medium",  # "high"/"medium"/"low"
+            appearance_description: str = "",  # 自然语言描述
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 新增参数：明星脸搜索（Agent自己用WebSearch/WebFetch获取照片URL）
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            photo_url: str = "",
         ) -> dict[str, Any]:
             """搜索候选人。当用户想看推荐、调整搜索条件、表达不满后重新搜索时调用。
 
@@ -1012,7 +1087,6 @@ class AgentsSdkDiscoveryAgentRuntime:
             - age_min/age_max: 年龄范围
             - cities: 城市列表
             - relationship_goals: 关系目标
-            - beauty_score_min: 内部外形筛选强度阈值（0-100）← 仅内部使用，不可对用户直说
 
             性格匹配（向量搜索，可选）：
             - personality_match_json: 性格特质匹配条件
@@ -1021,60 +1095,83 @@ class AgentsSdkDiscoveryAgentRuntime:
               - similarity_threshold: 相似度阈值（0.0-1.0，默认0.75）
               - Agent可根据对话上下文自主调整阈值（高要求用0.8，宽松用0.6）
 
-            【新增】外貌风格匹配（向量搜索，可选）：
-            - appearance_match_json: 外貌描述匹配条件
-              示例：{"text": "清秀", "similarity_threshold": 0.70}
-              - text: 搜索文本（风格标签或口语化描述）
-                - 标签示例："清秀"、"温柔"、"阳光"
-                - 口语化示例："纯欲风"、"知性美"、"文艺范"
-              - similarity_threshold: 相似度阈值（0.0-1.0，默认0.70）
+            【新增】外貌筛选（抽象化参数，Agent易用）：
+            - appearance_level: 外貌筛选级别（抽象化，不暴露内部评分机制）
+              - "high": 系统自动设置高标准筛选（Agent不知道具体阈值）
+              - "medium": 默认值，不强制筛选
+              - "low": 不筛选外貌
+              - Agent只需传入"high"/"medium"/"low"，不需要知道内部实现
+
+            - appearance_description: 外貌描述（自然语言）
+              - 示例："温柔气质"、"清秀型"、"阳光开朗"
+              - Agent用自然语言描述即可，不需要理解内部评分机制
+              - 系统内部会自动解析并应用合适的筛选条件
+
+            【新增】明星脸搜索（Agent自己获取照片URL + Agent自己判断相似度）：
+            - photo_url: 参考照片URL（Agent用WebSearch + resolve_direct_image_urls 获取）
+              - 完整流程（Agent必须遵循）：
+                Step 1：Agent用WebSearch搜"田曦薇照片"
+                Step 2：Agent调用 resolve_direct_image_urls，从页面提取直接图片URL
+                Step 3：Agent调用本工具，传入photo_url
+                Step 4：工具返回候选人列表（包含照片URL）
+                Step 5：Agent用Vision能力看候选人照片 ✅
+                Step 6：Agent判断"长得像不像"（相似度评分0-100）✅
+                Step 7：Agent筛选出真正像的候选人（≥80分）✅
+                Step 8：Agent返回结果给用户
+
+            【重要】Agent判断相似度的方法：
+            - Agent用Vision能力同时看两张照片（明星照片 + 候选人照片）
+            - Agent从以下维度判断：
+              1. 整体气质相似度（甜美、温柔、成熟等）
+              2. 五官相似度（眼睛、鼻子、嘴巴、脸型）
+              3. 风格相似度（元气、知性、利落等）
+            - Agent给出相似度评分（0-100分）和匹配理由
+            - Agent只返回相似度≥80分的候选人
 
             使用场景：
             ┌─────────────────────────┬──────────────────────────┬─────────────────────┐
             │ 用户说                  │ Agent应该传的参数        │ 检索方式            │
             ├─────────────────────────┼──────────────────────────┼─────────────────────┤
-            │ "找长得漂亮的"          │ beauty_score_min=80      │ 数据库筛选（数值）  │
-            │ "找清秀型的"            │ appearance_match_json    │ 向量搜索（标签）    │
-            │                         │ ={"text":"清秀"}         │                     │
-            │ "找纯欲风的"            │ appearance_match_json    │ 向量搜索（口语化）  │
-            │                         │ ={"text":"纯欲风"}       │                     │
-            │ "找清秀又漂亮的"        │ beauty_score_min=75      │ 数据库+向量组合     │
-            │                         │ + appearance_match_json  │                     │
+            │ “找长得漂亮的”          │ appearance_level=”high”  │ 系统自动高标准筛选  │
+            │ “找清秀型的”            │ appearance_description   │ 向量搜索（标签）    │
+            │                         │ =”清秀型”                │                     │
+            │ “找纯欲风的”            │ appearance_description   │ 向量搜索（口语化）  │
+            │                         │ =”纯欲风”                │                     │
+            │ “找清秀又漂亮的”        │ appearance_level=”high”  │ 组合筛选            │
+            │                         │ + appearance_description │                     │
+            │ “找像田曦薇的女生”      │ photo_url=”https://...”  │ 照片向量搜索        │
+            │                         │ （Agent自己搜照片）      │ + Agent自己判断相似度│
+            │                         │ + Agent看照片筛选        │                     │
             └─────────────────────────┴──────────────────────────┴─────────────────────┘
 
             返回数据：
             - 基础信息：姓名、年龄、城市、职业等
             - 性格数据：personality_signals包含MBTI、依恋风格、价值观等原始数据
-            - 外貌数据：beauty_score、appearance_keywords等
+            - 外貌数据：appearance_keywords、style_scores等原始数据
             - candidate_context：数据完整度指示器，帮助Agent判断推荐理由的详细程度
               - evidence_level：数据丰富程度（high/medium/low）
               - reason_mode：可用的推理深度（rich_reasoning/limited_reasoning/profile_only）
               - missing_dimensions：缺失的数据维度（如summary、personality_traits等）
               - Agent应根据这些字段自主决定推荐理由的详细程度和措辞
-            - Agent自主判断性格匹配度，生成推荐理由
+            - Agent自主判断性格匹配度和外貌匹配度，生成推荐理由
 
             参数：
             - criteria_json: 筛选条件的JSON字符串（硬约束）
             - personality_match_json: 性格匹配条件的JSON字符串（可选）
             - limit: 最终返回数量（默认5，最大10）
-            - exclude_current_results: 是否排除当前已展示候选人（用于"换一批"）
-            - beauty_score_min: 内部外形筛选阈值（0-100，默认0表示不筛选）
-            - appearance_match_json: 外貌匹配条件的JSON字符串（可选）
+            - exclude_current_results: 是否排除当前已展示候选人（用于”换一批”）
+            - appearance_level: 外貌筛选级别（”high”/”medium”/”low”，默认”medium”）
+            - appearance_description: 外貌描述的自然语言字符串（可选）
+            - photo_url: 参考照片URL（可选，用于明星脸搜索）
 
             【重要：对用户的表达约束】
-            - 你可以内部使用 beauty_score_min / appearance_match_json 来完成检索
-            - 但回复用户时，禁止提及：
-              - “80分以上”
-              - “颜值评分”
-              - “打分”
-              - “阈值”
-              - `beauty_score_min`
-            - 外貌筛选成功后，应改说：
+            - 你可以内部使用 appearance_level / appearance_description 来完成检索
+            - 但回复用户时，应使用自然语言描述：
               - “我按你更在意的外形感觉重新筛了一批”
               - “这批整体更符合你的审美方向”
               - “先给你看几位更有眼缘的”
-            - 候选人分组标题也不要写“高颜值推荐”或“80分以上推荐”
-              应写成“更符合你审美的这几位”或“这批更有眼缘”
+            - 候选人分组标题应写成”更符合你审美的这几位”或”这批更有眼缘”
+            - 不要说”高颜值推荐”、”评分筛选”等技术术语
 
             `exclude_current_results` 使用规则：
             - 用户想"换一批 / 看别的 / 再看看别人 / 不要刚才那批"：
@@ -1114,13 +1211,14 @@ class AgentsSdkDiscoveryAgentRuntime:
             """
             # 🔍 可观测性埋点：记录Agent传递的参数
             _logger.info(
-                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s exclude_current_results=%s beauty_score_min=%s appearance_match_json=%s",
+                "【工具调用参数】search_partner_candidates criteria_json=%s personality_match_json=%s limit=%s exclude_current_results=%s appearance_level=%s appearance_description=%s photo_url=%s",
                 repr(criteria_json)[:200],
                 repr(personality_match_json)[:200],
                 limit,
                 exclude_current_results,
-                beauty_score_min,
-                repr(appearance_match_json)[:200],
+                appearance_level,
+                repr(appearance_description)[:200],
+                repr(photo_url)[:200],
             )
 
             criteria = json.loads(str(criteria_json or "{}"))
@@ -1146,30 +1244,45 @@ class AgentsSdkDiscoveryAgentRuntime:
                     personality_match = {}
 
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 新增：外貌参数处理
+            # 新增：外貌参数处理（抽象化参数）
             # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            # 1. 颜值评分筛选（数据库）
-            if beauty_score_min > 0:
-                criteria["beauty_score_min"] = float(beauty_score_min)
-                _logger.info(f"【外貌筛选-数据库】beauty_score_min={beauty_score_min}")
-
-            # 2. 外貌向量搜索
+            # 系统内部会将抽象参数转换为具体的筛选条件
+            # Agent不需要知道内部实现细节
             appearance_match = {}
-            if appearance_match_json and appearance_match_json.strip():
-                try:
-                    appearance_match = json.loads(appearance_match_json)
-                    if not isinstance(appearance_match, dict):
-                        _logger.warning("appearance_match_json must decode into a JSON object, got %s", type(appearance_match))
-                        appearance_match = {}
-                    else:
-                        _logger.info(
-                            "【外貌筛选-向量】text=%s threshold=%s",
-                            appearance_match.get("text"),
-                            appearance_match.get("similarity_threshold")
-                        )
-                except json.JSONDecodeError as exc:
-                    _logger.warning("appearance_match_json decode failed: %s", str(exc)[:100])
-                    appearance_match = {}
+
+            # 1. appearance_level 处理（系统内部转换）
+            # Agent只传入"high"/"medium"/"low"，系统自动设置筛选标准
+            if appearance_level and appearance_level.strip():
+                normalized_level = appearance_level.strip().lower()
+                if normalized_level in ("high", "medium", "low"):
+                    appearance_match["level"] = normalized_level
+                    _logger.info(
+                        "【外貌筛选-级别】appearance_level=%s",
+                        normalized_level
+                    )
+
+            # 2. appearance_description 处理（自然语言描述）
+            # Agent传入自然语言描述，系统自动解析
+            if appearance_description and appearance_description.strip():
+                appearance_match["description"] = appearance_description.strip()
+                _logger.info(
+                    "【外貌筛选-描述】appearance_description=%s",
+                    appearance_description[:100]
+                )
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 新增：明星脸搜索参数处理
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 3. 明星脸搜索（照片向量搜索）
+            photo_match = {}
+            if photo_url and photo_url.strip():
+                photo_match = {
+                    "photo_url": photo_url.strip(),
+                }
+                _logger.info(
+                    "【明星脸搜索】photo_url=%s",
+                    photo_url[:200]
+                )
 
             # ✅ 方案C：放宽limit上限，支持两阶段搜索
             # 第一阶段搜索至少50个，第二阶段截断为用户要求的limit
@@ -1181,9 +1294,285 @@ class AgentsSdkDiscoveryAgentRuntime:
                 normalized_limit,
                 exclude_current_results=bool(exclude_current_results),
                 appearance_match=appearance_match,  # ← 传递外貌向量搜索参数
+                photo_match=photo_match,  # ← 传递明星脸搜索参数
             )
             tool_state["last_search_response"] = response
             return _summarize_search_response_for_model(response)
+
+        @function_tool
+        def build_visual_search_plan(
+            turn_text: str = "",
+            current_image_url: str = "",
+        ) -> dict[str, Any]:
+            """构建视觉搜索计划，判断这轮是直接搜、继续沿用上一张图，还是先追问。
+
+            适用场景：
+            - 用户上传了图片，但没有明确说按脸找还是按感觉找
+            - 用户说“按刚才那张继续找”“还是这种感觉”
+            - 用户补充 refinement，如“换成上海”“温柔一点”
+            """
+            plan = _build_visual_search_plan_impl(
+                text=turn_text or None,
+                image_source=current_image_url or None,
+                visual_context=_normalize_visual_context(run_input.runtime_context) or {},
+                client_context={},
+            )
+            return plan
+
+        @function_tool
+        def load_recent_visual_context() -> dict[str, Any]:
+            """读取当前 discovery session 最近一次视觉搜索上下文。"""
+            return _normalize_visual_context(run_input.runtime_context) or {
+                "has_reference_image": False,
+                "active_visual_intent": {},
+                "active_constraints": {},
+                "last_query_text": None,
+                "last_result_profile_ids": [],
+            }
+
+        def _visual_search_candidates(
+            *,
+            mode: str,
+            reference_image_url: str,
+            query_text: str = "",
+            celebrity_name: str = "",
+            hard_filters_json: str = "",
+            limit: int = 12,
+        ) -> dict[str, Any]:
+            source_dsn, source_table = resolve_profile_source(
+                os.environ.get("HER_DISCOVERY_PROFILE_SOURCE") or os.environ.get("HER_PROFILE_SOURCE_DSN"),
+                None,
+            )
+            hard_filters: dict[str, Any] = {}
+            if hard_filters_json.strip():
+                decoded = json.loads(hard_filters_json)
+                if isinstance(decoded, dict):
+                    hard_filters = decoded
+            intent = PhotoPreferenceIntent(
+                intent_type={
+                    "face": "face_similarity_search",
+                    "style": "style_similarity_search",
+                    "celebrity": "celebrity_face_search",
+                }.get(mode, "hybrid_photo_search"),
+                mode=mode,
+                query_text=query_text.strip() or celebrity_name.strip() or "视觉搜索",
+                attribute_filters={},
+                hard_filters=hard_filters,
+                celebrity_name=celebrity_name.strip() or None,
+                raw_text=query_text.strip() or celebrity_name.strip() or "视觉搜索",
+            )
+            response = retrieve_visual_candidates(
+                source_dsn=source_dsn,
+                requester_user_key=str(run_input.requester_id),
+                intent=intent,
+                image_source=reference_image_url.strip() or None,
+                requester_profile_id=run_input.profile_id,
+                top_k=max(1, min(int(limit or 12), 30)),
+            )
+            ranked_results = [
+                dict(item)
+                for item in list(response.get("results") or [])
+                if int(item.get("profile_id") or 0) > 0
+            ]
+            profile_ids = [int(item["profile_id"]) for item in ranked_results]
+            rows_by_id: dict[int, dict[str, Any]] = {}
+            if profile_ids:
+                placeholders = ", ".join("?" for _ in profile_ids)
+                rows = list_profiles(
+                    source_dsn=source_dsn,
+                    source_table_name=source_table,
+                    where_clause=f"`id` IN ({placeholders})",
+                    params=tuple(profile_ids),
+                )
+                rows_by_id = {
+                    int(row.get("id")): dict(row)
+                    for row in rows
+                    if int(row.get("id") or 0) > 0
+                }
+            return {
+                "search_type": response.get("search_type") or intent.intent_type,
+                "intent_mode": mode,
+                "query_text": intent.query_text,
+                "result_count": len(ranked_results),
+                "results": [
+                    {
+                        "profile_id": int(item.get("profile_id") or 0),
+                        "title": str((rows_by_id.get(int(item.get("profile_id") or 0)) or {}).get("display_name") or (rows_by_id.get(int(item.get("profile_id") or 0)) or {}).get("name") or "候选人"),
+                        "city": str((rows_by_id.get(int(item.get("profile_id") or 0)) or {}).get("city") or "").strip() or None,
+                        "final_score": item.get("final_score") or item.get("base_score"),
+                        "appearance_summary": item.get("appearance_summary"),
+                    }
+                    for item in ranked_results
+                ],
+            }
+
+        @function_tool
+        def parse_visual_user_intent(
+            turn_text: str = "",
+            current_image_url: str = "",
+        ) -> dict[str, Any]:
+            """解析用户这句视觉搜索诉求，输出能力化 visual plan。"""
+            return _build_visual_search_plan_impl(
+                text=turn_text or None,
+                image_source=current_image_url or None,
+                visual_context=_normalize_visual_context(run_input.runtime_context) or {},
+                client_context={},
+            )
+
+        @function_tool
+        def search_face_similarity_candidates(
+            reference_image_url: str,
+            query_text: str = "",
+            hard_filters_json: str = "",
+            limit: int = 12,
+        ) -> dict[str, Any]:
+            """按脸相似搜索候选人。底层仍复用内部 face search 能力。"""
+            return _visual_search_candidates(
+                mode="face",
+                reference_image_url=reference_image_url,
+                query_text=query_text,
+                hard_filters_json=hard_filters_json,
+                limit=limit,
+            )
+
+        @function_tool
+        def search_style_similarity_candidates(
+            reference_image_url: str,
+            query_text: str = "",
+            hard_filters_json: str = "",
+            limit: int = 12,
+        ) -> dict[str, Any]:
+            """按整体感觉/风格搜索候选人。底层仍复用内部 style search 能力。"""
+            return _visual_search_candidates(
+                mode="style",
+                reference_image_url=reference_image_url,
+                query_text=query_text,
+                hard_filters_json=hard_filters_json,
+                limit=limit,
+            )
+
+        @function_tool
+        def search_reference_person_candidates(
+            reference_person_name: str = "",
+            reference_image_url: str = "",
+            hard_filters_json: str = "",
+            limit: int = 12,
+        ) -> dict[str, Any]:
+            """按参考人物/参考图搜索候选人。底层仍复用内部 reference/face search 能力。"""
+            if reference_image_url.strip():
+                return _visual_search_candidates(
+                    mode="face",
+                    reference_image_url=reference_image_url,
+                    query_text=reference_person_name,
+                    celebrity_name=reference_person_name,
+                    hard_filters_json=hard_filters_json,
+                    limit=limit,
+                )
+            return {
+                "ok": False,
+                "error": "reference_image_url is required",
+                "hint": "先用 WebSearch + resolve_direct_image_urls 拿到参考人物图片，再调用本工具。",
+            }
+
+        @function_tool
+        def apply_candidate_hard_filters(
+            candidate_ids: list[int],
+            hard_filters_json: str = "",
+        ) -> dict[str, Any]:
+            """对已有候选人结果应用硬条件过滤。"""
+            hard_filters = json.loads(hard_filters_json) if hard_filters_json.strip() else {}
+            allowed_ids = [int(candidate_id) for candidate_id in list(candidate_ids or []) if int(candidate_id) > 0]
+            return {
+                "input_candidate_ids": allowed_ids,
+                "hard_filters": hard_filters if isinstance(hard_filters, dict) else {},
+                "filtered_candidate_ids": allowed_ids,
+            }
+
+        @function_tool
+        def rerank_visual_candidates(
+            candidate_ids: list[int],
+            rerank_reason: str = "",
+        ) -> dict[str, Any]:
+            """在已有视觉候选人上做二次排序说明。"""
+            ranked_ids = [int(candidate_id) for candidate_id in list(candidate_ids or []) if int(candidate_id) > 0]
+            return {
+                "candidate_ids": ranked_ids,
+                "rerank_reason": rerank_reason.strip() or None,
+                "reranked_candidate_ids": ranked_ids,
+            }
+
+        @function_tool
+        def persist_visual_search_memory(
+            visual_memory_json: str,
+        ) -> dict[str, Any]:
+            """把本轮视觉搜索结论整理成可落库的记忆快照。"""
+            payload = json.loads(visual_memory_json or "{}")
+            if not isinstance(payload, dict):
+                raise ValueError("visual_memory_json must decode into an object")
+            return {"ok": True, "memory_snapshot": payload}
+
+        @function_tool
+        def resolve_direct_image_urls(
+            page_url: str,
+            max_results: int = 5,
+        ) -> dict[str, Any]:
+            """从网页中提取可直接访问的图片URL，帮助明星脸搜索拿到 photo_url。
+
+            用法：
+            - 先用 web_search 找到可能包含明星照片的页面
+            - 再调用本工具，把页面 URL 转成 1~5 个直接图片 URL
+            - 选一个最像官方/写真/清晰头像的 URL 传给 search_partner_candidates(photo_url=...)
+            """
+            normalized_url = str(page_url or "").strip()
+            if not normalized_url:
+                raise ValueError("page_url is required")
+
+            limit = max(1, min(int(max_results or 5), 10))
+            _logger.info("【工具调用】resolve_direct_image_urls page_url=%s max_results=%s", normalized_url[:300], limit)
+
+            try:
+                response = httpx.get(
+                    normalized_url,
+                    timeout=15.0,
+                    follow_redirects=True,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+                        )
+                    },
+                )
+                response.raise_for_status()
+            except Exception as exc:
+                _logger.warning("resolve_direct_image_urls fetch failed url=%s error=%s", normalized_url[:200], str(exc)[:200])
+                return {
+                    "ok": False,
+                    "page_url": normalized_url,
+                    "image_urls": [],
+                    "error": str(exc)[:300],
+                }
+
+            content_type = str(response.headers.get("content-type") or "").lower()
+            final_url = str(response.url)
+            if content_type.startswith("image/") and _looks_like_image_url(final_url):
+                return {
+                    "ok": True,
+                    "page_url": normalized_url,
+                    "resolved_url": final_url,
+                    "image_urls": [final_url],
+                    "content_type": content_type,
+                }
+
+            html_text = response.text or ""
+            image_urls = _extract_direct_image_urls_from_html(final_url, html_text)[:limit]
+            _logger.info("【工具结果】resolve_direct_image_urls resolved_url=%s image_count=%s", final_url[:300], len(image_urls))
+            return {
+                "ok": bool(image_urls),
+                "page_url": normalized_url,
+                "resolved_url": final_url,
+                "image_urls": image_urls,
+                "content_type": content_type,
+            }
 
         @function_tool
         def create_saved_search_subscription_from_last_search() -> dict[str, Any]:
@@ -1304,15 +1693,32 @@ class AgentsSdkDiscoveryAgentRuntime:
             action_context=action_context,
         )
 
+        web_search_tool = WebSearchTool(
+            search_context_size="medium",
+            external_web_access=True,
+        )
+        _logger.info("Discovery agent 已挂载 WebSearchTool（实验性接入）")
+
         # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
         tools = [
             sync_requester_persona_memory,
             # propose_requester_profile_update,  # 已注释：暂时禁用此工具
+            load_recent_visual_context,
+            build_visual_search_plan,
+            parse_visual_user_intent,
+            search_face_similarity_candidates,
+            search_style_similarity_candidates,
+            search_reference_person_candidates,
+            apply_candidate_hard_filters,
+            rerank_visual_candidates,
+            persist_visual_search_memory,
             search_partner_candidates,
+            resolve_direct_image_urls,
             create_saved_search_subscription_from_last_search,
             reply_to_user,   # 方案A：回复专用工具
             show_candidates, # 方案A：展示候选人专用工具
             suggest_assessment,  # 心理测评引导工具
+            web_search_tool,  # 实验性：允许 Agent 直接联网搜索明星参考图
         ]
         runtime_input = _build_runtime_prompt(
             run_input=run_input,
@@ -1353,6 +1759,7 @@ class AgentsSdkDiscoveryAgentRuntime:
                 started=started,
                 tool_state=tool_state,
                 agent_session=run_input.agent_session,  # 启用会话记忆
+                async_client=async_client,
             )
         )
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 3)
@@ -1495,32 +1902,38 @@ class AgentsSdkDiscoveryAgentRuntime:
         started: float,
         tool_state: dict[str, Any],
         agent_session: Any | None = None,  # 新增：会话记忆
+        async_client: Any | None = None,
     ) -> tuple[Any, float | None]:
-        # 启用会话记忆：传入 session 参数
-        streamed_result = Runner.run_streamed(
-            agent,
-            input=runtime_input,
-            session=agent_session,  # 启用会话记忆
-        )
-        first_token_latency_ms: float | None = None
-        async for stream_event in streamed_result.stream_events():
-            if first_token_latency_ms is None and _is_first_token_stream_event(stream_event):
-                first_token_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
-            if tool_state.get("show_payload") is not None or tool_state.get("reply_payload") is not None:
-                _logger.debug(
-                    "discovery agent stopping stream after terminal tool payload: has_show=%s has_reply=%s",
-                    tool_state.get("show_payload") is not None,
-                    tool_state.get("reply_payload") is not None,
-                )
-                break
-        run_loop_task = getattr(streamed_result, "run_loop_task", None)
-        if (
-            run_loop_task is not None
-            and tool_state.get("show_payload") is None
-            and tool_state.get("reply_payload") is None
-        ):
-            await run_loop_task
-        return streamed_result, first_token_latency_ms
+        try:
+            # 启用会话记忆：传入 session 参数
+            streamed_result = Runner.run_streamed(
+                agent,
+                input=runtime_input,
+                session=agent_session,  # 启用会话记忆
+            )
+            first_token_latency_ms: float | None = None
+            async for stream_event in streamed_result.stream_events():
+                if first_token_latency_ms is None and _is_first_token_stream_event(stream_event):
+                    first_token_latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
+                if tool_state.get("show_payload") is not None or tool_state.get("reply_payload") is not None:
+                    _logger.debug(
+                        "discovery agent stopping stream after terminal tool payload: has_show=%s has_reply=%s",
+                        tool_state.get("show_payload") is not None,
+                        tool_state.get("reply_payload") is not None,
+                    )
+                    break
+            run_loop_task = getattr(streamed_result, "run_loop_task", None)
+            if (
+                run_loop_task is not None
+                and tool_state.get("show_payload") is None
+                and tool_state.get("reply_payload") is None
+            ):
+                await run_loop_task
+            return streamed_result, first_token_latency_ms
+        finally:
+            if async_client is not None:
+                await async_client.close()
+                _logger.debug("Agents SDK AsyncOpenAI 客户端已在当前事件循环内关闭")
 
 
 def create_default_discovery_agent_runtime() -> DiscoveryAgentRuntime:

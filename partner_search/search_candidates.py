@@ -178,7 +178,6 @@ from match_domain.appearance_features import (
     compute_photo_bonus_breakdown as _compute_photo_bonus_breakdown,
     load_candidate_photo_features as _load_candidate_photo_features,
     load_requester_appearance_preference as _load_requester_appearance_preference,
-    refresh_profile_photo_features_from_record as _refresh_profile_photo_features_from_record,
 )
 
 argparse = _argparse
@@ -1549,27 +1548,6 @@ def attach_photo_features(records, *, persona_source=None):
         source_dsn=normalized_source,
         profile_ids=candidate_ids,
     )
-    missing_ids = [candidate_id for candidate_id in candidate_ids if candidate_id not in feature_map]
-    if missing_ids:
-        for record in records or []:
-            candidate_id = as_int(record.get("id"))
-            if candidate_id is None or candidate_id not in missing_ids[:20]:
-                continue
-            try:
-                _refresh_profile_photo_features_from_record(
-                    source_dsn=normalized_source,
-                    record=record,
-                    sync_embedding=False,
-                )
-            except Exception:
-                continue
-        if missing_ids:
-            refreshed_map = _load_candidate_photo_features(
-                source_dsn=normalized_source,
-                profile_ids=missing_ids,
-            )
-            if refreshed_map:
-                feature_map.update(refreshed_map)
     for record in records or []:
         candidate_id = as_int(record.get("id"))
         if candidate_id is None or candidate_id <= 0:

@@ -109,13 +109,69 @@ def user_message(
     return item
 
 
-def result_group(item_id: str, title: str, cards: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+def result_group(
+    item_id: str,
+    title: str,
+    cards: list[dict[str, Any]],
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    item = {
         "item_type": "result_group",
         "item_id": item_id,
         "title": title,
         "cards": cards,
     }
+    if metadata:
+        item["metadata"] = metadata
+    return item
+
+
+def build_visual_search_timeline_entries(
+    *,
+    user_item_id: str,
+    assistant_item_id: str,
+    result_group_item_id: str | None,
+    user_text: str,
+    assistant_text: str,
+    result_group_title: str | None,
+    cards: list[dict[str, Any]],
+    created_at: datetime | None = None,
+    image_source: str | None = None,
+    mime_type: str | None = None,
+    timeline_source: str = "visual_search",
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = [
+        user_message(
+            user_item_id,
+            user_text,
+            created_at=created_at,
+            metadata={
+                "media_type": "image",
+                "media_url": image_source,
+                "media_metadata": {
+                    "mime_type": mime_type,
+                    "source_kind": timeline_source,
+                },
+            } if image_source else None,
+        ),
+        assistant_message(
+            assistant_item_id,
+            assistant_text,
+            created_at=created_at,
+            metadata={"timeline_source": timeline_source},
+        ),
+    ]
+    if cards and result_group_item_id:
+        entries.append(
+            result_group(
+                result_group_item_id,
+                result_group_title or "视觉搜索结果",
+                cards,
+                metadata={"timeline_source": timeline_source},
+            )
+        )
+    return entries
 
 
 def criteria_chip(chip_id: str, label: str) -> dict[str, Any]:

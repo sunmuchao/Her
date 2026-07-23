@@ -44,6 +44,7 @@ DEFAULT_VECTOR_TYPES = [
     "emotional_needs",
     "appearance_profile",
     "appearance_preference",
+    "face_embedding",  # ✅ 新增：明星脸搜索
 ]
 
 
@@ -245,6 +246,51 @@ async def _execute_include(
             _logger.warning(f"未知的向量类型: {vector_type}")
             continue
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 特殊处理：face_embedding类型（明星脸搜索）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if vector_type == "face_embedding":
+            photo_url = config.get("photo_url", "")
+            similarity_threshold = config.get("similarity_threshold", 0.75)  # 默认阈值
+
+            if not photo_url:
+                _logger.warning("face_embedding类型缺少photo_url参数")
+                continue
+
+            # 调用专门的照片向量搜索函数
+            similar_ids, candidate_ids_with_data, avg_similarity = await _search_by_face_embedding(
+                photo_url=photo_url,
+                candidate_ids=candidate_ids,
+                user_id=user_id,
+                similarity_threshold=similarity_threshold,
+            )
+
+            # 处理"无数据"的候选人
+            candidate_ids_without_data = set(candidate_ids) - set(candidate_ids_with_data)
+            included_ids_with_data = included_ids.intersection(set(similar_ids))
+            included_ids = included_ids_with_data.union(candidate_ids_without_data)
+
+            include_trace.append({
+                "vector_type": vector_type,
+                "photo_url": photo_url,
+                "similarity_threshold": similarity_threshold,
+                "similar_ids": list(similar_ids),
+                "similar_count": len(similar_ids),
+                "avg_similarity": round(avg_similarity, 3),
+                "remaining_after_filter": len(included_ids),
+            })
+
+            _logger.info(
+                f"【明星脸搜索详情】photo_url={photo_url[:100]} "
+                f"threshold={similarity_threshold} similar_count={len(similar_ids)} "
+                f"avg_similarity={avg_similarity:.3f}"
+            )
+
+            continue
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 普通向量类型处理（文本向量）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         include_text = config.get("text", "")
         similarity_threshold = config.get("similarity_threshold", DEFAULT_SIMILARITY_THRESHOLD)
 
@@ -491,6 +537,111 @@ async def _search_similar_users(
         # 资源清理
         if embedding_service:
             await embedding_service.aclose()
+        if vector_store:
+            vector_store.close()
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 明星脸搜索专用函数
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+async def _search_by_face_embedding(
+    photo_url: str,
+    candidate_ids: list[int],
+    user_id: int,
+    similarity_threshold: float,
+) -> tuple[list[int], list[int], float]:
+    """照片向量搜索（明星脸搜索专用）
+
+    Args:
+        photo_url: 照片URL（Agent用WebSearch/WebFetch获取）
+        candidate_ids: 候选人ID列表（只搜索这些范围内）
+        user_id: 用户ID（排除自己）
+        similarity_threshold: 相似度阈值（默认0.75）
+
+    Returns:
+        (similar_ids, candidate_ids_with_data, avg_similarity)
+        - similar_ids: 相似用户ID列表（有数据且匹配）
+        - candidate_ids_with_data: 在向量库中有数据的候选人ID列表
+        - avg_similarity: 平均相似度
+    """
+
+    from match_domain.face_embedding_extractor import extract_face_embedding
+    from match_domain.vector_store_lite import VectorStoreLite
+
+    vector_store = None
+
+    try:
+        _logger.info(f"【明星脸向量提取开始】photo_url={photo_url[:100]}")
+
+        # Step 1: 提取照片向量
+        face_result = extract_face_embedding(photo_url)
+
+        if not face_result or not face_result.get("success"):
+            error_msg = face_result.get("error", "unknown_error") if face_result else "no_result"
+            _logger.warning(f"照片向量提取失败: {error_msg}")
+            return [], [], 0.0
+
+        vector = face_result.get("face_embedding")
+        if not vector:
+            _logger.warning("照片向量提取失败: 向量为空")
+            return [], [], 0.0
+
+        _logger.info(
+            f"【明星脸向量提取成功】"
+            f"model={face_result.get('face_embedding_model')} "
+            f"dimension={face_result.get('face_embedding_dimension')}"
+        )
+
+        # Step 2: 向量库搜索
+        vector_store = VectorStoreLite()
+        all_users_in_vector_db = vector_store.search_similar_users(
+            user_vector=vector,
+            vector_type="face_embedding",
+            top_k=len(candidate_ids) * 2,
+            similarity_threshold=0.01,  # 极低阈值，返回所有有数据的候选人
+            exclude_user_ids=[user_id],
+        )
+
+        # Step 3: 区分三种情况
+        candidate_set = set(candidate_ids)
+
+        # 所有在向量库中有数据的候选人
+        candidate_ids_with_data = [
+            u["user_id"]
+            for u in all_users_in_vector_db
+            if u["user_id"] in candidate_set
+        ]
+
+        # 有数据且匹配的候选人
+        similar_ids = [
+            u["user_id"]
+            for u in all_users_in_vector_db
+            if u["user_id"] in candidate_set and u["similarity"] >= similarity_threshold
+        ]
+
+        # Step 4: 计算平均相似度
+        if similar_ids:
+            similarities = [u["similarity"] for u in all_users_in_vector_db if u["user_id"] in similar_ids]
+            avg_similarity = sum(similarities) / len(similarities) if similarities else 0.0
+        else:
+            avg_similarity = 0.0
+
+        _logger.info(
+            f"【明星脸向量搜索详情】candidate_count={len(candidate_ids)} "
+            f"with_data_count={len(candidate_ids_with_data)} "
+            f"similar_count={len(similar_ids)} "
+            f"avg_similarity={avg_similarity:.3f}"
+        )
+
+        return similar_ids, candidate_ids_with_data, avg_similarity
+
+    except Exception as exc:
+        _logger.error(f"明星脸向量搜索异常: photo_url={photo_url} error={exc}")
+        return [], [], 0.0
+
+    finally:
         if vector_store:
             vector_store.close()
 

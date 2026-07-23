@@ -1,0 +1,8 @@
+# 日志表清理定时任务
+# 每天凌晨3点执行
+# 用法：crontab -e 然后添加以下行
+
+0 3 * * * cd /app && MYSQL_ROOT_PASSWORD='YOUR_PASSWORD_HERE' ./scripts/cleanup_logs.sh >> logs/cron_cleanup.log 2>&1
+
+# 或者使用环境变量文件
+# 0 3 * * * cd /app && source .env && ./scripts/cleanup_logs.sh >> logs/cron_cleanup.log 2>&1

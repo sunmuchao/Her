@@ -149,7 +149,6 @@ from .photo_discovery_search import (
 from .photo_intent_agent import (
     PhotoPreferenceIntent,
     build_photo_recommendation_explanation,
-    detect_photo_preference_intent,
     execute_photo_preference_search,
     translate_intent_to_search_plan,
 )
@@ -325,7 +324,6 @@ __all__ = [
     "build_photo_recommendation_explanation",
     "build_photo_feature_recompute_plan",
     "build_photo_model_rollout_plan",
-    "detect_photo_preference_intent",
     "evaluate_photo_model_candidate",
     "execute_photo_preference_search",
     "normalize_appearance_index_versions",

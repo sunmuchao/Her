@@ -29,6 +29,11 @@ export type DiscoveryView = {
       view_type?: 'interest' | 'matched' | 'delayed' | 'candidate' // 卡片类型
       title?: string
       subtitle?: string
+      age?: number
+      city?: string
+      occupation?: string
+      education?: string
+      verified?: boolean
       cover_image_url?: string
       match_score?: number
       reason_summary?: string
@@ -159,4 +164,24 @@ export type DiscoverySessionSummary = {
 export type DiscoverySessionListResponse = {
   sessions?: DiscoverySessionSummary[]
   total?: number
+}
+
+export type DiscoveryTurnAttachment = {
+  type: 'image'
+  source: string
+  mimeType?: string
+  role?: 'reference'
+}
+
+export type DiscoveryTurnClientContext = {
+  entryPoint?: string
+  topK?: number
+  // 兼容保留：方案 B 下前台正式调用不再主动传 intent_hint，
+  // 仅供迁移期旧调用或内部调试使用。
+  intent_hint?: {
+    mode?: 'auto' | 'face' | 'style' | 'celebrity' | 'hybrid'
+    celebrity_name?: string
+  }
+  attribute_filters?: Record<string, unknown>
+  hard_filters?: Record<string, unknown>
 }

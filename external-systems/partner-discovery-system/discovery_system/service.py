@@ -14,9 +14,26 @@ from typing import Any
 
 from her_json_utils import json_safe
 from her_runtime_context import get_trace_id
+from match_domain import PhotoPreferenceIntent, execute_photo_preference_search
+from match_domain.photo_intent_agent import (
+    build_visual_search_plan,
+    build_visual_search_result_summary,
+    visual_plan_to_photo_intent,
+)
+from match_domain.visual_capabilities import (
+    explain_visual_match,
+    looks_like_visual_reference_followup,
+    looks_like_visual_refinement,
+    looks_like_visual_search_request,
+    merge_visual_constraints,
+    parse_visual_refinement_constraints,
+    retrieve_visual_candidates,
+)
 from observability import audit_event, funnel_stage, metric_gauge
+from observability.photo_search_metrics import emit_photo_search_event
 from partner_search import load_self_profile, search_profiles
 from profile_detail_reader import load_profile_detail
+from profile_service import list_profiles, resolve_profile_source
 
 from .agent_runtime import (
     DiscoveryActionSuggestion,
@@ -28,6 +45,7 @@ from .agent_runtime import (
     DiscoveryToolCall,
     create_default_discovery_agent_runtime,
 )
+from .decision_models import VisualSearchDecisionPayloadModel
 from .service_session_open import (
     PROFILE_FIRST_SEARCH_LIMIT,
     build_profile_first_open_result,
@@ -36,6 +54,12 @@ from .service_session_open import (
     selected_candidates_from_search,
 )
 from .agent_session_store import create_default_discovery_agent_session_store
+from .agent_session_store import (
+    build_visual_context_runtime_summary,
+    build_visual_memory_runtime_summary,
+    normalize_visual_context,
+    normalize_visual_memory,
+)
 from .profile_updates import (
     ProfileUpdateRequestConflictError,
     ProfileUpdateRequestNotFoundError,
@@ -72,6 +96,7 @@ from .service_context import (
 from .view_models import (
     assistant_message,
     build_profile_detail_view_from_payload,
+    build_visual_search_timeline_entries,
     build_candidate_card,
     clone_view,
     composer,
@@ -82,6 +107,198 @@ from .view_models import (
 )
 
 _logger = logging.getLogger(__name__)
+
+_DISCOVERY_PRIMARY_VISUAL_TURN_PATH = "/v1/discovery/turns"
+
+
+def _pick_first_non_empty(row: dict[str, Any], field_names: tuple[str, ...]) -> Any:
+    for field_name in field_names:
+        value = row.get(field_name)
+        if isinstance(value, str):
+            if value.strip():
+                return value.strip()
+            continue
+        if value is not None:
+            return value
+    return None
+
+
+def _pick_profile_image(row: dict[str, Any]) -> str | None:
+    direct = _pick_first_non_empty(
+        row,
+        ("avatar_url", "photo_url", "cover_url", "image_url", "head_img", "headimgurl"),
+    )
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    return None
+
+
+def _normalize_multimodal_text(text: str | None) -> str | None:
+    normalized = str(text or "").strip()
+    return normalized or None
+
+
+def _env_flag_enabled(name: str, *, default: bool = False) -> bool:
+    raw = str(os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _build_photo_search_preview(
+    *,
+    ranked_result: dict[str, Any],
+    profile_row: dict[str, Any] | None,
+    intent: PhotoPreferenceIntent,
+) -> dict[str, Any]:
+    profile = dict(profile_row or {})
+    explanation = explain_visual_match(
+        intent=intent,
+        candidate_row={
+            **profile,
+            **ranked_result,
+        },
+    )
+    reasoning = dict(explanation.get("appearance_reasoning") or {})
+    highlights = [
+        str(item).strip()
+        for item in list(reasoning.get("highlights") or [])
+        if str(item).strip()
+    ]
+    verified_level = str(
+        profile.get("verified_level")
+        or profile.get("profile_verified_level")
+        or ""
+    ).strip()
+    return {
+        "id": str(ranked_result.get("profile_id") or profile.get("id") or ""),
+        "name": str(_pick_first_non_empty(profile, ("display_name", "name", "nickname")) or "候选人"),
+        "age": _pick_first_non_empty(profile, ("age", "self_age")),
+        "city": _pick_first_non_empty(profile, ("city", "self_city", "current_city")),
+        "occupation": _pick_first_non_empty(profile, ("job", "occupation", "self_job")),
+        "education": _pick_first_non_empty(profile, ("education", "self_education")),
+        "verified": bool(verified_level and verified_level not in {"none", "unknown"}),
+        "verifiedLevel": verified_level or None,
+        "matchScore": ranked_result.get("final_score") or ranked_result.get("base_score"),
+        "image": _pick_profile_image(profile),
+        "matchReason": str(reasoning.get("summary") or "").strip() or None,
+        "matchHighlights": highlights[:4],
+        "appearanceReasoning": reasoning,
+        "profile": profile,
+        "appearanceSummary": ranked_result.get("appearance_summary"),
+        "photoBonus": ranked_result.get("photo_bonus"),
+        "baseScore": ranked_result.get("base_score"),
+    }
+
+
+def _build_discovery_photo_search_card(preview: dict[str, Any]) -> dict[str, Any]:
+    profile = dict(preview.get("profile") or {})
+    profile_id = int(preview.get("id") or 0)
+    image_url = str(preview.get("image") or "").strip()
+    candidate_payload = {
+        "id": profile_id,
+        "name": str(preview.get("name") or "候选人"),
+        "profile": {
+            **profile,
+            "age": preview.get("age"),
+            "city": preview.get("city"),
+            "job": preview.get("occupation"),
+            "education": preview.get("education"),
+            "avatar_url": image_url or profile.get("avatar_url"),
+        },
+        "photo_preview": [image_url] if image_url else [],
+        "fit_score": 0,
+        "appearance_reasoning": dict(preview.get("appearanceReasoning") or {}),
+        "verified_label": "已认证" if preview.get("verified") else None,
+        "verification_items": (
+            [{"label": "已认证", "status": "verified"}]
+            if preview.get("verified")
+            else []
+        ),
+    }
+    card = build_candidate_card(
+        candidate_payload,
+        reason_summary=str(preview.get("matchReason") or "").strip(),
+    )
+    card = _enrich_discovery_card_from_profile(card, profile)
+    card["match_score"] = preview.get("matchScore")
+    if preview.get("age") not in (None, ""):
+        card["age"] = preview.get("age")
+    if str(preview.get("city") or "").strip():
+        card["city"] = str(preview.get("city") or "").strip()
+    if str(preview.get("occupation") or "").strip():
+        card["occupation"] = str(preview.get("occupation") or "").strip()
+    if str(preview.get("education") or "").strip():
+        card["education"] = str(preview.get("education") or "").strip()
+    card["verified"] = bool(preview.get("verified"))
+    card["reason_summary"] = str(preview.get("matchReason") or "").strip() or card.get("reason_summary")
+    card["match_highlights"] = [
+        str(item).strip()
+        for item in list(card.get("match_highlights") or [])
+        if str(item).strip()
+    ][:4]
+    return card
+
+
+def _enrich_discovery_card_from_profile(
+    card: dict[str, Any],
+    profile_row: dict[str, Any] | None,
+) -> dict[str, Any]:
+    enriched = dict(card or {})
+    profile = dict(profile_row or {})
+    if not profile:
+        return enriched
+
+    title_parts = str(enriched.get("title") or "").strip().split()
+    inferred_name = title_parts[0] if title_parts else ""
+    raw_subtitle = str(enriched.get("subtitle") or "")
+    subtitle_parts = [part.strip() for part in raw_subtitle.split("·") if part.strip()]
+    verified_level = str(
+        profile.get("verified_level")
+        or profile.get("profile_verified_level")
+        or ""
+    ).strip()
+
+    age = _pick_first_non_empty(profile, ("age", "self_age"))
+    city = _pick_first_non_empty(profile, ("city", "self_city", "current_city"))
+    occupation = _pick_first_non_empty(profile, ("job", "occupation", "self_job"))
+    education = _pick_first_non_empty(profile, ("education", "self_education"))
+    image_url = _pick_profile_image(profile)
+    profile_name = _pick_first_non_empty(profile, ("display_name", "name", "nickname"))
+
+    if age not in (None, ""):
+        enriched["age"] = age
+    if city:
+        enriched["city"] = str(city).strip()
+    elif subtitle_parts:
+        enriched["city"] = subtitle_parts[0]
+    if occupation:
+        enriched["occupation"] = str(occupation).strip()
+    elif len(subtitle_parts) > 1:
+        enriched["occupation"] = subtitle_parts[1]
+    if education:
+        enriched["education"] = str(education).strip()
+    elif len(subtitle_parts) > 2:
+        enriched["education"] = subtitle_parts[2]
+    if verified_level and verified_level not in {"none", "unknown"}:
+        enriched["verified"] = True
+    if image_url and not str(enriched.get("cover_image_url") or "").strip():
+        enriched["cover_image_url"] = image_url
+
+    normalized_name = str(profile_name or inferred_name or "候选人").strip() or "候选人"
+    title_tokens = [normalized_name]
+    if age not in (None, ""):
+        title_tokens.append(str(age))
+    enriched["title"] = " ".join(title_tokens).strip()
+
+    subtitle_tokens = [
+        str(part).strip()
+        for part in (city, occupation, education)
+        if str(part or "").strip()
+    ]
+    if subtitle_tokens:
+        enriched["subtitle"] = " · ".join(subtitle_tokens)
+    return enriched
 
 
 def _discovery_fast_open_enabled() -> bool:
@@ -179,7 +396,7 @@ def _shared_values(self_traits: dict[str, Any], candidate_traits: dict[str, Any]
 
 def _candidate_first_name(card: dict[str, Any]) -> str:
     title = str(card.get("title") or "这位").strip() or "这位"
-    return re.split(r"\s+", title, maxsplit=1)[0]
+    return title.split(maxsplit=1)[0]
 
 
 def _compact_profile_for_llm(profile: dict[str, Any] | None) -> dict[str, Any]:
@@ -499,74 +716,37 @@ class DiscoveryService:
         session.state["create_session_mode"] = open_mode
 
         if _discovery_fast_open_enabled() and open_mode == "profile_first":
-            # ✅ 修复：改为同步执行，确保前端立即拿到包含搜索结果的 session
-            # 问题：之前使用后台线程异步执行，前端拿到空 session 后不会自动刷新
-            # 解决：同步执行搜索，让前端直接拿到完整结果
-            self._check_and_push_proxy_intro_cases(session, profile_id, current)
-
-            # 同步执行 fast open 补首轮结果
-            try:
-                runtime_result, open_tool_calls = self._profile_first_session_open(session)
-                search_run_id = self._apply_runtime_result(session, runtime_result, now=current)
-                self.storage.save_session(session)
-
-                turn_id = self.storage.create_turn(
-                    session_id=session.session_id,
-                    request_kind="session_opened",
-                    user_message_text=None,
-                    consumed_action_id=None,
-                    agent_decision=self._decision_payload(runtime_result.decision),
-                    view_snapshot=clone_view(session.view),
-                    created_at=current,
-                    search_run_id=search_run_id,
-                    trace_id=trace_id,
-                )
-                self._persist_view_snapshot(
-                    session,
-                    turn_id=turn_id,
-                    created_at=current,
-                    trace_id=trace_id,
-                )
-                self._record_tool_calls(
-                    session_id=session.session_id,
-                    turn_id=turn_id,
-                    tool_calls=open_tool_calls,
-                    search_run_id=search_run_id,
-                    created_at=current,
-                    trace_id=trace_id,
-                )
-                self._increment_metric("sessions.created")
-                self._increment_metric("turns.created")
-                self._increment_metric("sessions.fast_open.completed")
-
-                # 推送候选人准备通知
-                self._push_candidates_ready_notification(
-                    session_id=session.session_id,
-                    profile_id=session.profile_id,
-                    search_run_id=search_run_id,
-                )
-
-            except Exception:
-                _logger.exception("[Discovery Fast Open] 补首轮结果失败: session_id=%s", session.session_id)
-                # 失败时返回基础 session
-                session.view = {
-                    "timeline": list(session.view.get("timeline") or []) + [
-                        assistant_message(
-                            f"{session.session_id}-opening",
-                            "我先根据你的资料筛一轮，马上把结果发你。",
-                            created_at=current,
-                        ),
-                    ],
-                    "criteria_chips": [],
-                    "suggested_actions": [],
-                    "composer": composer("小雅正在根据你的资料筛选...", disabled=True),
-                }
-                self.storage.save_session(session)
-
+            self._start_proxy_intro_push_task(
+                session_id=session.session_id,
+                profile_id=profile_id,
+                now=current,
+            )
+            session.view = {
+                "timeline": list(session.view.get("timeline") or []) + [
+                    assistant_message(
+                        f"{session.session_id}-opening",
+                        "我先根据你的资料筛一轮，马上把结果发你。",
+                        created_at=current,
+                    ),
+                ],
+                "criteria_chips": list(session.view.get("criteria_chips") or []),
+                "suggested_actions": list(session.view.get("suggested_actions") or []),
+                "composer": composer("小雅正在根据你的资料筛选...", disabled=True),
+            }
+            self.storage.save_session(session)
+            self._start_profile_first_fast_open_task(
+                session_id=session.session_id,
+                created_at=current,
+                trace_id=trace_id,
+            )
             return self._session_payload(session)
 
         # ✅ 新增：检查并推送待推送的被动推荐案件（有人想认识你）
-        self._check_and_push_proxy_intro_cases(session, profile_id, current)
+        self._start_proxy_intro_push_task(
+            session_id=session.session_id,
+            profile_id=profile_id,
+            now=current,
+        )
 
         if open_mode == "profile_first":
             runtime_result, open_tool_calls = self._profile_first_session_open(session)
@@ -632,6 +812,83 @@ class DiscoveryService:
         )
 
         return self._session_payload(session)
+
+    def _start_profile_first_fast_open_task(
+        self,
+        *,
+        session_id: str,
+        created_at: datetime,
+        trace_id: str | None,
+    ) -> None:
+        def _run() -> None:
+            try:
+                session = self._require_session(session_id)
+                runtime_result, open_tool_calls = self._profile_first_session_open(session)
+                search_run_id = self._apply_runtime_result(session, runtime_result, now=created_at)
+                self.storage.save_session(session)
+
+                turn_id = self.storage.create_turn(
+                    session_id=session.session_id,
+                    request_kind="session_opened",
+                    user_message_text=None,
+                    consumed_action_id=None,
+                    agent_decision=self._decision_payload(runtime_result.decision),
+                    view_snapshot=clone_view(session.view),
+                    created_at=created_at,
+                    search_run_id=search_run_id,
+                    trace_id=trace_id,
+                )
+                self._persist_view_snapshot(
+                    session,
+                    turn_id=turn_id,
+                    created_at=created_at,
+                    trace_id=trace_id,
+                )
+                self._record_tool_calls(
+                    session_id=session.session_id,
+                    turn_id=turn_id,
+                    tool_calls=open_tool_calls,
+                    search_run_id=search_run_id,
+                    created_at=created_at,
+                    trace_id=trace_id,
+                )
+                self._increment_metric("sessions.created")
+                self._increment_metric("turns.created")
+                self._increment_metric("sessions.fast_open.completed")
+                self._push_candidates_ready_notification(
+                    session_id=session.session_id,
+                    profile_id=session.profile_id,
+                    search_run_id=search_run_id,
+                )
+            except Exception:
+                _logger.exception("[Discovery Fast Open] 异步补首轮结果失败: session_id=%s", session_id)
+
+        threading.Thread(
+            target=_run,
+            name=f"discovery-fast-open-{session_id}",
+            daemon=True,
+        ).start()
+
+    def _start_proxy_intro_push_task(
+        self,
+        *,
+        session_id: str,
+        profile_id: int,
+        now: datetime,
+    ) -> None:
+        def _run() -> None:
+            try:
+                session = self._require_session(session_id)
+                self._check_and_push_proxy_intro_cases(session, profile_id, now)
+                self.storage.save_session(session)
+            except Exception:
+                _logger.exception("[Discovery Proxy Intro] 异步推送失败: session_id=%s", session_id)
+
+        threading.Thread(
+            target=_run,
+            name=f"discovery-proxy-intro-{session_id}",
+            daemon=True,
+        ).start()
 
     def _complete_profile_first_session_open(
         self,
@@ -837,6 +1094,776 @@ class DiscoveryService:
                 f"[SSE Push] 推送异常: {e}, session={session_id}"
             )
 
+    def _normalize_turn_attachments(
+        self,
+        attachments: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for item in list(attachments or []):
+            if not isinstance(item, dict):
+                continue
+            attachment_type = str(item.get("type") or item.get("kind") or "").strip().lower()
+            source = str(item.get("source") or item.get("url") or "").strip()
+            if attachment_type != "image":
+                raise DiscoveryInvalidTurnInputError("only image attachments are supported in discovery turns")
+            if not source:
+                raise DiscoveryInvalidTurnInputError("image attachment source is required")
+            normalized.append(
+                {
+                    "type": "image",
+                    "source": source,
+                    "mime_type": str(item.get("mime_type") or item.get("mimeType") or "").strip() or None,
+                    "role": str(item.get("role") or "reference").strip() or "reference",
+                }
+            )
+        return normalized
+
+    def _resolve_profile_source(self) -> tuple[str, str]:
+        source_dsn, source_table = resolve_profile_source(self._profile_source(), None)
+        if not source_dsn or not source_table:
+            raise DiscoveryInvalidTurnInputError(
+                "Profile source is not configured. Set HER_DISCOVERY_PROFILE_SOURCE or HER_PROFILE_SOURCE_DSN."
+            )
+        return source_dsn, source_table
+
+    def _hydrate_view_candidate_cards(self, view: dict[str, Any] | None) -> dict[str, Any]:
+        hydrated_view = clone_view(view or {})
+        timeline = list(hydrated_view.get("timeline") or [])
+        candidate_ids: list[int] = []
+        needs_hydration = False
+
+        for item in timeline:
+            if str(item.get("item_type") or "").strip() != "result_group":
+                continue
+            for card in list(item.get("cards") or []):
+                if not isinstance(card, dict):
+                    continue
+                profile_id = int(card.get("profile_id") or 0)
+                if profile_id <= 0:
+                    continue
+                has_explicit_structured_fields = (
+                    card.get("age") not in (None, "")
+                    and bool(str(card.get("city") or "").strip())
+                    and bool(str(card.get("occupation") or "").strip())
+                    and bool(str(card.get("education") or "").strip())
+                    and card.get("verified") is not None
+                )
+                if not has_explicit_structured_fields:
+                    needs_hydration = True
+                    candidate_ids.append(profile_id)
+
+        if not needs_hydration or not candidate_ids:
+            return hydrated_view
+
+        try:
+            source_dsn, source_table = self._resolve_profile_source()
+        except DiscoveryInvalidTurnInputError:
+            return hydrated_view
+        except Exception:
+            return hydrated_view
+
+        placeholders = ", ".join("?" for _ in candidate_ids)
+        try:
+            rows = list_profiles(
+                source_dsn=source_dsn,
+                source_table_name=source_table,
+                where_clause=f"`id` IN ({placeholders})",
+                params=tuple(candidate_ids),
+            )
+        except Exception:
+            _logger.exception("hydrate discovery cards from profile source failed")
+            return hydrated_view
+
+        profile_map = {
+            int(row.get("id")): dict(row)
+            for row in rows
+            if int(row.get("id") or 0) > 0
+        }
+
+        for item in timeline:
+            if str(item.get("item_type") or "").strip() != "result_group":
+                continue
+            updated_cards: list[dict[str, Any]] = []
+            for card in list(item.get("cards") or []):
+                if not isinstance(card, dict):
+                    continue
+                profile_id = int(card.get("profile_id") or 0)
+                updated_cards.append(
+                    _enrich_discovery_card_from_profile(card, profile_map.get(profile_id))
+                )
+            item["cards"] = updated_cards
+
+        hydrated_view["timeline"] = timeline
+        return hydrated_view
+
+    def _build_photo_search_intent(
+        self,
+        *,
+        mode: str,
+        text: str | None,
+        celebrity_name: str | None,
+        client_context: dict[str, Any],
+    ) -> PhotoPreferenceIntent:
+        normalized_text = _normalize_multimodal_text(text)
+        normalized_name = _normalize_multimodal_text(celebrity_name) or normalized_text
+        attribute_filters = client_context.get("attribute_filters")
+        hard_filters = client_context.get("hard_filters")
+        normalized_attribute_filters = attribute_filters if isinstance(attribute_filters, dict) else {}
+        normalized_hard_filters = hard_filters if isinstance(hard_filters, dict) else {}
+
+        if mode == "face":
+            return PhotoPreferenceIntent(
+                intent_type="face_similarity_search",
+                mode="face",
+                query_text=normalized_text or "像这张脸",
+                attribute_filters=normalized_attribute_filters,
+                hard_filters=normalized_hard_filters,
+                raw_text=normalized_text or "像这张脸",
+            )
+        if mode == "style":
+            return PhotoPreferenceIntent(
+                intent_type="style_similarity_search",
+                mode="style",
+                query_text=normalized_text or "这种感觉",
+                attribute_filters=normalized_attribute_filters,
+                hard_filters=normalized_hard_filters,
+                raw_text=normalized_text or "这种感觉",
+            )
+        if mode == "celebrity":
+            if not normalized_name:
+                raise DiscoveryInvalidTurnInputError("celebrity_name or message.text is required for celebrity search")
+            return PhotoPreferenceIntent(
+                intent_type="celebrity_face_search",
+                mode="celebrity",
+                query_text=normalized_name,
+                celebrity_name=normalized_name,
+                attribute_filters=normalized_attribute_filters,
+                hard_filters=normalized_hard_filters,
+                raw_text=normalized_name,
+            )
+        return PhotoPreferenceIntent(
+            intent_type="hybrid_photo_search",
+            mode="hybrid",
+            query_text=normalized_text or "帮我看看这张图适合找什么人",
+            attribute_filters=normalized_attribute_filters,
+            hard_filters=normalized_hard_filters,
+            raw_text=normalized_text or "帮我看看这张图适合找什么人",
+        )
+
+    def _multimodal_user_text(
+        self,
+        *,
+        mode: str,
+        text: str | None,
+        celebrity_name: str | None,
+    ) -> str:
+        normalized_text = _normalize_multimodal_text(text)
+        normalized_name = _normalize_multimodal_text(celebrity_name) or normalized_text
+        if normalized_text:
+            return normalized_text
+        if mode == "celebrity":
+            return f"想找像 {normalized_name or '某明星'} 的人"
+        if mode == "face":
+            return "找像这张脸的人"
+        if mode == "style":
+            return "找这种感觉的人"
+        return "帮我看看这张图适合找什么人"
+
+    def _multimodal_assistant_summary(
+        self,
+        *,
+        mode: str,
+        result_count: int,
+    ) -> str:
+        if result_count <= 0:
+            return "这次我还没找到特别贴的，你可以换张图，或者补一句更明确的描述。"
+        if mode == "face":
+            return f"我先按这张脸帮你找了一轮，筛到 {result_count} 个比较贴近的人。"
+        if mode == "style":
+            return f"我先按这张图的整体感觉找了一轮，筛到 {result_count} 个比较贴近的人。"
+        if mode == "celebrity":
+            return f"我先按你给的参考人物找了一轮，筛到 {result_count} 个比较贴近的人。"
+        return f"我先综合这张图的脸和整体感觉找了一轮，筛到 {result_count} 个比较贴近的人。"
+
+    def _get_visual_memory(self, session: StoredSession) -> dict[str, Any]:
+        source = session.state.get("visual_memory") or session.state.get("visual_context")
+        return normalize_visual_memory(source)
+
+    def _get_visual_context(self, session: StoredSession) -> dict[str, Any]:
+        return normalize_visual_context(self._get_visual_memory(session))
+
+    def _set_visual_memory(self, session: StoredSession, visual_memory: dict[str, Any]) -> None:
+        normalized_memory = normalize_visual_memory(visual_memory)
+        session.state["visual_memory"] = normalized_memory
+        session.state["visual_context"] = normalize_visual_context(normalized_memory)
+
+    def _merge_visual_constraints(
+        self,
+        *,
+        existing: dict[str, Any] | None,
+        incoming_attribute_filters: dict[str, Any] | None,
+        incoming_hard_filters: dict[str, Any] | None,
+        refinement: dict[str, Any] | None,
+        current: datetime,
+    ) -> dict[str, Any]:
+        return merge_visual_constraints(
+            existing=existing,
+            incoming_attribute_filters=incoming_attribute_filters,
+            incoming_hard_filters=incoming_hard_filters,
+            refinement=refinement,
+            updated_at=current.isoformat(),
+        )
+
+    def _build_followup_multimodal_context(
+        self,
+        *,
+        session: StoredSession,
+        text: str | None,
+        attachments: list[dict[str, Any]],
+        client_context: dict[str, Any],
+        current: datetime,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        normalized_attachments = list(attachments)
+        normalized_client_context = deepcopy(client_context)
+        visual_memory = self._get_visual_memory(session)
+        reference = dict(visual_memory.get("active_reference") or {})
+        active_preference = dict(visual_memory.get("active_preference") or {})
+        refinement = parse_visual_refinement_constraints(text)
+
+        if not normalized_attachments and reference.get("source"):
+            normalized_attachments = [
+                {
+                    "type": "image",
+                    "source": reference.get("source"),
+                    "mime_type": reference.get("mime_type"),
+                    "role": reference.get("role") or "reference",
+                }
+            ]
+
+        intent_hint = dict(normalized_client_context.get("intent_hint") or {})
+        if not _normalize_multimodal_text(intent_hint.get("mode")) and active_preference.get("legacy_mode"):
+            intent_hint["mode"] = active_preference.get("legacy_mode")
+        if not _normalize_multimodal_text(intent_hint.get("celebrity_name")) and active_preference.get("celebrity_name"):
+            intent_hint["celebrity_name"] = active_preference.get("celebrity_name")
+        if intent_hint:
+            normalized_client_context["intent_hint"] = intent_hint
+
+        merged_constraints = self._merge_visual_constraints(
+            existing=visual_memory.get("active_constraints"),
+            incoming_attribute_filters=(
+                normalized_client_context.get("attribute_filters")
+                if isinstance(normalized_client_context.get("attribute_filters"), dict)
+                else {}
+            ),
+            incoming_hard_filters=(
+                normalized_client_context.get("hard_filters")
+                if isinstance(normalized_client_context.get("hard_filters"), dict)
+                else {}
+            ),
+            refinement=refinement if looks_like_visual_refinement(text) else {},
+            current=current,
+        )
+        normalized_client_context["attribute_filters"] = dict(merged_constraints.get("attribute_filters") or {})
+        normalized_client_context["hard_filters"] = dict(merged_constraints.get("hard_filters") or {})
+        return normalized_attachments, normalized_client_context
+
+    def _update_visual_context_after_photo_turn(
+        self,
+        *,
+        session: StoredSession,
+        intent: PhotoPreferenceIntent,
+        attachments: list[dict[str, Any]],
+        client_context: dict[str, Any],
+        cards: list[dict[str, Any]],
+        result_group_item_id: str | None,
+        current: datetime,
+        query_text: str | None,
+    ) -> None:
+        visual_memory = self._get_visual_memory(session)
+        active_reference = dict(visual_memory.get("active_reference") or {})
+        if attachments:
+            active_reference = {
+                "source": str(attachments[0].get("source") or "").strip() or None,
+                "mime_type": str(attachments[0].get("mime_type") or "").strip() or None,
+                "role": str(attachments[0].get("role") or "reference").strip() or "reference",
+                "updated_at": current.isoformat(),
+            }
+        merged_constraints = self._merge_visual_constraints(
+            existing=visual_memory.get("active_constraints"),
+            incoming_attribute_filters=intent.attribute_filters,
+            incoming_hard_filters=intent.hard_filters,
+            refinement=(
+                parse_visual_refinement_constraints(query_text)
+                if looks_like_visual_refinement(query_text)
+                else {}
+            ),
+            current=current,
+        )
+        updated_memory = {
+            "active_reference": active_reference,
+            "active_preference": {
+                "legacy_mode": intent.mode,
+                "intent_type": intent.intent_type,
+                "query_text": intent.query_text,
+                "raw_text": intent.raw_text,
+                "celebrity_name": intent.celebrity_name,
+                "updated_at": current.isoformat(),
+            },
+            "active_constraints": merged_constraints,
+            "last_result": {
+                "result_group_id": result_group_item_id,
+                "profile_ids": [int(card.get("profile_id") or 0) for card in cards if int(card.get("profile_id") or 0) > 0],
+                "query_text": _normalize_multimodal_text(query_text) or intent.query_text,
+            },
+            "refinement_history": list(merged_constraints.get("refinement_texts") or []),
+            "updated_at": current.isoformat(),
+        }
+        self._set_visual_memory(session, updated_memory)
+
+    def _emit_visual_turn_event(
+        self,
+        *,
+        session: StoredSession,
+        stage: str,
+        search_type: str,
+        result_count: int | None = None,
+        success: bool = True,
+        has_image: bool = False,
+        reused_reference_image: bool = False,
+        is_refinement: bool = False,
+        is_first_visual_turn: bool = False,
+        follows_empty_result: bool = False,
+        visual_plan: dict[str, Any] | None = None,
+        mode: str | None = None,
+    ) -> None:
+        emit_photo_search_event(
+            user_key=str(session.requester_id),
+            search_type=search_type,
+            stage=stage,
+            result_count=result_count,
+            success=success,
+            entrypoint="unified_discovery_turn",
+            route_kind="discovery_turns",
+            route_path=_DISCOVERY_PRIMARY_VISUAL_TURN_PATH,
+            flow_kind="visual_refinement" if is_refinement else "visual_search",
+            has_image=has_image,
+            reused_reference_image=reused_reference_image,
+            is_refinement=is_refinement,
+            is_first_visual_turn=is_first_visual_turn,
+            follows_empty_result=follows_empty_result,
+            mode=mode or "",
+            visual_turn_type=str((visual_plan or {}).get("turn_type") or "").strip() or None,
+        )
+
+    def _should_run_visual_shadow_compare(self) -> bool:
+        return _env_flag_enabled("HER_DISCOVERY_VISUAL_SHADOW_COMPARE", default=False)
+
+    def _run_visual_shadow_compare(
+        self,
+        *,
+        session: StoredSession,
+        source_dsn: str,
+        text: str | None,
+        image_source: str | None,
+        client_context: dict[str, Any],
+        intent: PhotoPreferenceIntent,
+        ranked_results: list[dict[str, Any]],
+        visual_plan_payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if not self._should_run_visual_shadow_compare():
+            return None
+        baseline_mode = "hybrid"
+        intent_hint = dict(client_context.get("intent_hint") or {})
+        hinted_mode = str(intent_hint.get("mode") or "").strip().lower()
+        if hinted_mode in {"face", "style", "celebrity", "hybrid"}:
+            baseline_mode = hinted_mode
+        try:
+            baseline_intent = self._build_photo_search_intent(
+                mode=baseline_mode,
+                text=text,
+                celebrity_name=intent.celebrity_name,
+                client_context=client_context,
+            )
+            baseline_result = execute_photo_preference_search(
+                source_dsn=source_dsn,
+                requester_user_key=str(session.requester_id),
+                intent=baseline_intent,
+                image_source=image_source,
+                requester_profile_id=session.profile_id,
+                top_k=max(1, min(int(client_context.get("top_k") or 12), 30)),
+            )
+            primary_ids = [int(item.get("profile_id") or 0) for item in ranked_results if int(item.get("profile_id") or 0) > 0]
+            baseline_ids = [
+                int(item.get("profile_id") or 0)
+                for item in list(baseline_result.get("results") or [])
+                if int(item.get("profile_id") or 0) > 0
+            ]
+            overlap_ids = [profile_id for profile_id in primary_ids if profile_id in set(baseline_ids)]
+            comparison = {
+                "enabled": True,
+                "baseline_mode": baseline_mode,
+                "primary_mode": intent.mode,
+                "primary_result_ids": primary_ids,
+                "baseline_result_ids": baseline_ids,
+                "overlap_ids": overlap_ids,
+                "overlap_count": len(overlap_ids),
+                "diff_detected": primary_ids != baseline_ids or baseline_mode != intent.mode,
+                "visual_plan_turn_type": str(visual_plan_payload.get("turn_type") or "").strip() or None,
+            }
+            emit_photo_search_event(
+                user_key=str(session.requester_id),
+                search_type="unified_visual_search_shadow_compare",
+                stage="shadow_compare",
+                result_count=len(primary_ids),
+                success=not comparison["diff_detected"],
+                entrypoint="unified_discovery_turn",
+                route_kind="discovery_turns",
+                primary_mode=intent.mode,
+                baseline_mode=baseline_mode,
+                shadow_compare_enabled=True,
+                shadow_diff_detected=comparison["diff_detected"],
+                shadow_overlap_count=len(overlap_ids),
+                shadow_primary_result_count=len(primary_ids),
+                shadow_baseline_result_count=len(baseline_ids),
+            )
+            return comparison
+        except Exception as exc:
+            _logger.warning("visual shadow compare failed: %s", exc)
+            emit_photo_search_event(
+                user_key=str(session.requester_id),
+                search_type="unified_visual_search_shadow_compare",
+                stage="shadow_compare_failed",
+                result_count=0,
+                success=False,
+                entrypoint="unified_discovery_turn",
+                route_kind="discovery_turns",
+                primary_mode=intent.mode,
+                baseline_mode=baseline_mode,
+                shadow_compare_enabled=True,
+                shadow_error=str(exc)[:240],
+            )
+            return {
+                "enabled": True,
+                "baseline_mode": baseline_mode,
+                "primary_mode": intent.mode,
+                "failed": True,
+                "error": str(exc),
+            }
+
+    def _run_photo_search_turn(
+        self,
+        *,
+        session: StoredSession,
+        text: str | None,
+        attachments: list[dict[str, Any]],
+        client_context: dict[str, Any],
+        current: datetime,
+        trace_id: str | None,
+    ) -> dict[str, Any]:
+        image_source = str(attachments[0].get("source") or "").strip() if attachments else ""
+        previous_visual_context = self._get_visual_context(session)
+        previous_result_ids = list(previous_visual_context.get("last_result_profile_ids") or [])
+        has_previous_reference = bool(dict(previous_visual_context.get("active_reference_image") or {}).get("source"))
+        visual_plan = VisualSearchDecisionPayloadModel.model_validate(
+            build_visual_search_plan(
+                text=text,
+                image_source=image_source or None,
+                visual_context=self._get_visual_context(session),
+                client_context=client_context,
+            )
+        )
+        visual_plan_payload = visual_plan.model_dump(mode="json", exclude_none=True)
+        reused_reference_image = bool(visual_plan.resolved_visual_plan and visual_plan.resolved_visual_plan.reuse_reference_image)
+        is_refinement = str(visual_plan.turn_type or "").strip() == "visual_refinement"
+        is_first_visual_turn = not has_previous_reference
+        follows_empty_result = has_previous_reference and not previous_result_ids
+        if visual_plan.should_ask_clarifying_question:
+            user_body = _normalize_multimodal_text(text) or "想按图片继续找"
+            new_items = [
+                user_message(
+                    self.storage.next_item_id("msg-u"),
+                    user_body,
+                    created_at=current,
+                    metadata={
+                        "media_type": "image",
+                        "media_url": image_source,
+                        "media_metadata": {
+                            "mime_type": attachments[0].get("mime_type") if attachments else None,
+                            "source_kind": "discovery_turn_attachment",
+                        },
+                    } if image_source else None,
+                ),
+                assistant_message(
+                    self.storage.next_item_id("msg-a"),
+                    visual_plan.clarifying_question or visual_plan.assistant_summary,
+                    created_at=current,
+                ),
+            ]
+            session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
+            session.updated_at = current
+            self.storage.save_session(session)
+            turn_id = self.storage.create_turn(
+                session_id=session.session_id,
+                request_kind="multimodal_message",
+                user_message_text=user_body,
+                consumed_action_id=None,
+                agent_decision={
+                    "kind": "multimodal_visual_clarification",
+                    "visual_plan": visual_plan.model_dump(mode="json", exclude_none=True),
+                    "has_image": bool(image_source),
+                },
+                view_snapshot=clone_view(session.view),
+                created_at=current,
+                search_run_id=None,
+                trace_id=trace_id,
+            )
+            self._persist_view_snapshot(
+                session,
+                turn_id=turn_id,
+                created_at=current,
+                trace_id=trace_id,
+            )
+            self._increment_metric("turns.created")
+            self._increment_metric("turns.multimodal_message")
+            self._emit_visual_turn_event(
+                session=session,
+                stage="clarifying_question",
+                search_type="unified_visual_search",
+                result_count=0,
+                success=False,
+                has_image=bool(image_source),
+                reused_reference_image=reused_reference_image,
+                is_refinement=is_refinement,
+                is_first_visual_turn=is_first_visual_turn,
+                follows_empty_result=follows_empty_result,
+                visual_plan=visual_plan_payload,
+            )
+            return self._session_payload(session)
+
+        intent = visual_plan_to_photo_intent(visual_plan_payload)
+        mode = intent.mode
+        celebrity_name = intent.celebrity_name
+        if mode in {"face", "style", "hybrid"} and not image_source and not visual_plan.resolved_visual_plan.reuse_reference_image:
+            raise DiscoveryInvalidTurnInputError("image attachment is required for image-based discovery turn")
+
+        source_dsn, source_table = self._resolve_profile_source()
+        result = retrieve_visual_candidates(
+            source_dsn=source_dsn,
+            requester_user_key=str(session.requester_id),
+            intent=intent,
+            image_source=image_source or None,
+            requester_profile_id=session.profile_id,
+            top_k=max(1, min(int(client_context.get("top_k") or 12), 30)),
+        )
+        ranked_results = [
+            dict(item)
+            for item in list(result.get("results") or [])
+            if int(item.get("profile_id") or 0) > 0
+        ]
+        profile_map: dict[int, dict[str, Any]] = {}
+        if ranked_results:
+            profile_ids = [int(item["profile_id"]) for item in ranked_results]
+            placeholders = ", ".join("?" for _ in profile_ids)
+            rows = list_profiles(
+                source_dsn=source_dsn,
+                source_table_name=source_table,
+                where_clause=f"`id` IN ({placeholders})",
+                params=tuple(profile_ids),
+            )
+            profile_map = {
+                int(row.get("id")): dict(row)
+                for row in rows
+                if int(row.get("id") or 0) > 0
+            }
+        previews = [
+            _build_photo_search_preview(
+                ranked_result=item,
+                profile_row=profile_map.get(int(item["profile_id"])),
+                intent=intent,
+            )
+            for item in ranked_results
+        ]
+        cards = [
+            _build_discovery_photo_search_card(preview)
+            for preview in previews
+            if int(preview.get("id") or 0) > 0
+        ]
+        shadow_compare = self._run_visual_shadow_compare(
+            session=session,
+            source_dsn=source_dsn,
+            text=text,
+            image_source=image_source or None,
+            client_context=client_context,
+            intent=intent,
+            ranked_results=ranked_results,
+            visual_plan_payload=visual_plan_payload,
+        )
+        result_group_item_id: str | None = None
+        if cards:
+            title = (
+                f"像 {celebrity_name or text or '参考人物'}"
+                if mode == "celebrity"
+                else ("像这张脸" if mode == "face" else "这种感觉" if mode == "style" else "小雅自动理解这张图")
+            )
+            result_group_item_id = self.storage.next_item_id("result-group")
+        new_items = build_visual_search_timeline_entries(
+            user_item_id=self.storage.next_item_id("msg-u"),
+            assistant_item_id=self.storage.next_item_id("msg-a"),
+            result_group_item_id=result_group_item_id,
+            user_text=_normalize_multimodal_text(text) or intent.query_text,
+            assistant_text=build_visual_search_result_summary(
+                plan=visual_plan_payload,
+                result_count=len(previews),
+            ),
+            result_group_title=title if cards else None,
+            cards=cards,
+            created_at=current,
+            image_source=image_source or None,
+            mime_type=str((attachments[0].get("mime_type") if attachments else None) or "").strip() or None,
+            timeline_source="multimodal_visual_search",
+        )
+
+        session.view["timeline"] = list(session.view.get("timeline") or []) + new_items
+        self._update_visual_context_after_photo_turn(
+            session=session,
+            intent=intent,
+            attachments=attachments,
+            client_context=client_context,
+            cards=cards,
+            result_group_item_id=result_group_item_id,
+            current=current,
+            query_text=text,
+        )
+        session.updated_at = current
+        self.storage.save_session(session)
+        turn_id = self.storage.create_turn(
+            session_id=session.session_id,
+            request_kind="multimodal_message",
+            user_message_text=_normalize_multimodal_text(text) or self._multimodal_user_text(mode=mode, text=text, celebrity_name=celebrity_name),
+            consumed_action_id=None,
+            agent_decision={
+                "kind": "multimodal_photo_search",
+                "mode": intent.mode,
+                "intent_type": intent.intent_type,
+                "visual_plan": visual_plan_payload,
+                "result_count": len(cards),
+                "search_type": result.get("search_type") or intent.intent_type,
+                "has_image": bool(image_source),
+                "shadow_compare": shadow_compare,
+            },
+            view_snapshot=clone_view(session.view),
+            created_at=current,
+            search_run_id=None,
+            trace_id=trace_id,
+        )
+        self._persist_view_snapshot(
+            session,
+            turn_id=turn_id,
+            created_at=current,
+            trace_id=trace_id,
+        )
+        self._increment_metric("turns.created")
+        self._increment_metric("turns.multimodal_message")
+        self._emit_visual_turn_event(
+            session=session,
+            stage="results_ready" if cards else "empty_result",
+            search_type=str(result.get("search_type") or intent.intent_type or "unified_visual_search"),
+            result_count=len(cards),
+            success=bool(cards),
+            has_image=bool(image_source),
+            reused_reference_image=reused_reference_image,
+            is_refinement=is_refinement,
+            is_first_visual_turn=is_first_visual_turn,
+            follows_empty_result=follows_empty_result,
+            visual_plan=visual_plan_payload,
+            mode=intent.mode,
+        )
+        funnel_stage(
+            system="discovery",
+            stage="multimodal_message",
+            session_id=session.session_id,
+            requester_id=session.requester_id,
+            profile_id=session.profile_id,
+            turn_id=turn_id,
+            trace_id=trace_id,
+            attachment_count=len(attachments),
+            result_count=len(cards),
+            mode=intent.mode,
+        )
+        return self._session_payload(session)
+
+    def process_multimodal_turn(
+        self,
+        *,
+        session_id: str,
+        message: dict[str, Any] | None = None,
+        client_context: dict[str, Any] | None = None,
+        action_id: str | None = None,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        current = now or datetime.now()
+        trace_id = self._current_trace_id()
+        normalized_message = dict(message or {})
+        text = _normalize_multimodal_text(normalized_message.get("text"))
+        attachments = self._normalize_turn_attachments(
+            normalized_message.get("attachments") if isinstance(normalized_message.get("attachments"), list) else [],
+        )
+        normalized_client_context = dict(client_context or {})
+
+        if action_id and (text or attachments):
+            raise DiscoveryInvalidTurnInputError("action_id cannot be combined with message.text or attachments")
+        if action_id:
+            return self.process_turn(
+                session_id=session_id,
+                action_id=action_id,
+                now=current,
+            )
+        if not text and not attachments:
+            raise DiscoveryInvalidTurnInputError("message.text or message.attachments is required")
+
+        intent_hint = normalized_client_context.get("intent_hint")
+        normalized_intent_hint = intent_hint if isinstance(intent_hint, dict) else {}
+        wants_photo_flow = bool(attachments) or bool(_normalize_multimodal_text(normalized_intent_hint.get("celebrity_name")))
+        session: StoredSession | None = None
+        if not wants_photo_flow and text:
+            session = self._require_session(session_id)
+            visual_memory = self._get_visual_memory(session)
+            has_reference = bool(dict(visual_memory.get("active_reference") or {}).get("source"))
+            has_visual_memory = has_reference or bool(dict(visual_memory.get("active_preference") or {}).get("query_text"))
+            if has_visual_memory and (
+                looks_like_visual_reference_followup(text)
+                or looks_like_visual_refinement(text)
+            ):
+                wants_photo_flow = True
+                attachments, normalized_client_context = self._build_followup_multimodal_context(
+                    session=session,
+                    text=text,
+                    attachments=attachments,
+                    client_context=normalized_client_context,
+                    current=current,
+                )
+            elif looks_like_visual_search_request(text):
+                wants_photo_flow = True
+        if not wants_photo_flow:
+            return self.process_turn(
+                session_id=session_id,
+                user_message_text=text,
+                now=current,
+            )
+
+        if session is None:
+            session = self._require_session(session_id)
+        if session.status != "active":
+            raise DiscoverySessionClosedError("discovery session is closed")
+        return self._run_photo_search_turn(
+            session=session,
+            text=text,
+            attachments=attachments,
+            client_context=normalized_client_context,
+            current=current,
+            trace_id=trace_id,
+        )
+
     def process_turn(
         self,
         *,
@@ -985,7 +2012,11 @@ class DiscoveryService:
             if latest_snapshot is not None:
                 session.view = clone_view(latest_snapshot.view)
         current = datetime.now()
-        self._check_and_push_proxy_intro_cases(session, session.profile_id, current)
+        self._start_proxy_intro_push_task(
+            session_id=session.session_id,
+            profile_id=session.profile_id,
+            now=current,
+        )
         session.updated_at = current
         self.storage.save_session(session)
         self._increment_metric("session_restores")
@@ -1661,13 +2692,16 @@ class DiscoveryService:
             *,
             exclude_current_results: bool = False,
             appearance_match: dict[str, Any] | None = None,
+            photo_match: dict[str, Any] | None = None,
         ) -> dict[str, Any]:
             resolved_personality_match: dict[str, Any]
             resolved_appearance_match: dict[str, Any]
+            resolved_photo_match: dict[str, Any]
             resolved_limit: int
             if isinstance(personality_match, int) and limit is None:
                 resolved_personality_match = {}
                 resolved_appearance_match = {}
+                resolved_photo_match = {}
                 resolved_limit = personality_match
             else:
                 resolved_personality_match = (
@@ -1680,12 +2714,18 @@ class DiscoveryService:
                     if isinstance(appearance_match, dict)
                     else {}
                 )
+                resolved_photo_match = (
+                    dict(photo_match or {})
+                    if isinstance(photo_match, dict)
+                    else {}
+                )
                 resolved_limit = int(limit or 5)
             response = self._search_partner_candidates(
                 session,
                 criteria=criteria,
                 personality_match=resolved_personality_match,
                 appearance_match=resolved_appearance_match,
+                photo_match=resolved_photo_match,
                 limit=resolved_limit,
                 exclude_current_results=exclude_current_results,
             )
@@ -1696,6 +2736,7 @@ class DiscoveryService:
                     "criteria": deepcopy(criteria),
                     "personality_match": deepcopy(resolved_personality_match),
                     "appearance_match": deepcopy(resolved_appearance_match),
+                    "photo_match": deepcopy(resolved_photo_match),
                     "limit": resolved_limit,
                     "exclude_current_results": exclude_current_results,
                 },
@@ -2520,6 +3561,7 @@ class DiscoveryService:
         criteria: dict[str, Any],
         personality_match: dict[str, Any] = {},  # ← 新增参数
         appearance_match: dict[str, Any] = {},
+        photo_match: dict[str, Any] = {},
         limit: int,
         exclude_current_results: bool = False,
     ) -> dict[str, Any]:
@@ -2559,6 +3601,7 @@ class DiscoveryService:
             criteria=criteria,
             personality_match=personality_match,  # ← 传递参数
             appearance_match=appearance_match,
+            photo_match=photo_match,
             limit=limit,
             exclude_current_results=exclude_current_results,
             source=self._profile_source(),
@@ -2645,19 +3688,12 @@ class DiscoveryService:
         try:
             from match_domain.appearance_features import (
                 build_style_preference_from_feedback,  # 新增：使用正确的偏好学习函数
-                refresh_profile_photo_features_from_record,
             )
 
             persona_source = self._persona_memory_source()
             if not persona_source:
                 return
             candidate_feature = dict(candidate.get("photo_features") or {})
-            if not candidate_feature:
-                refreshed = refresh_profile_photo_features_from_record(
-                    source_dsn=persona_source,
-                    record=candidate,
-                )
-                candidate_feature = dict(refreshed or {})
             if candidate_feature:
                 # 【改进】使用新的偏好学习函数（基于风格标签，不是评分平均分）
                 build_style_preference_from_feedback(
@@ -3210,6 +4246,8 @@ class DiscoveryService:
         requester_profile = None
         if session.profile_id:
             requester_profile = self._load_requester_profile(session)
+        hydrated_view = self._hydrate_view_candidate_cards(session.view)
+        session.view = clone_view(hydrated_view)
 
         return {
             "session": {
@@ -3218,9 +4256,15 @@ class DiscoveryService:
                 "phase": session.phase,
                 "updated_at": session.updated_at.isoformat(),
             },
-            "view": clone_view(session.view),
+            "view": hydrated_view,
             # ✅ 新增：返回最新的用户画像（包含personality_traits）
             "requester_profile": requester_profile,
+            "visual_context": build_visual_context_runtime_summary(
+                session.state.get("visual_memory") or session.state.get("visual_context")
+            ),
+            "visual_memory": build_visual_memory_runtime_summary(
+                session.state.get("visual_memory") or session.state.get("visual_context")
+            ),
         }
 
     def _build_service_context_runtime(self) -> DiscoveryServiceContextRuntime:
@@ -3282,55 +4326,75 @@ def _start_background_scheduler(storage: Any, *, discovery_dsn: str | None = Non
         llm_model = os.environ.get("HER_DISCOVERY_AGENT_MODEL")
         persona_dsn = os.environ.get("PERSONA_MEMORY_MYSQL_SOURCE")
 
-        # 创建异步任务
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 如果事件循环已运行，创建三个任务
-            # 任务1：无活动会话检查
-            task1 = loop.create_task(
-                start_inactive_session_checker(
-                    storage=storage,
-                    interval_minutes=5,
-                    inactive_threshold_minutes=30,
-                    dsn=persona_dsn,
-                    llm_base_url=llm_base_url,
-                    llm_api_key=llm_api_key,
-                    llm_model=llm_model,
-                )
-            )
-            _logger.info(
-                f"无活动会话检查定时任务已启动: task_name={task1.get_name()}, "
-                f"interval=5分钟, threshold=30分钟"
-            )
+        # 创建或获取事件循环
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 如果没有运行中的事件循环，创建一个新的
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _logger.info("创建了新的事件循环用于定时任务调度器")
 
-            # 任务2：向量重试检查
-            task2 = loop.create_task(
-                start_vector_retry_checker(
-                    storage=storage,
-                    interval_minutes=10,
-                    max_retry_count=3,
-                    dsn=persona_dsn,
-                )
-            )
-            _logger.info(
-                f"向量重试检查定时任务已启动: task_name={task2.get_name()}, "
-                f"interval=10分钟, max_retry=3次"
-            )
+        # 启动后台线程运行事件循环
+        import threading
 
-            # 任务3：版本清理
-            task3 = loop.create_task(
-                start_version_cleanup_checker(
-                    storage=storage,
-                    interval_hours=24,
-                    dsn=persona_dsn,
-                )
-            )
-            _logger.info(
-                f"版本清理定时任务已启动: task_name={task3.get_name()}, "
-                f"interval=24小时"
-            )
-        else:
-            _logger.info("事件循环未运行，跳过定时任务调度器启动")
+        def run_scheduler():
+            """在后台线程中运行调度器"""
+            try:
+                # 创建新的事件循环（每个线程需要自己的事件循环）
+                scheduler_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(scheduler_loop)
+
+                try:
+                    # 任务1：无活动会话检查
+                    scheduler_loop.create_task(
+                        start_inactive_session_checker(
+                            storage=storage,
+                            interval_minutes=5,
+                            inactive_threshold_minutes=30,
+                            dsn=persona_dsn,
+                            llm_base_url=llm_base_url,
+                            llm_api_key=llm_api_key,
+                            llm_model=llm_model,
+                        )
+                    )
+
+                    # 任务2：向量重试检查
+                    scheduler_loop.create_task(
+                        start_vector_retry_checker(
+                            storage=storage,
+                            interval_minutes=10,
+                            max_retry_count=3,
+                            dsn=persona_dsn,
+                        )
+                    )
+
+                    # 任务3：版本清理
+                    scheduler_loop.create_task(
+                        start_version_cleanup_checker(
+                            storage=storage,
+                            interval_hours=24,
+                            dsn=persona_dsn,
+                        )
+                    )
+
+                    _logger.info("定时任务调度器已启动：会话检查(5分钟)、向量重试(10分钟)、版本清理(24小时)")
+
+                    # 运行事件循环
+                    scheduler_loop.run_forever()
+
+                except Exception as inner_exc:
+                    _logger.error(f"定时任务调度器运行失败: {inner_exc}")
+                finally:
+                    scheduler_loop.close()
+
+            except Exception as thread_exc:
+                _logger.error(f"定时任务调度器线程失败: {thread_exc}")
+
+        # 启动后台线程
+        scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+        scheduler_thread.start()
+        _logger.info("定时任务调度器后台线程已启动")
 
     except Exception as exc:
         _logger.error(f"启动定时任务调度器失败: {exc}")

@@ -6,6 +6,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .agent_session_store import (
+    build_visual_context_runtime_summary,
+    build_visual_memory_runtime_summary,
+)
 from .storage import StoredSession
 
 
@@ -377,6 +381,12 @@ def build_runtime_context(
         "current_results": build_current_results(runtime, session),
         "visible_actions": visible_actions,
         "last_search": build_last_search_summary(runtime, session),
+        "visual_context": build_visual_context_runtime_summary(
+            session.state.get("visual_memory") or session.state.get("visual_context")
+        ),
+        "visual_memory": build_visual_memory_runtime_summary(
+            session.state.get("visual_memory") or session.state.get("visual_context")
+        ),
         "memory_summary": _build_memory_summary(requester_profile_snapshot, list(recent_timeline), visible_actions),
     }
 

@@ -10,6 +10,7 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 ARG PIP_EXTRA_INDEX_URL=
 ENV PIP_DEFAULT_TIMEOUT=180
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_RETRIES=20
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 ENV PIP_EXTRA_INDEX_URL=${PIP_EXTRA_INDEX_URL}
 
@@ -20,6 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     pkg-config \
     libffi-dev \
+    libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 升级 pip 工具
@@ -47,29 +51,69 @@ COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py \
     partner_moderation.py profile_*.py mysql_source_config.py ./
 
 # 安装所有依赖（这一层会被缓存，除非 pyproject.toml 改变）
-# 开发环境：禁用 SSL 验证避免证书问题（生产环境需恢复）
-RUN pip install --no-cache-dir --trusted-host files.pythonhosted.org --trusted-host pypi.org --trusted-host download.pytorch.org torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir --trusted-host files.pythonhosted.org --trusted-host pypi.org --no-build-isolation -e ".[dev,local_oss]" faster-whisper
+# 将超大依赖拆层安装，避免网络抖动时整批依赖重下
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --trusted-host files.pythonhosted.org --trusted-host pypi.org --trusted-host download.pytorch.org --retries 20 --timeout 1800 --prefer-binary torch --index-url https://download.pytorch.org/whl/cpu
+
+# TensorFlow 体积很大，单独安装并增加显式重试，避免 IncompleteRead 时整批依赖失败
+RUN --mount=type=cache,target=/root/.cache/pip \
+    sh -c 'for attempt in 1 2 3; do \
+        pip install --trusted-host files.pythonhosted.org --trusted-host pypi.org --retries 20 --timeout 1800 --prefer-binary tensorflow tf-keras \
+        && exit 0; \
+        echo "[retry] tensorflow install failed attempt=${attempt}" >&2; \
+        sleep 10; \
+    done; \
+    exit 1'
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --trusted-host files.pythonhosted.org --trusted-host pypi.org --retries 20 --timeout 1800 --prefer-binary --no-build-isolation -e ".[dev,local_oss]" faster-whisper
+
+# 预下载 DeepFace Facenet512 权重，避免首个用户请求触发同步下载
+# 添加重试机制，应对网络不稳定
+RUN mkdir -p /root/.deepface/weights \
+    && python - <<'PY'
+import os
+import sys
+import time
+
+weights_dir = "/root/.deepface/weights"
+weights_path = os.path.join(weights_dir, "facenet512_weights.h5")
+print(f"[preload] facenet512 target={weights_path}")
+
+if os.path.exists(weights_path):
+    print("[preload] facenet512 weights already exist")
+    sys.exit(0)
+
+# 重试机制：最多重试3次
+max_retries = 3
+for attempt in range(max_retries):
+    try:
+        print(f"[preload] 尝试下载 facenet512 (第 {attempt + 1}/{max_retries} 次)...")
+        from deepface import DeepFace
+        DeepFace.build_model("Facenet512")
+        print(f"[preload] facenet512 下载成功 exists={os.path.exists(weights_path)}")
+        sys.exit(0)
+    except Exception as e:
+        print(f"[preload] 下载失败: {e}")
+        if attempt < max_retries - 1:
+            wait_time = 10 * (attempt + 1)  # 递增等待时间
+            print(f"[preload] 等待 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+        else:
+            print("[preload] 达到最大重试次数，跳过预下载")
+            print("[preload] 模型将在首次使用时下载")
+            sys.exit(0)  # 不阻塞构建，让容器启动后再下载
+PY
 
 # ============================================================
-# 第二阶段：Runtime（只包含运行必需的文件）
+# 第二阶段：Runtime
+# 直接继承 builder，避免复制大体积 site-packages 时触发 Docker 磁盘空间耗尽
 # ============================================================
-FROM python:3.11-slim-bookworm AS runtime
+FROM builder AS runtime
 
 WORKDIR /app
 
-# 只安装运行时必需的 apt 包（不含编译工具 gcc、libffi-dev）
-# 注意：pymysql 是纯 Python 实现，不需要 MySQL 客户端库
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# 从 builder 复制已安装的 Python 包（约 200MB，但不需要重新编译）
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-
-# 从 builder 复制 pip 和 setuptools（editable install 需要这些工具）
-COPY --from=builder /usr/local/bin/pip /usr/local/bin/pip
-COPY --from=builder /usr/local/bin/pip3 /usr/local/bin/pip3
+# builder 阶段已经包含运行所需依赖与预下载权重
 
 # 复制所有代码文件（经常改变，放在最后）
 COPY her_*.py outer_system_mysql_schema.py outer_mysql_compat.py \

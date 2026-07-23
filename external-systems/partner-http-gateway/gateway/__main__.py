@@ -38,6 +38,33 @@ class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     timeout = 30  # 每个请求最长处理时间（秒）
 
 
+def _should_warmup_face_model() -> bool:
+    raw = str(os.environ.get("HER_FACE_MODEL_WARMUP_ON_STARTUP", "1")).strip().lower()
+    return raw not in {"0", "false", "off", "no"}
+
+
+def _warmup_startup_dependencies() -> None:
+    logger = logging.getLogger(__name__)
+    if not _should_warmup_face_model():
+        logger.info("跳过启动预热：HER_FACE_MODEL_WARMUP_ON_STARTUP 已关闭")
+        return
+    from match_domain.face_embedding_extractor import warmup_face_embedding_model
+
+    result = warmup_face_embedding_model()
+    if result.get("success"):
+        logger.info(
+            "启动预热完成：face_model=%s weights_path=%s",
+            result.get("model_name"),
+            result.get("weights_path"),
+        )
+        return
+    logger.warning(
+        "启动预热失败：face_model=%s error=%s",
+        result.get("model_name"),
+        result.get("error"),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Partner recommendation + matchmaking HTTP / JSON-RPC gateway")
     parser.add_argument("--host", default=os.environ.get("PARTNER_HTTP_HOST", "127.0.0.1"))
@@ -47,6 +74,7 @@ def main() -> None:
     parser.add_argument("--log-file", default=os.environ.get("PARTNER_GATEWAY_LOG_FILE"))
     args = parser.parse_args()
     configure_gateway_logging(log_level=args.log_level, log_file=args.log_file)
+    _warmup_startup_dependencies()
 
     # 使用多线程服务器，避免小雅分析等长时间请求阻塞其他请求
     httpd = make_server(args.host, args.port, application, ThreadingWSGIServer)

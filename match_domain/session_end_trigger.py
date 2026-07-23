@@ -335,7 +335,7 @@ def close_session_and_process(
         return {
             "closed": True,
             "processing_triggered": task is not None,
-            "task_name": task.name if task else None,
+            "task_name": task.get_name() if task else None,
         }
 
     except Exception as exc:

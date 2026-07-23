@@ -17,6 +17,11 @@ def _sched_db(sched_var: str, partner_var: str) -> str | None:
     return raw.strip() or None
 
 
+def _photo_analysis_enabled() -> bool:
+    raw = os.environ.get("HER_PHOTO_ANALYSIS_ENABLED") or ""
+    return raw.strip().lower() in {"1", "true", "on", "yes"}
+
+
 @dataclass(frozen=True)
 class SchedulerSettings:
     """Load MySQL DSNs for outer systems and per-job intervals from the environment."""
@@ -47,7 +52,9 @@ class SchedulerSettings:
         rec_db = _sched_db("HER_SCHED_RECOMMENDATION_DB", "PARTNER_RECOMMENDATION_DB")
         mm_db = _sched_db("HER_SCHED_MATCHMAKING_DB", "PARTNER_MATCHMAKING_DB")
         chat_db = _sched_db("HER_SCHED_CHAT_DB", "PARTNER_CHAT_DB")
-        photo_db = _sched_db("HER_SCHED_PHOTO_ANALYSIS_DB", "PERSONA_MEMORY_MYSQL_SOURCE")
+        photo_db = None
+        if _photo_analysis_enabled():
+            photo_db = _sched_db("HER_SCHED_PHOTO_ANALYSIS_DB", "PERSONA_MEMORY_MYSQL_SOURCE")
         return cls(
             recommendation_db=rec_db,
             matchmaking_db=mm_db,

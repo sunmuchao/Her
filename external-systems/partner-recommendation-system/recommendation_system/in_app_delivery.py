@@ -65,26 +65,56 @@ def mark_in_app_cards_read(
     card_ids: list[str],
     now: datetime | None = None,
 ) -> dict[str, Any]:
+    """批量标记推荐卡片为已读（优化版本）。
+
+    优化说明：
+    1. 使用批量 UPDATE 代替循环 UPDATE，减少锁持有时间
+    2. 幂等性保护：多次调用不会产生副作用
+    3. 并发安全：使用短事务，减少锁竞争
+
+    Args:
+        conn: 数据库连接
+        requester_id: 请求者 ID
+        card_ids: 卡片 ID 列表
+        now: 当前时间（可选）
+
+    Returns:
+        {"updated_count": 更新数量, "requester_id": 请求者 ID}
+    """
     from .recommendation_transactions import commit_recommendation_transaction
 
     now = current_time(now)
     ts = format_dt(now)
-    updated = 0
+
+    # 过滤空值并去重
+    valid_card_ids = []
+    seen = set()
     for raw in card_ids:
         cid = str(raw).strip()
-        if not cid:
-            continue
-        res = conn.execute(
-            """
-            UPDATE in_app_recommendation_cards
-            SET card_status = 'read', read_at = ?
-            WHERE card_id = ? AND requester_id = ?
-            """,
-            (ts, cid, int(requester_id)),
-        )
-        updated += res.rowcount
+        if cid and cid not in seen:
+            valid_card_ids.append(cid)
+            seen.add(cid)
+
+    if not valid_card_ids:
+        return {"updated_count": 0, "requester_id": int(requester_id)}
+
+    # 批量 UPDATE（使用 WHERE IN 代替循环）
+    # 注意：MySQL 不支持 VALUES 子句在 UPDATE 中使用，所以使用临时表技巧
+    # 或者直接使用 WHERE IN（更简单，性能足够）
+    placeholders = ", ".join(["?"] * len(valid_card_ids))
+
+    # 单条批量 UPDATE 语句
+    res = conn.execute(
+        f"""
+        UPDATE in_app_recommendation_cards
+        SET card_status = 'read', read_at = ?
+        WHERE card_id IN ({placeholders}) AND requester_id = ?
+        """,
+        (ts, *valid_card_ids, int(requester_id)),
+    )
+
     commit_recommendation_transaction(conn)
-    return {"updated_count": updated, "requester_id": int(requester_id)}
+    return {"updated_count": res.rowcount, "requester_id": int(requester_id)}
 
 
 def within_quiet_hours(now: datetime, quiet_hours_start: int, quiet_hours_end: int) -> bool:
@@ -239,6 +269,20 @@ def _row_within_quiet_hours(row_dict: dict[str, Any], now: datetime) -> bool:
 
 
 def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict[str, Any]:
+    """批量投递推荐卡片（优化版本）。
+
+    优化说明：
+    1. 拆分长事务为多个小事务，每条推荐单独提交
+    2. 减少锁持有时间，避免与用户请求竞争锁
+    3. 单条推荐失败不影响其他推荐
+
+    Args:
+        conn: 数据库连接
+        now: 当前时间（可选）
+
+    Returns:
+        {"delivered_count": 投递数量, "held_quiet_hours": 静默时段数量, "held_daily_cap": 超额数量}
+    """
     from .recommendation_rows import (
         append_relation_state_revision_event,
         inflate_recommendation,
@@ -293,6 +337,7 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
     delivered_count = 0
     held_quiet_hours = 0
     held_daily_cap = 0
+    failed_count = 0
 
     for row_dict in row_dicts:
         requester_id = int(row_dict["requester_id"])
@@ -306,95 +351,110 @@ def deliver_in_app_recommendations(conn, *, now: datetime | None = None) -> dict
             delivered_today_cache[requester_id] = delivered_today
             continue
 
-        recommendation = inflate_recommendation(
-            row_dict,
-            conn=conn,
-            preloaded_action_rows=actions_by_recommendation_id.get(
-                int(row_dict["recommendation_id"]),
-            ),
-        )
-        card = build_in_app_card(recommendation, recommendation["subscription_title"])
-        card_id = generate_card_id()
-        conn.execute(
-            """
-            INSERT INTO in_app_recommendation_cards (
-              card_id,
-              subscription_id,
-              recommendation_id,
-              requester_id,
-              candidate_id,
-              card_status,
-              title,
-              subtitle,
-              body,
-              payload_json,
-              created_at,
-              delivered_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                card_id,
-                recommendation["subscription_id"],
-                recommendation["recommendation_id"],
-                requester_id,
-                recommendation["candidate_id"],
-                "unread",
-                card["title"],
-                card["subtitle"],
-                card["body"],
-                json_dumps(card),
-                format_dt(now),
-                format_dt(now),
-            ),
-        )
-        conn.execute(
-            """
-            UPDATE profile_recommendations
-            SET delivery_status = 'delivered',
-                delivery_reason = 'in_app_card_created',
-                notified_at = ?,
-                latest_card_id = ?
-            WHERE recommendation_id = ?
-            """,
-            (format_dt(now), card_id, recommendation["recommendation_id"]),
-        )
-        subscription_view = {
-            "subscription_id": row_dict["subscription_id"],
-            "requester_id": row_dict["requester_id"],
-            "source": row_dict["source"],
-            "self_id": row_dict.get("self_id"),
-        }
-        relation_state_row = dict(row_dict)
-        relation_state_row["delivery_status"] = "delivered"
-        relation_state_row["delivery_reason"] = "in_app_card_created"
-        relation_state_row["notified_at"] = format_dt(now)
-        relation_state_row["latest_card_id"] = card_id
-        if relation_state_row:
-            append_relation_state_revision_event(
-                conn,
-                subscription=subscription_view,
-                recommendation_row=relation_state_row,
-                now=now,
+        # 每条推荐单独一个事务
+        try:
+            recommendation = inflate_recommendation(
+                row_dict,
+                conn=conn,
+                preloaded_action_rows=actions_by_recommendation_id.get(
+                    int(row_dict["recommendation_id"]),
+                ),
             )
-        delivered_today_cache[requester_id] = delivered_today + 1
-        delivered_count += 1
-        funnel_stage(
-            system="recommendation",
-            stage=RECOMMENDATION_FUNNEL_DELIVERED,
-            subscription_id=recommendation["subscription_id"],
-            recommendation_id=int(recommendation["recommendation_id"]),
-            candidate_id=int(recommendation["candidate_id"]),
-            card_id=card_id,
-        )
+            card = build_in_app_card(recommendation, recommendation["subscription_title"])
+            card_id = generate_card_id()
+            conn.execute(
+                """
+                INSERT INTO in_app_recommendation_cards (
+                  card_id,
+                  subscription_id,
+                  recommendation_id,
+                  requester_id,
+                  candidate_id,
+                  card_status,
+                  title,
+                  subtitle,
+                  body,
+                  payload_json,
+                  created_at,
+                  delivered_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    card_id,
+                    recommendation["subscription_id"],
+                    recommendation["recommendation_id"],
+                    requester_id,
+                    recommendation["candidate_id"],
+                    "unread",
+                    card["title"],
+                    card["subtitle"],
+                    card["body"],
+                    json_dumps(card),
+                    format_dt(now),
+                    format_dt(now),
+                ),
+            )
+            conn.execute(
+                """
+                UPDATE profile_recommendations
+                SET delivery_status = 'delivered',
+                    delivery_reason = 'in_app_card_created',
+                    notified_at = ?,
+                    latest_card_id = ?
+                WHERE recommendation_id = ?
+                """,
+                (format_dt(now), card_id, recommendation["recommendation_id"]),
+            )
+            subscription_view = {
+                "subscription_id": row_dict["subscription_id"],
+                "requester_id": row_dict["requester_id"],
+                "source": row_dict["source"],
+                "self_id": row_dict.get("self_id"),
+            }
+            relation_state_row = dict(row_dict)
+            relation_state_row["delivery_status"] = "delivered"
+            relation_state_row["delivery_reason"] = "in_app_card_created"
+            relation_state_row["notified_at"] = format_dt(now)
+            relation_state_row["latest_card_id"] = card_id
+            if relation_state_row:
+                append_relation_state_revision_event(
+                    conn,
+                    subscription=subscription_view,
+                    recommendation_row=relation_state_row,
+                    now=now,
+                )
+            delivered_today_cache[requester_id] = delivered_today + 1
+            delivered_count += 1
+            funnel_stage(
+                system="recommendation",
+                stage=RECOMMENDATION_FUNNEL_DELIVERED,
+                subscription_id=recommendation["subscription_id"],
+                recommendation_id=int(recommendation["recommendation_id"]),
+                candidate_id=int(recommendation["candidate_id"]),
+                card_id=card_id,
+            )
 
-    commit_recommendation_transaction(conn)
+            # 【关键修复】每条推荐单独提交，释放锁
+            commit_recommendation_transaction(conn)
+
+        except Exception as e:
+            # 单条失败不影响其他推荐
+            import logging
+            logging.getLogger(__name__).error(
+                f"Failed to deliver recommendation {row_dict.get('recommendation_id')}: {e}"
+            )
+            failed_count += 1
+            continue
+
     metric_gauge("recommendation.deliver.delivered_count", delivered_count)
     metric_gauge("recommendation.deliver.held_quiet_hours", held_quiet_hours)
     metric_gauge("recommendation.deliver.held_daily_cap", held_daily_cap)
+    metric_gauge("recommendation.deliver.failed_count", failed_count)
     return {
         "delivered_count": delivered_count,
         "held_quiet_hours": held_quiet_hours,
         "held_daily_cap": held_daily_cap,
+        "failed_count": failed_count,
     }
 
 

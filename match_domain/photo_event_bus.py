@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import os
 from typing import Any, Callable, Mapping
 
 import outer_system_mysql_schema as schema
@@ -55,6 +56,11 @@ _PHOTO_EVENT_BUS = SyncEventBus()
 _ASYNC_SUBSCRIBER_REGISTERED = False
 
 
+def _photo_analysis_enabled() -> bool:
+    raw = str(os.environ.get("HER_PHOTO_ANALYSIS_ENABLED") or "").strip().lower()
+    return raw in {"1", "true", "on", "yes"}
+
+
 def subscribe_photo_analysis_events(handler: Callable[[PhotoAnalysisEvent], None]) -> None:
     _PHOTO_EVENT_BUS.subscribe(handler)
 
@@ -101,6 +107,8 @@ def _connect_job_db(source_dsn: str) -> MySQLCompatConnection:
 
 
 def enqueue_photo_analysis_job_from_event(event: PhotoAnalysisEvent) -> dict[str, Any] | None:
+    if not _photo_analysis_enabled():
+        return None
     payload = event.to_payload()
     persona_source_dsn = str(payload.get("persona_source_dsn") or "").strip()
     if not persona_source_dsn:
@@ -140,6 +148,13 @@ def publish_photo_analysis_event(event: PhotoAnalysisEvent) -> None:
 
 
 def _handle_photo_analysis_job(_conn: Any, payload: Mapping[str, Any]) -> dict[str, Any]:
+    if not _photo_analysis_enabled():
+        return {
+            "profile_id": int(payload.get("profile_id") or 0),
+            "event_type": str(payload.get("event_type") or ""),
+            "analysis_status": "disabled",
+            "skipped": True,
+        }
     from match_domain.appearance_features import refresh_profile_photo_features
 
     result = refresh_profile_photo_features(

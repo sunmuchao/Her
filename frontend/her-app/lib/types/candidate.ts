@@ -1,6 +1,8 @@
 export type CandidatePreview = {
   id: string
   name: string
+  title?: string
+  subtitle?: string
   age?: number
   city?: string
   occupation?: string

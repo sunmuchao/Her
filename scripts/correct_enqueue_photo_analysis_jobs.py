@@ -34,6 +34,8 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
+REQUIRE_OPT_IN_ENV = "ALLOW_BULK_PHOTO_ANALYSIS_REENQUEUE"
+
 
 def get_mysql_connection(db_name: str = "her"):
     """获取MySQL数据库连接"""
@@ -53,6 +55,15 @@ def get_mysql_connection(db_name: str = "her"):
     )
 
     return connection
+
+
+def require_explicit_opt_in() -> None:
+    raw = str(os.environ.get(REQUIRE_OPT_IN_ENV) or "").strip().lower()
+    if raw in {"1", "true", "yes"}:
+        return
+    raise SystemExit(
+        f"Refusing to bulk enqueue photo analysis jobs without {REQUIRE_OPT_IN_ENV}=1"
+    )
 
 
 def query_target_users() -> list[int]:
@@ -192,6 +203,7 @@ def enqueue_jobs_with_correct_payload(profile_ids: list[int]):
 
 def main():
     """主函数"""
+    require_explicit_opt_in()
     _logger.info("=" * 80)
     _logger.info("重新入队照片分析任务（使用正确的payload）")
     _logger.info("=" * 80)

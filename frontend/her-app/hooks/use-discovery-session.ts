@@ -9,7 +9,12 @@ import {
 } from '@/lib/api/endpoints/discovery'
 import { fetchCollectedStatements, formatCollectedPreferenceChips } from '@/lib/api/endpoints/collected'
 import { saveDiscoveryAsSubscription, fetchRecommendationCards } from '@/lib/api/endpoints/recommendation'  // ✅ 新增：导入fetchRecommendationCards
-import { GatewayClientError, getErrorMessage, isAuthRequiredGatewayError } from '@/lib/api/errors'
+import {
+  GatewayClientError,
+  getErrorMessage,
+  getPhotoSearchFailureMessage,
+  isAuthRequiredGatewayError,
+} from '@/lib/api/errors'
 import { confirmSessionOrRedirectToWelcome } from '@/lib/auth/confirm-session'
 import { hydrateSessionFromAuthMe } from '@/lib/auth/hydrate-session'
 import { getAccessToken, getProfileId } from '@/lib/auth/session'
@@ -29,7 +34,11 @@ import {
   readStoredDiscoverySessionId,
   writeStoredDiscoverySessionId,
 } from '@/lib/discovery/session-storage'
-import type { DiscoverySessionResponse } from '@/lib/types/discovery'
+import type {
+  DiscoverySessionResponse,
+  DiscoveryTurnAttachment,
+  DiscoveryTurnClientContext,
+} from '@/lib/types/discovery'
 
 const SAVE_SUBSCRIPTION_ACTIONS = new Set([
   'save_subscription',
@@ -429,14 +438,21 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
     }
   }, [applyDiscoveryResponse, applyProvenance, loadCollectedPreferences, sessionFromUrlQuery])
 
-  const submitTurn = async (payload: { user_message?: string; action_id?: string }) => {
+  const submitTurn = async (payload: {
+    user_message?: string
+    action_id?: string
+    text?: string
+    attachments?: DiscoveryTurnAttachment[]
+    clientContext?: DiscoveryTurnClientContext
+  }) => {
     if (!sessionId) {
       notifyError(new Error('会话未就绪'), '请稍后重试或刷新页面')
       return
     }
 
     const profileId = getProfileId()
-    if (payload.action_id && SAVE_SUBSCRIPTION_ACTIONS.has(payload.action_id) && profileId) {
+    const actionId = payload.action_id
+    if (actionId && SAVE_SUBSCRIPTION_ACTIONS.has(actionId) && profileId) {
       setIsSubmittingTurn(true)
       try {
         await saveDiscoveryAsSubscription({ profileId })
@@ -448,21 +464,27 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
     }
 
-    const trimmedMessage = payload.user_message?.trim() || ''
-    const optimisticId = trimmedMessage ? `optimistic-${Date.now()}` : null
+    const trimmedMessage = (payload.text ?? payload.user_message)?.trim() || ''
+    const attachments = payload.attachments || []
+    const optimisticId = trimmedMessage || attachments.length ? `optimistic-${Date.now()}` : null
 
-    if (optimisticId && trimmedMessage) {
+    if (optimisticId) {
+      const firstAttachment = attachments[0]
       setTimelineItems((prev) => [
         ...prev.filter((item) => item.kind !== 'suggested_actions'),
         {
           kind: 'message',
           id: optimisticId,
           type: 'user',
-          content: trimmedMessage,
+          content: trimmedMessage || '帮我看看这张图适合找什么人',
           timestamp: '刚刚',
+          mediaType: firstAttachment?.type === 'image' ? 'image' : undefined,
+          mediaUrl: firstAttachment?.source,
         },
       ])
-      setInputValue('')
+      if (!attachments.length) {
+        setInputValue('')
+      }
     }
 
     setIsSubmittingTurn(true)
@@ -470,7 +492,10 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       const data = await submitDiscoveryTurn({
         sessionId,
         userMessage: trimmedMessage || undefined,
-        actionId: payload.action_id,
+        actionId,
+        text: trimmedMessage || undefined,
+        attachments,
+        clientContext: payload.clientContext,
       })
       const mapped = mapDiscoveryView(data.view)
       applyMappedView(mapped)
@@ -484,9 +509,15 @@ export function useDiscoverySession(onSessionIdChange?: (sessionId: string | nul
       }
       if (optimisticId) {
         setTimelineItems((prev) => prev.filter((item) => item.kind !== 'message' || item.id !== optimisticId))
-        setInputValue(trimmedMessage)
+        if (!attachments.length) {
+          setInputValue(trimmedMessage)
+        }
       }
-      notifyError(error, '发送失败，请重试')
+      if (attachments.length) {
+        notifyError(new Error(getPhotoSearchFailureMessage(error)))
+      } else {
+        notifyError(error, '发送失败，请重试')
+      }
     } finally {
       setIsSubmittingTurn(false)
     }

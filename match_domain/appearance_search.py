@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, Sequence
 from urllib import error as urllib_error
@@ -16,11 +18,14 @@ from urllib import request as urllib_request
 from profile_service import list_profile_photo_feature_rows
 
 from .appearance_features import (
+    LANDMARK_ATTRIBUTE_FIELDS,
     create_reference_face_search_job,
     load_candidate_photo_features,
     load_profile_face_attributes,
     load_profile_face_embeddings,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 FACE_VECTOR_TYPE = "face_embedding"
@@ -282,6 +287,37 @@ class FaceSimilaritySearcher:
 
 
 class CelebrityReferenceGallery:
+    """⚠️ 已废弃：明星脸搜索改用AI Native路径
+
+    废弃原因：
+    - 硬编码只有3个明星（刘亦菲、田曦薇、周也）
+    - 用Wikipedia查询明星照片，不够稳定
+    - 用字符串哈希生成"伪向量"，不是真实人脸向量
+
+    新路径（AI Native）：
+    - Agent自己用WebSearch搜明星照片URL
+    - Agent调用search_partner_candidates(photo_url="...")
+    - 系统用DeepFace提取真实人脸向量（512维）
+    - 用真实向量搜索相似候选人
+
+    迁移指南：
+    - 旧代码：CelebrityReferenceGallery.search_by_name("田曦薇")
+    - 新代码：Agent用WebSearch搜"田曦薇照片" → 提取photo_url → search_partner_candidates(photo_url)
+
+    本类将在未来版本删除，请尽快迁移。
+    """
+
+    def __init__(self):
+        warnings.warn(
+            "CelebrityReferenceGallery已废弃，请使用AI Native路径："
+            "Agent自己用WebSearch搜明星照片URL，然后调用search_partner_candidates(photo_url)",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        _logger.warning(
+            "【已废弃】CelebrityReferenceGallery已废弃，请使用AI Native路径"
+        )
+
     DEFAULT_REFERENCES = {
         "刘亦菲": "celebrity|liuyifei|official",
         "田曦薇": "celebrity|tianxiwei|official",
@@ -584,14 +620,24 @@ class AttributeFilterSearcher:
             if profile_id <= 0:
                 continue
             attributes = dict(attribute_map.get(profile_id) or {})
+            attribute_source = str(attributes.get("attribute_source") or "").strip().lower()
+            attribute_confidence = float(attributes.get("attribute_confidence") or 0.0)
             clauses: list[bool] = []
             explanations: list[str] = []
             score = 0.0
             for field_name, expected in dict(filters or {}).items():
+                if field_name in LANDMARK_ATTRIBUTE_FIELDS and (
+                    attribute_source != "landmark" or attribute_confidence < 0.35
+                ):
+                    clauses.append(False)
+                    continue
                 value = attributes.get(field_name, feature_row.get(field_name))
                 if isinstance(expected, Mapping):
                     min_value = float(expected.get("min") or 0.0) if expected.get("min") is not None else None
                     max_value = float(expected.get("max") or 0.0) if expected.get("max") is not None else None
+                    if value is None and field_name in LANDMARK_ATTRIBUTE_FIELDS:
+                        clauses.append(False)
+                        continue
                     numeric_value = float(value or 0.0)
                     matched = True
                     if min_value is not None and numeric_value < min_value:

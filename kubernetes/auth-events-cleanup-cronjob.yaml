@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: auth-events-cleanup
+  namespace: her
+spec:
+  schedule: "0 3 * * *"  # 每天凌晨3点执行
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanup
+            image: her-app:latest
+            command:
+            - python
+            - scripts/cleanup_auth_login_events.py
+            env:
+            - name: CHAT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: her-secrets
+                  key: chat-database-url
+            - name: AUTH_EVENT_RETENTION_DAYS
+              value: "90"
+            - name: AUTH_EVENT_CLEANUP_BATCH_SIZE
+              value: "100000"
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+          restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-events-monitor
+  namespace: her
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: auth-events-monitor
+  template:
+    metadata:
+      labels:
+        app: auth-events-monitor
+    spec:
+      containers:
+      - name: monitor
+        image: her-app:latest
+        command:
+        - python
+        - scripts/monitor_auth_events.py
+        env:
+        - name: CHAT_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: her-secrets
+              key: chat-database-url
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

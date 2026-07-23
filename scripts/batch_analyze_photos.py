@@ -32,6 +32,8 @@ logging.basicConfig(
 )
 _logger = logging.getLogger(__name__)
 
+REQUIRE_OPT_IN_ENV = "ALLOW_BULK_PHOTO_ANALYSIS_REENQUEUE"
+
 
 def get_mysql_connection(db_name: str = "her"):
     """获取MySQL数据库连接"""
@@ -54,6 +56,15 @@ def get_mysql_connection(db_name: str = "her"):
     )
 
     return connection
+
+
+def require_explicit_opt_in() -> None:
+    raw = str(os.environ.get(REQUIRE_OPT_IN_ENV) or "").strip().lower()
+    if raw in {"1", "true", "yes"}:
+        return
+    raise SystemExit(
+        f"Refusing to bulk photo-analyze users without {REQUIRE_OPT_IN_ENV}=1"
+    )
 
 
 def query_target_users() -> list[dict[str, Any]]:
@@ -363,6 +374,7 @@ def analyze_photos_batch_sync(
 
 def main():
     """主函数"""
+    require_explicit_opt_in()
     _logger.info("=" * 80)
     _logger.info("批量照片分析脚本 - 分析无锡女性用户（20-40岁）的照片")
     _logger.info("=" * 80)

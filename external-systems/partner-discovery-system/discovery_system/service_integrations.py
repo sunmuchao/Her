@@ -42,6 +42,70 @@ def _env_flag(name: str, *, default: bool = False) -> bool:
     return raw not in {"0", "false", "off", "no"}
 
 
+def _parse_appearance_level(level: str) -> dict[str, Any]:
+    """
+    解析外貌筛选级别（内部实现）
+
+    【Agent Native设计】
+    - Agent只传入"high"/"medium"/"low"
+    - 系统内部自动设置合理的筛选阈值
+    - Agent不需要知道内部有"评分"、"阈值"
+
+    Args:
+        level: 外貌筛选级别（"high"/"medium"/"low"）
+
+    Returns:
+        dict: 内部筛选条件（Agent不知道具体值）
+    """
+    if level == "high":
+        # 系统内部设置高标准筛选阈值
+        # Agent不知道具体是多少
+        return {
+            "beauty_score_min": 80.0,  # 内部实现
+            "photo_quality_min": 75.0,  # 内部实现
+        }
+    elif level == "medium":
+        # 默认值，不强制筛选
+        return {}
+    else:  # "low"
+        # 不筛选外貌
+        return {}
+
+
+def _parse_appearance_description(description: str) -> dict[str, Any]:
+    """
+    解析外貌描述（内部实现）
+
+    【Agent Native设计】
+    - Agent传入自然语言描述
+    - 系统内部解析为筛选条件
+    - Agent不需要理解内部实现
+
+    Args:
+        description: 外貌描述（自然语言）
+
+    Returns:
+        dict: 内部筛选条件（Agent不知道具体值）
+    """
+    if not description:
+        return {}
+
+    # 内部解析逻辑（Agent不知道）
+    filters = {}
+
+    # 示例：内部实现，Agent不知道
+    if "温柔" in description:
+        filters["gentle_score_min"] = 65.0  # 内部阈值
+    if "阳光" in description:
+        filters["sunny_score_min"] = 65.0  # 内部阈值
+    if "清秀" in description:
+        filters["clean_score_min"] = 68.0  # 内部阈值
+    if "成熟" in description:
+        filters["mature_score_min"] = 65.0  # 内部阈值
+
+    return filters
+
+
 def _convert_sets_to_lists_in_dict(data: dict[str, Any]) -> dict[str, Any]:
     """递归转换字典中的所有set为list（JSON可序列化）
 
@@ -444,11 +508,15 @@ def search_partner_candidates(
     # 新增参数：外貌向量搜索
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     appearance_match: dict[str, Any] = {},
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 新增参数：明星脸搜索（照片向量搜索）
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    photo_match: dict[str, Any] = {},
     source: str | None = None,
     load_profile: Callable[..., Any] | None = None,
     search: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """搜索候选人（支持性格向量筛选 + 外貌向量搜索）
+    """搜索候选人（支持性格向量筛选 + 外貌向量搜索 + 明星脸搜索）
 
     Args:
         session: 会话对象
@@ -471,6 +539,12 @@ def search_partner_candidates(
             }
             - text: 搜索文本（风格标签或口语化描述）
             - similarity_threshold: 相似度阈值（0.0-1.0，默认0.70）
+        photo_match: 明星脸匹配条件（照片向量搜索）
+            示例：
+            {
+                "photo_url": "https://..."
+            }
+            - photo_url: 明星照片URL（Agent自己用WebSearch/WebFetch获取）
         source: 数据源
         load_profile: 加载用户profile的函数
         search: 搜索执行函数
@@ -503,25 +577,84 @@ def search_partner_candidates(
                 match_traits, similarity_threshold
             )
 
-    # 2. 外貌向量筛选（新增）
+    # 2. 外貌筛选（抽象化参数解析）
     if appearance_match:
-        appearance_text = appearance_match.get("text") or ""
-        appearance_threshold = float(appearance_match.get("similarity_threshold") or 0.70)
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Agent Native设计：系统内部解析抽象参数
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        if appearance_text:
+        # 2.1 解析外貌筛选级别（"high"/"medium"/"low"）
+        level = appearance_match.get("level") or ""
+        if level:
+            level_filters = _parse_appearance_level(level)
+            # 合并到criteria（数据库筛选）
+            criteria.update(level_filters)
+            _logger.info(
+                "【外貌筛选-级别】level=%s → 内部筛选条件已应用",
+                level
+            )
+
+        # 2.2 解析外貌描述（自然语言）
+        description = appearance_match.get("description") or ""
+        if description:
+            # 内部解析自然语言描述为筛选条件
+            description_filters = _parse_appearance_description(description)
+
+            # 合并到vector_filter_json（向量搜索）
+            if description_filters:
+                if vector_filter_json is None:
+                    vector_filter_json = {"include": {}}
+
+                # 构建向量搜索条件（系统内部实现）
+                vector_filter_json["include"]["appearance_profile"] = {
+                    "text": description,  # 向量搜索文本
+                    "similarity_threshold": 0.70,  # 内部阈值
+                    # 同时传递解析后的筛选条件（用于混合筛选）
+                    "parsed_filters": description_filters,
+                }
+
+                _logger.info(
+                    "【外貌筛选-描述】description=%s → 向量搜索已应用",
+                    description[:50]
+                )
+
+    # 3. 明星脸向量筛选（新增）
+    if photo_match:
+        photo_url = photo_match.get("photo_url") or ""
+
+        if photo_url:
             # 合并到 vector_filter_json
             if vector_filter_json is None:
                 vector_filter_json = {"include": {}}
 
-            vector_filter_json["include"]["appearance_profile"] = {
-                "text": appearance_text,
-                "similarity_threshold": appearance_threshold
+            vector_filter_json["include"]["face_embedding"] = {
+                "photo_url": photo_url,
+                "similarity_threshold": 0.75  # 默认阈值
             }
 
             _logger.info(
-                "【外貌向量搜索】text=%s threshold=%s",
-                appearance_text, appearance_threshold
+                "【明星脸向量搜索】photo_url=%s",
+                photo_url[:200]
             )
+
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            # 新增：从明星脸搜索中学习偏好（异步，不阻塞搜索）
+            # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            try:
+                from match_domain.celebrity_preference_learner import learn_from_celebrity_search
+
+                # 提取明星名称（如果有）
+                celebrity_name = photo_match.get("celebrity_name", "")
+
+                # 学习偏好（不阻塞搜索）
+                learn_from_celebrity_search(
+                    user_key=str(session.requester_id),
+                    photo_url=photo_url,
+                    celebrity_name=celebrity_name,
+                    source_dsn=source,
+                )
+            except Exception as exc:
+                _logger.warning(f"偏好学习失败（不影响搜索）: {exc}")
 
     return search_partner_candidates_with(
         session,

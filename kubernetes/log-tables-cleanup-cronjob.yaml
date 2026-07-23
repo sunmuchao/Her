@@ -1,0 +1,78 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: log-tables-cleanup
+  namespace: her
+spec:
+  schedule: "0 3 * * *"  # 每天凌晨3点执行
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: cleanup
+            image: mysql:8.0
+            command:
+            - /bin/sh
+            - -c
+            - |
+              mysql -h$MYSQL_HOST -uroot -p$MYSQL_ROOT_PASSWORD <<'EOF'
+              -- 设置变量
+              SET @retention_days = 90;
+              SET @batch_size = 100000;
+              SET @cutoff_date = DATE_SUB(NOW(), INTERVAL @retention_days DAY);
+
+              -- 1. 清理 auth_login_events
+              USE her_auth;
+              INSERT INTO auth_login_events_archive
+              SELECT *, NOW() as archived_at
+              FROM auth_login_events
+              WHERE created_at < @cutoff_date
+              LIMIT @batch_size;
+              DELETE FROM auth_login_events
+              WHERE created_at < @cutoff_date
+              LIMIT @batch_size;
+              OPTIMIZE TABLE auth_login_events;
+
+              -- 2. 清理 match_relation_events
+              USE her_relationship_ledger;
+              INSERT INTO match_relation_events_archive
+              SELECT *, NOW() as archived_at
+              FROM match_relation_events
+              WHERE occurred_at < @cutoff_date
+              LIMIT @batch_size;
+              DELETE FROM match_relation_events
+              WHERE occurred_at < @cutoff_date
+              LIMIT @batch_size;
+              OPTIMIZE TABLE match_relation_events;
+
+              -- 3. 清理 recommendation_actions
+              USE her_recommendation;
+              INSERT INTO recommendation_actions_archive
+              SELECT *, NOW() as archived_at
+              FROM recommendation_actions
+              WHERE occurred_at < @cutoff_date
+              LIMIT @batch_size;
+              DELETE FROM recommendation_actions
+              WHERE occurred_at < @cutoff_date
+              LIMIT @batch_size;
+              OPTIMIZE TABLE recommendation_actions;
+              EOF
+            env:
+            - name: MYSQL_HOST
+              value: "her-mysql-1"
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: her-secrets
+                  key: mysql-root-password
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi
+          restartPolicy: OnFailure

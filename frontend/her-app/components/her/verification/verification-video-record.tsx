@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import type { LiveVideoChallenge } from '@/lib/api/endpoints/verification'
 import {
   buildGuideSteps,
@@ -167,15 +167,18 @@ export function VerificationVideoRecord({
           className="absolute inset-0 h-full w-full object-cover scale-x-[-1]"
         />
       ) : null}
-      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
-      <div className="absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/60 via-black/25 to-transparent" />
-      <div className="absolute inset-0 bg-black/10" />
-      <button
-        onClick={onBack}
-        className="absolute top-12 right-5 w-10 h-10 rounded-full bg-background/20 flex items-center justify-center z-10"
-      >
-        <X className="w-5 h-5 text-white" />
-      </button>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-72 bg-gradient-to-t from-black/60 via-black/25 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-black/10" />
+      <div className="absolute left-5 top-12 z-20 flex items-center gap-2">
+        <button
+          onClick={onBack}
+          className="w-10 h-10 rounded-full bg-background/20 flex items-center justify-center"
+          aria-label="返回上一步"
+        >
+          <ArrowLeft className="w-5 h-5 text-white" />
+        </button>
+      </div>
       <div className="relative z-10 flex-1 flex flex-col items-center justify-between py-16 px-8">
         <div className="flex-1 flex items-center justify-center">
           <div className="w-64 h-80 rounded-[40%] border-4 border-dashed border-white/55 flex items-center justify-center bg-black/10">

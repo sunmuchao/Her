@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { isLocalDevCdnUrl } from '@/lib/image-url'
+import { shouldBypassNextImageOptimization } from '@/lib/image-url'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
@@ -141,7 +141,7 @@ export function ImageCarousel({
               sizes="(max-width: 768px) 100vw, 50vw"
               priority={index === 0}
               loading={index === 0 ? 'eager' : 'lazy'}
-              unoptimized={isLocalDevCdnUrl(src)}
+              unoptimized={shouldBypassNextImageOptimization(src)}
             />
           </div>
         ))}

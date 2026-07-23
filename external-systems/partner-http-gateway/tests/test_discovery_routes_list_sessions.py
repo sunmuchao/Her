@@ -89,6 +89,8 @@ class TestDiscoveryListSessionsAPI(unittest.TestCase):
             storage=self.storage,
             runtime=self.runtime,
         )
+        self.service._check_and_push_proxy_intro_cases = mock.MagicMock()
+        self.service._trigger_previous_session_processing = mock.MagicMock()
         self.gateway = _FakeGateway(self.service)
 
     def test_list_sessions_empty_response(self):
@@ -195,6 +197,8 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
             storage=self.storage,
             runtime=self.runtime,
         )
+        self.service._check_and_push_proxy_intro_cases = mock.MagicMock()
+        self.service._trigger_previous_session_processing = mock.MagicMock()
         self.gateway = _FakeGateway(self.service)
 
     def test_dispatch_get_sessions_list(self):
@@ -271,22 +275,7 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
         with (
             mock.patch("gateway.discovery_routes._read_body", return_value=b"{}"),
             mock.patch("gateway.discovery_routes._parse_json_body", return_value=body),
-            mock.patch(
-                "gateway.discovery_routes.default_profile_source",
-                return_value=("mysql://example/her", "profiles"),
-            ),
-            mock.patch(
-                "gateway.discovery_routes.execute_photo_preference_search",
-                return_value={
-                    "saved": True,
-                    "search_type": "style_similarity",
-                    "results": [{"profile_id": 20001, "final_score": 1.38, "appearance_summary": "清爽耐看"}],
-                },
-            ),
-            mock.patch(
-                "gateway.discovery_routes.list_profiles",
-                return_value=[{"id": 20001, "name": "林夏", "age": 27, "city": "上海", "job": "产品经理"}],
-            ),
+            mock.patch("gateway.discovery_routes.get_trace_id", return_value="trace-gone-001"),
         ):
             result = dispatch_discovery_rest(
                 self.gateway,
@@ -297,12 +286,11 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
 
         self.assertIsNotNone(result)
         status, response = result
-        self.assertEqual(status, 200)
-        self.assertEqual(response["task"]["status"], "succeeded")
-        self.assertEqual(response["result_count"], 1)
-        self.assertEqual(response["results"][0]["name"], "林夏")
+        self.assertEqual(status, 410)
+        self.assertEqual(response["error_code"], "discovery_photo_search_gone")
+        self.assertEqual(response["replacement_route"], "/v1/discovery/turns")
 
-    def test_dispatch_photo_search_persists_into_discovery_session(self):
+    def test_dispatch_multimodal_turn_accepts_text_and_image_attachment(self):
         created = self.service.create_session(
             requester_id=10001,
             profile_id=10001,
@@ -310,32 +298,38 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
         session_id = created["session"]["session_id"]
         environ = {
             "wsgi.input": mock.MagicMock(),
-            "CONTENT_LENGTH": "180",
+            "CONTENT_LENGTH": "220",
         }
         body = {
-            "profile_id": 10001,
             "session_id": session_id,
-            "mode": "face",
-            "image_source": "data:image/jpeg;base64,abc",
-            "query_text": "笑起来像这张",
+            "message": {
+                "text": "帮我找像这张的",
+                "attachments": [
+                    {"type": "image", "source": "data:image/jpeg;base64,abc", "mime_type": "image/jpeg"},
+                ],
+            },
+            "client_context": {
+                "intent_hint": {"mode": "auto"},
+                "top_k": 12,
+            },
         }
         with (
             mock.patch("gateway.discovery_routes._read_body", return_value=b"{}"),
             mock.patch("gateway.discovery_routes._parse_json_body", return_value=body),
             mock.patch(
-                "gateway.discovery_routes.default_profile_source",
+                "discovery_system.service.resolve_profile_source",
                 return_value=("mysql://example/her", "profiles"),
             ),
             mock.patch(
-                "gateway.discovery_routes.execute_photo_preference_search",
+                "discovery_system.service.retrieve_visual_candidates",
                 return_value={
                     "saved": True,
-                    "search_type": "face_similarity",
+                    "search_type": "hybrid_photo_similarity",
                     "results": [{"profile_id": 20001, "final_score": 1.38, "appearance_summary": "清爽耐看"}],
                 },
             ),
             mock.patch(
-                "gateway.discovery_routes.list_profiles",
+                "discovery_system.service.list_profiles",
                 return_value=[{"id": 20001, "name": "林夏", "age": 27, "city": "上海", "job": "产品经理"}],
             ),
         ):
@@ -343,211 +337,142 @@ class TestDiscoveryRoutesDispatch(unittest.TestCase):
                 self.gateway,
                 environ,
                 method="POST",
-                path="/v1/discovery/photo-search",
+                path="/v1/discovery/turns",
             )
 
         self.assertIsNotNone(result)
         status, response = result
         self.assertEqual(status, 200)
-        self.assertTrue(response["session_sync"]["success"])
-        view = self.service.get_session_view(session_id)
-        item_types = [item.get("item_type") for item in view["view"]["timeline"]]
-        self.assertIn("result_group", item_types)
-        self.assertEqual(view["view"]["timeline"][-1]["cards"][0]["profile_id"], 20001)
+        timeline = response["view"]["timeline"]
+        self.assertEqual(timeline[-2]["item_type"], "assistant_message")
+        self.assertEqual(timeline[-1]["item_type"], "result_group")
+
+    def test_dispatch_multimodal_turn_accepts_image_only_payload(self):
+        created = self.service.create_session(
+            requester_id=10001,
+            profile_id=10001,
+        )
+        session_id = created["session"]["session_id"]
+        environ = {
+            "wsgi.input": mock.MagicMock(),
+            "CONTENT_LENGTH": "220",
+        }
+        body = {
+            "session_id": session_id,
+            "message": {
+                "attachments": [
+                    {"type": "image", "source": "data:image/jpeg;base64,abc", "mime_type": "image/jpeg"},
+                ],
+            },
+            "client_context": {
+                "intent_hint": {"mode": "auto"},
+                "top_k": 12,
+            },
+        }
+        with (
+            mock.patch("gateway.discovery_routes._read_body", return_value=b"{}"),
+            mock.patch("gateway.discovery_routes._parse_json_body", return_value=body),
+            mock.patch(
+                "discovery_system.service.resolve_profile_source",
+                return_value=("mysql://example/her", "profiles"),
+            ),
+            mock.patch(
+                "discovery_system.service.retrieve_visual_candidates",
+                return_value={
+                    "saved": True,
+                    "search_type": "hybrid_photo_similarity",
+                    "results": [{"profile_id": 20001, "final_score": 1.38, "appearance_summary": "清爽耐看"}],
+                },
+            ),
+            mock.patch(
+                "discovery_system.service.list_profiles",
+                return_value=[{"id": 20001, "name": "林夏", "age": 27, "city": "上海"}],
+            ),
+        ):
+            result = dispatch_discovery_rest(
+                self.gateway,
+                environ,
+                method="POST",
+                path="/v1/discovery/turns",
+            )
+
+        self.assertIsNotNone(result)
+        status, response = result
+        self.assertEqual(status, 200)
+        self.assertEqual(response["view"]["timeline"][-3]["body"], "帮我看看这张图适合找什么人")
+
+    def test_dispatch_session_turns_falls_back_to_multimodal_when_message_payload_exists(self):
+        created = self.service.create_session(
+            requester_id=10001,
+            profile_id=10001,
+        )
+        session_id = created["session"]["session_id"]
+        environ = {
+            "wsgi.input": mock.MagicMock(),
+            "CONTENT_LENGTH": "220",
+        }
+        body = {
+            "message": {
+                "text": "帮我找像这张的",
+                "attachments": [
+                    {"type": "image", "source": "data:image/jpeg;base64,abc", "mime_type": "image/jpeg"},
+                ],
+            },
+            "client_context": {
+                "intent_hint": {"mode": "auto"},
+                "top_k": 12,
+            },
+        }
+        with (
+            mock.patch("gateway.discovery_routes._read_body", return_value=b"{}"),
+            mock.patch("gateway.discovery_routes._parse_json_body", return_value=body),
+            mock.patch(
+                "discovery_system.service.resolve_profile_source",
+                return_value=("mysql://example/her", "profiles"),
+            ),
+            mock.patch(
+                "discovery_system.service.retrieve_visual_candidates",
+                return_value={
+                    "saved": True,
+                    "search_type": "hybrid_photo_similarity",
+                    "results": [{"profile_id": 20001, "final_score": 1.38, "appearance_summary": "清爽耐看"}],
+                },
+            ),
+            mock.patch(
+                "discovery_system.service.list_profiles",
+                return_value=[{"id": 20001, "name": "林夏", "age": 27, "city": "上海"}],
+            ),
+        ):
+            result = dispatch_discovery_rest(
+                self.gateway,
+                environ,
+                method="POST",
+                path=f"/v1/discovery/sessions/{session_id}/turns",
+            )
+
+        self.assertIsNotNone(result)
+        status, response = result
+        self.assertEqual(status, 200)
+        self.assertEqual(response["view"]["timeline"][-1]["item_type"], "result_group")
 
 
 class TestDiscoveryPhotoSearchAPI(unittest.TestCase):
     def setUp(self):
         self.gateway = _FakeGateway(mock.MagicMock())
-
-    def test_photo_search_requires_image_for_face_mode(self):
+    def test_photo_search_route_is_gone(self):
         status, response = rest_discovery_photo_search(
             self.gateway,
             {},
-            {"profile_id": 10001, "mode": "face"},
+            {
+                "profile_id": 10001,
+                "mode": "style",
+                "image_source": "data:image/jpeg;base64,abc",
+            },
         )
-        self.assertEqual(status, 400)
-        self.assertEqual(response["error"]["code"], "bad_request")
 
-    def test_photo_search_returns_enriched_candidates(self):
-        with (
-            mock.patch(
-                "gateway.discovery_routes.default_profile_source",
-                return_value=("mysql://example/her", "profiles"),
-            ),
-            mock.patch(
-                "gateway.discovery_routes.execute_photo_preference_search",
-                return_value={
-                    "saved": True,
-                    "search_type": "face_similarity",
-                    "results": [
-                        {
-                            "profile_id": 20001,
-                            "final_score": 1.52,
-                            "base_score": 0.91,
-                            "photo_bonus": 12.0,
-                            "appearance_summary": "笑起来很自然",
-                        }
-                    ],
-                },
-            ),
-            mock.patch(
-                "gateway.discovery_routes.list_profiles",
-                return_value=[
-                    {
-                        "id": 20001,
-                        "display_name": "周宁",
-                        "age": 28,
-                        "city": "杭州",
-                        "job": "设计师",
-                        "education": "本科",
-                        "avatar_url": "https://cdn.her.local/profiles/20001/avatar.jpg",
-                        "verified_level": "offline",
-                    }
-                ],
-            ),
-        ):
-            status, response = rest_discovery_photo_search(
-                self.gateway,
-                {},
-                {
-                    "profile_id": 10001,
-                    "mode": "face",
-                    "image_source": "data:image/jpeg;base64,abc",
-                    "query_text": "像这张脸",
-                },
-            )
-
-        self.assertEqual(status, 200)
-        self.assertEqual(response["intent"]["mode"], "face")
-        self.assertEqual(response["results"][0]["name"], "周宁")
-        self.assertTrue(response["results"][0]["verified"])
-
-    def test_photo_search_auto_mode_uses_agent_detected_intent(self):
-        with (
-            mock.patch(
-                "gateway.discovery_routes.default_profile_source",
-                return_value=("mysql://example/her", "profiles"),
-            ),
-            mock.patch(
-                "gateway.discovery_routes.detect_photo_preference_intent",
-                return_value=PhotoPreferenceIntent(
-                    intent_type="hybrid_photo_search",
-                    mode="hybrid",
-                    query_text="帮我看看这张图适合找什么人",
-                    attribute_filters={},
-                    hard_filters={},
-                    raw_text="帮我看看这张图适合找什么人",
-                    confidence=0.72,
-                    routing_reasons=["image_attached_without_explicit_mode_use_agent_auto_judgement"],
-                    image_understanding={"has_image": True},
-                ),
-            ),
-            mock.patch(
-                "gateway.discovery_routes.execute_photo_preference_search",
-                return_value={
-                    "saved": True,
-                    "search_type": "hybrid_photo_similarity",
-                    "results": [
-                        {
-                            "profile_id": 20001,
-                            "final_score": 1.52,
-                            "appearance_summary": "笑起来很自然",
-                        }
-                    ],
-                },
-            ),
-            mock.patch(
-                "gateway.discovery_routes.list_profiles",
-                return_value=[
-                    {
-                        "id": 20001,
-                        "display_name": "周宁",
-                        "age": 28,
-                        "city": "杭州",
-                        "avatar_url": "https://cdn.her.local/profiles/20001/avatar.jpg",
-                        "verified_level": "offline",
-                    }
-                ],
-            ),
-        ):
-            status, response = rest_discovery_photo_search(
-                self.gateway,
-                {},
-                {
-                    "profile_id": 10001,
-                    "mode": "auto",
-                    "image_source": "data:image/jpeg;base64,abc",
-                    "query_text": "帮我看看这张图适合找什么人",
-                },
-            )
-
-        self.assertEqual(status, 200)
-        self.assertEqual(response["intent"]["mode"], "hybrid")
-        self.assertEqual(response["search_type"], "hybrid_photo_similarity")
-        self.assertGreater(response["intent"]["confidence"], 0.7)
-        self.assertIn("routing_reasons", response["intent"])
-
-    def test_photo_search_applies_hard_filters(self):
-        with (
-            mock.patch(
-                "gateway.discovery_routes.default_profile_source",
-                return_value=("mysql://example/her", "profiles"),
-            ),
-            mock.patch(
-                "gateway.discovery_routes.execute_photo_preference_search",
-                return_value={
-                    "saved": True,
-                    "search_type": "style_similarity",
-                    "results": [
-                        {"profile_id": 20001, "final_score": 1.52, "appearance_summary": "清爽自然"},
-                        {"profile_id": 20002, "final_score": 1.48, "appearance_summary": "成熟温柔"},
-                    ],
-                },
-            ),
-            mock.patch(
-                "gateway.discovery_routes.list_profiles",
-                return_value=[
-                    {
-                        "id": 20001,
-                        "display_name": "周宁",
-                        "age": 28,
-                        "city": "杭州",
-                        "verified_level": "offline",
-                        "avatar_url": "https://cdn.her.local/profiles/20001/avatar.jpg",
-                    },
-                    {
-                        "id": 20002,
-                        "display_name": "林夏",
-                        "age": 24,
-                        "city": "北京",
-                        "verified_level": "none",
-                        "avatar_url": "https://cdn.her.local/profiles/20002/avatar.jpg",
-                    },
-                ],
-            ),
-        ):
-            status, response = rest_discovery_photo_search(
-                self.gateway,
-                {},
-                {
-                    "profile_id": 10001,
-                    "mode": "style",
-                    "image_source": "data:image/jpeg;base64,abc",
-                    "hard_filters": {
-                        "age_min": 26,
-                        "age_max": 30,
-                        "city": ["杭州"],
-                        "verified_only": True,
-                    },
-                },
-            )
-
-        self.assertEqual(status, 200)
-        self.assertEqual(response["result_count"], 1)
-        self.assertEqual(response["results"][0]["name"], "周宁")
-        self.assertEqual(response["intent"]["hard_filters"]["age_min"], 26)
-        self.assertTrue(response["intent"]["hard_filters"]["verified_only"])
+        self.assertEqual(status, 410)
+        self.assertEqual(response["error_code"], "discovery_photo_search_gone")
+        self.assertEqual(response["replacement_route"], "/v1/discovery/turns")
 
 
 if __name__ == "__main__":

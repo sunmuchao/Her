@@ -42,6 +42,13 @@ _RELATIONSHIP_GOAL_DISPLAY: dict[str, str] = {
     "long_term": "长期关系",
 }
 
+_MARITAL_STATUS_DISPLAY: dict[str, str] = {
+    "never_married": "未婚",
+    "divorced": "离异",
+    "widowed": "丧偶",
+    "married": "已婚",
+}
+
 
 def normalize_search_gender(value: Any) -> str | None:
     text = str(value or "").strip().lower()
@@ -426,6 +433,29 @@ def relationship_goal_display_label(value: Any) -> str:
     return _RELATIONSHIP_GOAL_DISPLAY.get(text, _RELATIONSHIP_GOAL_DISPLAY.get(text.lower(), text))
 
 
+def marital_status_display_label(value: Any) -> str:
+    """将婚况英文标准值转换为中文显示标签
+
+    Args:
+        value: 婚况值，可以是英文标准值（never_married等）或中文值
+
+    Returns:
+        中文显示标签，如"未婚"、"离异"等
+    """
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    # 先尝试从映射表获取
+    label = _MARITAL_STATUS_DISPLAY.get(text) or _MARITAL_STATUS_DISPLAY.get(text.lower())
+    if label:
+        return label
+    # 如果是中文值，直接返回（如"未婚"、"离异"）
+    if text in ["未婚", "离异", "丧偶", "已婚"]:
+        return text
+    # 未知值，返回原样
+    return text
+
+
 def format_criteria_labels(criteria: Mapping[str, Any]) -> list[str]:
     """格式化criteria对象为显示标签列表
 
@@ -499,11 +529,13 @@ def format_criteria_labels(criteria: Mapping[str, Any]) -> list[str]:
     marital_statuses = criteria.get("marital_statuses")
     if isinstance(marital_statuses, list) and marital_statuses:
         # 婚况格式化：未婚、离异等
-        marital_label = normalize_marital_status(marital_statuses[0]) or str(marital_statuses[0]).strip()
-        labels.append(f"婚况{marital_label}")
+        marital_label = marital_status_display_label(marital_statuses[0])
+        if marital_label:
+            labels.append(f"婚况{marital_label}")
     elif str(marital_statuses or "").strip():
-        marital_label = normalize_marital_status(str(marital_statuses)) or str(marital_statuses).strip()
-        labels.append(f"婚况{marital_label}")
+        marital_label = marital_status_display_label(str(marital_statuses))
+        if marital_label:
+            labels.append(f"婚况{marital_label}")
 
     # 8. 孩子要求（新增）
     accept_children = criteria.get("accept_partner_children")
@@ -568,6 +600,7 @@ __all__ = [
     "gender_display_label",
     "genders_match_for_search",
     "map_sexual_orientation_to_target_gender",
+    "marital_status_display_label",
     "normalize_compiled_criteria",
     "normalize_has_children",
     "normalize_marital_status",

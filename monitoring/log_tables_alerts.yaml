@@ -1,0 +1,82 @@
+groups:
+- name: log_tables_alerts
+  rules:
+  # 告警：日志表数据量超过100万行
+  - alert: LogTableRowsWarning
+    expr: log_table_rows > 1000000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "日志表行数超过警告阈值"
+      description: "表 {{ $labels.table }} 有 {{ $value }} 行数据（警告阈值：1,000,000）"
+
+  # 告警：日志表数据量超过500万行
+  - alert: LogTableRowsCritical
+    expr: log_table_rows > 5000000
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "日志表行数超过严重阈值"
+      description: "表 {{ $labels.table }} 有 {{ $value }} 行数据（严重阈值：5,000,000）"
+
+  # 告警：日志表大小超过1GB
+  - alert: LogTableSizeWarning
+    expr: log_table_size_mb > 1024
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "日志表大小超过警告阈值"
+      description: "表 {{ $labels.table }} 大小为 {{ $value }} MB（警告阈值：1024 MB）"
+
+  # 告警：日志表大小超过5GB
+  - alert: LogTableSizeCritical
+    expr: log_table_size_mb > 5120
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "日志表大小超过严重阈值"
+      description: "表 {{ $labels.table }} 大小为 {{ $value }} MB（严重阈值：5120 MB）"
+
+  # 告警：最老记录超过180天
+  - alert: LogTableAgeWarning
+    expr: log_table_oldest_age_days > 180
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "日志表包含过旧数据"
+      description: "表 {{ $labels.table }} 最老记录已 {{ $value }} 天（警告阈值：180天）"
+
+  # 告警：最老记录超过365天
+  - alert: LogTableAgeCritical
+    expr: log_table_oldest_age_days > 365
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "日志表包含极旧数据"
+      description: "表 {{ $labels.table }} 最老记录已 {{ $value }} 天（严重阈值：365天）"
+
+  # 告警：MySQL磁盘使用率超过80%
+  - alert: MySQLDiskUsageWarning
+    expr: mysql_disk_usage_percent > 80
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "MySQL磁盘使用率超过警告阈值"
+      description: "MySQL磁盘使用率 {{ $value }}%（警告阈值：80%）"
+
+  # 告警：MySQL磁盘使用率超过90%
+  - alert: MySQLDiskUsageCritical
+    expr: mysql_disk_usage_percent > 90
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "MySQL磁盘使用率超过严重阈值"
+      description: "MySQL磁盘使用率 {{ $value }}%（严重阈值：90%）"

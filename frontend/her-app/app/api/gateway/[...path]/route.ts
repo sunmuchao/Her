@@ -19,6 +19,17 @@ function shouldLogVerificationProxy(upstreamPath: string) {
   return upstreamPath.startsWith('/v1/verifications/')
 }
 
+function getGatewayBaseUrls() {
+  const configuredBaseUrl = process.env.PARTNER_GATEWAY_BASE_URL?.trim()
+  if (configuredBaseUrl) {
+    return [configuredBaseUrl.replace(/\/+$/, '')]
+  }
+  // Local fallback order:
+  // 1. historical dev port 8765
+  // 2. current docker/public gateway port 8080
+  return ['http://127.0.0.1:8765', 'http://127.0.0.1:8080']
+}
+
 function upstreamUnavailableResponse(baseUrl: string, error: unknown) {
   const detail =
     error instanceof Error && error.message.trim()
@@ -65,11 +76,48 @@ function isNotFoundPayloadFromAnotherService(
   }
 }
 
+function shouldRetryAgainstAnotherGatewayBase(
+  upstreamPath: string,
+  status: number,
+  contentType: string | null,
+  payloadText: string,
+) {
+  if (!upstreamPath.startsWith('/v1/')) return false
+
+  const normalizedContentType = contentType?.toLowerCase() || ''
+  const preview = payloadText.trim()
+
+  if (status >= 300 && status < 400) {
+    return true
+  }
+
+  if (
+    normalizedContentType.startsWith('text/html') ||
+    normalizedContentType.startsWith('application/xhtml+xml')
+  ) {
+    return true
+  }
+
+  if (
+    normalizedContentType.startsWith('text/plain') &&
+    (preview.includes('Failed to open a WebSocket connection') ||
+      preview.includes('unsupported HTTP method') ||
+      status >= 400)
+  ) {
+    return true
+  }
+
+  if (status === 404 && isNotFoundPayloadFromAnotherService(upstreamPath, contentType, payloadText)) {
+    return true
+  }
+
+  return false
+}
+
 async function proxy(request: NextRequest, pathSegments: string[]) {
-  const baseUrl = (process.env.PARTNER_GATEWAY_BASE_URL || 'http://127.0.0.1:8765').replace(/\/+$/, '')
   const upstreamPath = `/${pathSegments.join('/')}`
-  const upstreamUrl = `${baseUrl}${upstreamPath}${request.nextUrl.search}`
   const logVerificationProxy = shouldLogVerificationProxy(upstreamPath)
+  const gatewayBaseUrls = getGatewayBaseUrls()
 
   const headers = new Headers()
   request.headers.forEach((value, key) => {
@@ -109,7 +157,6 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
   if (logVerificationProxy) {
     console.info('[gateway-proxy] outgoing verification request', {
       method: request.method,
-      upstreamUrl,
       contentType: request.headers.get('content-type'),
       contentLength: request.headers.get('content-length'),
       bodyKind:
@@ -117,62 +164,82 @@ async function proxy(request: NextRequest, pathSegments: string[]) {
       bodyLength:
         body instanceof ArrayBuffer ? body.byteLength : typeof body === 'string' ? body.length : 0,
       hasAuthorization: headers.has('Authorization'),
+      gatewayBaseUrls,
     })
   }
+  let lastFetchError: unknown = null
+  let lastMisconfiguredBaseUrl: string | null = null
 
-  let upstream: Response
-  try {
-    upstream = await fetch(upstreamUrl, {
-      method: request.method,
-      headers,
-      body,
-      cache: 'no-store',
-      redirect: 'manual',
-    })
-  } catch (error) {
-    if (logVerificationProxy) {
-      console.error('[gateway-proxy] verification upstream fetch failed', {
-        upstreamUrl,
-        error,
-        message: error instanceof Error ? error.message : String(error),
+  for (const baseUrl of gatewayBaseUrls) {
+    const upstreamUrl = `${baseUrl}${upstreamPath}${request.nextUrl.search}`
+    let upstream: Response
+    try {
+      upstream = await fetch(upstreamUrl, {
+        method: request.method,
+        headers,
+        body,
+        cache: 'no-store',
+        redirect: 'manual',
       })
+    } catch (error) {
+      lastFetchError = error
+      if (logVerificationProxy) {
+        console.error('[gateway-proxy] verification upstream fetch failed', {
+          upstreamUrl,
+          error,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+      continue
     }
-    return upstreamUnavailableResponse(baseUrl, error)
-  }
 
-  const responseHeaders = new Headers()
-  upstream.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
-      responseHeaders.set(key, value)
-    }
-  })
+    const responseHeaders = new Headers()
+    upstream.headers.forEach((value, key) => {
+      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+        responseHeaders.set(key, value)
+      }
+    })
 
-  const responseBuffer = await upstream.arrayBuffer()
-  if (logVerificationProxy) {
+    const responseBuffer = await upstream.arrayBuffer()
     const responseText =
       responseBuffer.byteLength > 0 ? new TextDecoder().decode(responseBuffer.slice(0, 4096)) : ''
-    console.info('[gateway-proxy] verification upstream response', {
-      upstreamUrl,
+
+    if (logVerificationProxy) {
+      console.info('[gateway-proxy] verification upstream response', {
+        upstreamUrl,
+        status: upstream.status,
+        statusText: upstream.statusText,
+        contentType: upstream.headers.get('content-type'),
+        responseBytes: responseBuffer.byteLength,
+        responsePreview: responseText,
+      })
+    }
+
+    if (
+      gatewayBaseUrls.length > 1 &&
+      shouldRetryAgainstAnotherGatewayBase(
+        upstreamPath,
+        upstream.status,
+        upstream.headers.get('content-type'),
+        responseText,
+      )
+    ) {
+      lastMisconfiguredBaseUrl = baseUrl
+      continue
+    }
+
+    return new Response(responseBuffer, {
       status: upstream.status,
       statusText: upstream.statusText,
-      contentType: upstream.headers.get('content-type'),
-      responseBytes: responseBuffer.byteLength,
-      responsePreview: responseText,
+      headers: responseHeaders,
     })
   }
-  if (upstream.status === 404) {
-    const contentType = upstream.headers.get('content-type')
-    const payloadText = new TextDecoder().decode(responseBuffer)
-    if (isNotFoundPayloadFromAnotherService(upstreamPath, contentType, payloadText)) {
-      return misconfiguredGatewayResponse(baseUrl, upstreamUrl)
-    }
+
+  if (lastMisconfiguredBaseUrl) {
+    return misconfiguredGatewayResponse(lastMisconfiguredBaseUrl, `${lastMisconfiguredBaseUrl}${upstreamPath}${request.nextUrl.search}`)
   }
 
-  return new Response(responseBuffer, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: responseHeaders,
-  })
+  return upstreamUnavailableResponse(gatewayBaseUrls[0], lastFetchError)
 }
 
 type RouteContext = {

@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>陈欣雯 / 张梦然 人脸相关表数据梳理</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #dbe2ea;
+      --ok: #0f766e;
+      --warn: #b45309;
+      --empty: #64748b;
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1, h2, h3 { margin: 0; }
+    .intro, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .intro { margin-bottom: 20px; }
+    .intro p, .card p { margin: 8px 0 0; color: var(--muted); }
+    .profiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+      gap: 18px;
+    }
+    .profile-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      color: #334155;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .table-grid {
+      display: grid;
+      gap: 14px;
+    }
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      background: #fbfdff;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .status {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      white-space: nowrap;
+    }
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.empty { color: var(--empty); }
+    .kv {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 13px;
+    }
+    .kv th, .kv td {
+      border-top: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      padding: 8px 10px;
+    }
+    .kv th {
+      width: 165px;
+      color: #475569;
+      background: #f8fafc;
+      font-weight: 600;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: #0f172a;
+    }
+    .note {
+      margin-top: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .summary-list {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+    .summary-list li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="intro">
+      <h1>陈欣雯 / 张梦然 人脸相关七张表数据梳理</h1>
+      <p>数据来源：本地 MySQL `her` 库，按 `profile_id` 查询。陈欣雯是 `1931`，张梦然是 `2085`。</p>
+      <ul class="summary-list">
+        <li>陈欣雯的数据明显更完整：有人脸向量、人脸属性、已验证锚点、一致性分数、照片特征。</li>
+        <li>张梦然目前只有人脸属性和照片特征，缺少人脸向量、已验证锚点、一致性分数。</li>
+        <li>`reference_face_search_jobs` 里这两个人都没有记录。</li>
+        <li>`profile_photo_feature_versions` 这张表在当前数据库里不存在。</li>
+      </ul>
+    </section>
+
+    <section class="profiles">
+      <article class="card">
+        <div class="profile-head">
+          <div>
+            <h2>陈欣雯</h2>
+            <p>profile_id = 1931</p>
+            <div class="meta">
+              <span class="pill">28 岁</span>
+              <span class="pill">无锡</span>
+              <span class="pill">软件测试</span>
+            </div>
+          </div>
+          <span class="status ok">数据完整度较高</span>
+        </div>
+
+        <div class="table-grid">
+          <section class="section">
+            <div class="section-head">
+              <h3>1. profile_face_embeddings</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>已经有一条主脸向量记录，但现在存的是 `deterministic-face-embedding-v1`，维度只有 16，不是真 DeepFace 512 维向量。</p>
+            <table class="kv">
+              <tr><th>id</th><td>6</td></tr>
+              <tr><th>face_embedding_model</th><td>deterministic-face-embedding-v1</td></tr>
+              <tr><th>face_embedding_dimension</th><td>16</td></tr>
+              <tr><th>face_detection_confidence</th><td>86.75</td></tr>
+              <tr><th>is_primary_face</th><td>1</td></tr>
+              <tr><th>embedding_type</th><td>primary_face</td></tr>
+              <tr><th>photo_url</th><td>NULL</td></tr>
+              <tr><th>embedding_json / face_embedding_json</th><td><pre>[-0.946, -0.826, -0.642, -0.698, -0.372, -0.44, -0.618, -0.736, 0.68, -0.072, 0.19, 0.156, 0.084, 0.518, 0.948, -0.006]</pre></td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>2. profile_face_attributes</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>人脸属性是全的，能看出它识别成圆脸、脸圆润度高、下巴突出、颧骨明显，还留了描述文案。</p>
+            <table class="kv">
+              <tr><th>face_count</th><td>1</td></tr>
+              <tr><th>dominant_face_index</th><td>0</td></tr>
+              <tr><th>face_shape_type</th><td>round</td></tr>
+              <tr><th>face_roundness_score</th><td>100.00</td></tr>
+              <tr><th>jaw_definition_score</th><td>84.31</td></tr>
+              <tr><th>eye_distance_score</th><td>61.69</td></tr>
+              <tr><th>nose_height_score</th><td>96.18</td></tr>
+              <tr><th>lip_thickness_score</th><td>31.56</td></tr>
+              <tr><th>attribute_source</th><td>landmark</td></tr>
+              <tr><th>attribute_confidence</th><td>0.8318</td></tr>
+              <tr><th>appearance_summary</th><td>整体看起来特别乖巧文静，像个邻家妹妹。扎着双麻花辫配上齐刘海，很有学生气，穿着白色Polo衫显得干净清爽。眼神清澈带点呆萌，给人一种很纯真、舒服的感觉。</td></tr>
+              <tr><th>top_labels / bbox / quality_signals</th><td><pre>{"top_labels":["成熟感","干净清爽","温柔感"],"face_bbox":{"top":304,"left":262,"right":448,"width":186,"bottom":490,"height":186},"quality_signals":{"confidence":0.8318,"face_width":186,"face_height":186,"image_width":700,"image_height":1008,"face_area_ratio":0.049}}</pre></td></tr>
+              <tr><th>attribute_error_message</th><td>&lt;urlopen error [Errno 8] nodename nor servname provided, or not known&gt;</td></tr>
+              <tr><th>analyzed_photo_url</th><td>http://127.0.0.1:9000/her-media/virtual-profiles/manual-replacements/1931/tianxiwei-1.jpg</td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>3. verified_face_anchors</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>已经有一条“认证锚点脸”，本质上就是后面做人脸一致性校验的基准脸。</p>
+            <table class="kv">
+              <tr><th>id</th><td>3</td></tr>
+              <tr><th>anchor_embedding_model</th><td>verified-anchor-v1</td></tr>
+              <tr><th>anchor_embedding_version</th><td>1</td></tr>
+              <tr><th>liveness_detection_score</th><td>92.00</td></tr>
+              <tr><th>quality_score</th><td>91.50</td></tr>
+              <tr><th>confidence_score</th><td>92.00</td></tr>
+              <tr><th>verification_asset_type</th><td>photo</td></tr>
+              <tr><th>anchor_source / video_url</th><td>http://127.0.0.1:9000/her-media/virtual-profiles/manual-replacements/1931/tianxiwei-1.jpg</td></tr>
+              <tr><th>metadata_json</th><td><pre>{"reasons":["认证照质量整体稳定"],"blur_penalty":0.0,"lighting_penalty":0.0,"occlusion_penalty":0.0}</pre></td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>4. face_consistency_scores</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>一致性分数是低风险，说明系统认为她这张基准脸比较稳定。</p>
+            <table class="kv">
+              <tr><th>anchor_id</th><td>3</td></tr>
+              <tr><th>consistency_score</th><td>93.85</td></tr>
+              <tr><th>threshold_score</th><td>65.27</td></tr>
+              <tr><th>confidence_weight</th><td>0.92</td></tr>
+              <tr><th>environment_gap_score</th><td>9.55</td></tr>
+              <tr><th>risk_level</th><td>low</td></tr>
+              <tr><th>detail_json</th><td><pre>{"badges":["认证信息较完整","照片真人感较强","资料照质量较稳定"],"matched":true}</pre></td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>5. reference_face_search_jobs</h3>
+              <span class="status empty">无数据</span>
+            </div>
+            <p>当前没查到她作为请求人发起过参考脸搜索任务的流水。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>6. profile_photo_features</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>照片特征表信息最丰富，已经把“乖巧、文静、学生气、清纯、邻家”这些标签都打出来了。</p>
+            <table class="kv">
+              <tr><th>id</th><td>1496</td></tr>
+              <tr><th>analysis_status</th><td>done</td></tr>
+              <tr><th>embedding_status</th><td>failed</td></tr>
+              <tr><th>analysis_model</th><td>ai-analysis-v1</td></tr>
+              <tr><th>beauty_score</th><td>92.00</td></tr>
+              <tr><th>face_score_global</th><td>92.00</td></tr>
+              <tr><th>appearance_score_global</th><td>93.35</td></tr>
+              <tr><th>photo_quality_score</th><td>100.00</td></tr>
+              <tr><th>photo_authenticity_score</th><td>86.75</td></tr>
+              <tr><th>appearance_style_type</th><td>youthful</td></tr>
+              <tr><th>appearance_summary</th><td>整体看起来特别乖巧文静，像个邻家妹妹。扎着双麻花辫配上齐刘海，很有学生气，穿着白色Polo衫显得干净清爽。眼神清澈带点呆萌，给人一种很纯真、舒服的感觉。</td></tr>
+              <tr><th>appearance_keywords_json</th><td><pre>["乖巧","文静","学生气","清纯","邻家"]</pre></td></tr>
+              <tr><th>dominant_features_json</th><td><pre>["双麻花辫","齐刘海","白色Polo衫"]</pre></td></tr>
+              <tr><th>last_error</th><td>appearance_profile_embedding_failed: Milvus 连接失败</td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>7. profile_photo_feature_versions</h3>
+              <span class="status warn">表不存在</span>
+            </div>
+            <p>当前 `her` 库里没有这张表，所以也就不存在陈欣雯在这张表里的数据。</p>
+          </section>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="profile-head">
+          <div>
+            <h2>张梦然</h2>
+            <p>profile_id = 2085</p>
+            <div class="meta">
+              <span class="pill">28 岁</span>
+              <span class="pill">无锡</span>
+              <span class="pill">招商主管</span>
+            </div>
+          </div>
+          <span class="status warn">数据半成品</span>
+        </div>
+
+        <div class="table-grid">
+          <section class="section">
+            <div class="section-head">
+              <h3>1. profile_face_embeddings</h3>
+              <span class="status empty">无数据</span>
+            </div>
+            <p>没有查到她的人脸向量记录。按你前面关心的明星脸搜索逻辑，这意味着她很可能进不了“真按脸比”的那一层。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>2. profile_face_attributes</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>有人脸属性记录，但明显不完整：`face_count = 5`、`dominant_face_index = -1`，很多具体五官分数都是空的。</p>
+            <table class="kv">
+              <tr><th>face_count</th><td>5</td></tr>
+              <tr><th>dominant_face_index</th><td>-1</td></tr>
+              <tr><th>attribute_source</th><td>unavailable</td></tr>
+              <tr><th>attribute_confidence</th><td>0.0000</td></tr>
+              <tr><th>appearance_summary</th><td>整体给人一种特别干净清透的感觉，像是那种很有气质的邻家女孩。黑长直的头发显得很温婉，皮肤白皙细腻，眼神清澈又带点温柔，看起来很舒服，有一种淡淡的知性美。</td></tr>
+              <tr><th>top_labels</th><td><pre>["成熟感","干净清爽","温柔感"]</pre></td></tr>
+              <tr><th>attribute_error_message</th><td>&lt;urlopen error [Errno 8] nodename nor servname provided, or not known&gt;</td></tr>
+              <tr><th>analyzed_photo_url</th><td>http://minio:9000/her-media/virtual-profiles/local-wuxi-female/bing_00012/gallery_1-4ec1595885.jpg</td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>3. verified_face_anchors</h3>
+              <span class="status empty">无数据</span>
+            </div>
+            <p>还没有认证锚点脸。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>4. face_consistency_scores</h3>
+              <span class="status empty">无数据</span>
+            </div>
+            <p>没有一致性分数，说明也没有走到“基准脸 + 一致性评估”这一步。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>5. reference_face_search_jobs</h3>
+              <span class="status empty">无数据</span>
+            </div>
+            <p>没有查到她相关的参考脸搜索任务流水。</p>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>6. profile_photo_features</h3>
+              <span class="status ok">有数据</span>
+            </div>
+            <p>这张表里有完整的照片风格描述，偏“清透、温婉、知性、初恋脸”。</p>
+            <table class="kv">
+              <tr><th>id</th><td>1511</td></tr>
+              <tr><th>analysis_status</th><td>done</td></tr>
+              <tr><th>embedding_status</th><td>pending</td></tr>
+              <tr><th>beauty_score</th><td>96.00</td></tr>
+              <tr><th>face_score_global</th><td>96.00</td></tr>
+              <tr><th>appearance_score_global</th><td>90.85</td></tr>
+              <tr><th>photo_quality_score</th><td>94.50</td></tr>
+              <tr><th>photo_authenticity_score</th><td>72.50</td></tr>
+              <tr><th>appearance_style_type</th><td>youthful</td></tr>
+              <tr><th>appearance_summary</th><td>整体给人一种特别干净清透的感觉，像是那种很有气质的邻家女孩。黑长直的头发显得很温婉，皮肤白皙细腻，眼神清澈又带点温柔，看起来很舒服，有一种淡淡的知性美。</td></tr>
+              <tr><th>appearance_keywords_json</th><td><pre>["清透","温婉","知性","初恋脸"]</pre></td></tr>
+              <tr><th>dominant_features_json</th><td><pre>["黑长直","皮肤白皙"]</pre></td></tr>
+              <tr><th>last_error</th><td>NULL</td></tr>
+            </table>
+          </section>
+
+          <section class="section">
+            <div class="section-head">
+              <h3>7. profile_photo_feature_versions</h3>
+              <span class="status warn">表不存在</span>
+            </div>
+            <p>当前 `her` 库里没有这张表，所以张梦然这里也没法展示版本数据。</p>
+          </section>
+        </div>
+      </article>
+    </section>
+
+    <p class="note">生成依据：直接查询本地 Docker MySQL 容器 `her` 库中的七张目标表。这里展示的是“你看得懂”的整理版，不是原始 SQL dump。</p>
+  </div>
+</body>
+</html>

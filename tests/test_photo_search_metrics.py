@@ -5,6 +5,8 @@ from unittest import mock
 
 from observability.photo_search_metrics import (
     build_photo_search_dashboard,
+    build_photo_search_funnel,
+    classify_photo_search_event,
     compare_photo_search_bucket_effect,
     emit_photo_search_event,
     normalize_photo_search_rollout,
@@ -54,6 +56,30 @@ class PhotoSearchMetricsTests(unittest.TestCase):
         self.assertIn("control", summary["by_experiment_bucket"])
         self.assertEqual(len(compare), 2)
         self.assertIn("search_completed", dashboard["by_stage"])
+
+    def test_build_photo_search_funnel_distinguishes_failure_layers(self):
+        events = [
+            {"stage": "client_submit_failed", "success": False, "search_type": "unknown"},
+            {"stage": "gateway_rejected", "success": False, "search_type": "face_similarity"},
+            {"stage": "search_failed", "success": False, "search_type": "style_similarity"},
+            {"stage": "search_completed", "success": True, "search_type": "hybrid_photo_similarity", "result_count": 0},
+            {"stage": "results_ready", "success": True, "search_type": "hybrid_photo_similarity", "result_count": 6},
+        ]
+
+        funnel = build_photo_search_funnel(events)
+
+        self.assertEqual(funnel["request_not_entered_gateway"], 1)
+        self.assertEqual(funnel["gateway_rejected"], 1)
+        self.assertEqual(funnel["search_failed"], 1)
+        self.assertEqual(funnel["search_empty"], 1)
+        self.assertEqual(funnel["search_succeeded"], 1)
+
+    def test_classify_photo_search_event_marks_empty_results(self):
+        category = classify_photo_search_event(
+            {"stage": "search_completed", "success": True, "result_count": 0},
+        )
+
+        self.assertEqual(category, "search_empty")
 
 
 if __name__ == "__main__":

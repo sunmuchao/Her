@@ -283,6 +283,43 @@ class DecisionPayloadModel(BaseModel):
         return self
 
 
+class VisualResolvedPlanModel(BaseModel):
+    preference_kind: Literal["face", "style", "hybrid", "celebrity"] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("preference_kind", "search_mode"),
+        serialization_alias="preference_kind",
+    )
+    intent_type: str | None = Field(default=None)
+    query_text: str | None = Field(default=None)
+    celebrity_name: str | None = Field(default=None)
+    reference_source: Literal["current_upload", "session_memory", "none"] = Field(default="none")
+    reuse_reference_image: bool = Field(default=False)
+    attribute_filters: dict[str, Any] = Field(default_factory=dict)
+    hard_filters: dict[str, Any] = Field(default_factory=dict)
+    search_strategy: str | None = Field(default=None)
+    routing_reasons: list[str] = Field(default_factory=list)
+
+
+class VisualSearchDecisionPayloadModel(BaseModel):
+    turn_type: Literal["visual_search", "visual_refinement", "visual_clarification"]
+    should_search_now: bool = Field(default=True)
+    should_ask_clarifying_question: bool = Field(default=False)
+    resolved_visual_plan: VisualResolvedPlanModel | None = Field(default=None)
+    assistant_summary: str = Field(default="")
+    clarifying_question: str | None = Field(default=None)
+    follow_up_suggestions: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_visual_plan(self) -> "VisualSearchDecisionPayloadModel":
+        if not str(self.assistant_summary or "").strip():
+            raise ValueError("assistant_summary is required")
+        if self.should_search_now and self.resolved_visual_plan is None:
+            raise ValueError("resolved_visual_plan is required when should_search_now=true")
+        if self.should_ask_clarifying_question and not str(self.clarifying_question or "").strip():
+            raise ValueError("clarifying_question is required when should_ask_clarifying_question=true")
+        return self
+
+
 def _coerce_json_output(raw_output: Any) -> dict[str, Any]:
     return coerce_json_object(raw_output)
 
@@ -554,6 +591,8 @@ __all__ = [
     "VALID_FOLLOWUP_PROMPT_SLOTS",
     "VALID_PHASES",
     "VALID_STARTER_PROMPT_SLOTS",
+    "VisualResolvedPlanModel",
+    "VisualSearchDecisionPayloadModel",
     "dump_action_payload",
     "decision_payload_to_decision",  # 方案C新增
     "decision_payload_to_decision_with_repair",  # 带修复逻辑

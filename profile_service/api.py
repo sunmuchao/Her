@@ -1312,8 +1312,24 @@ def upsert_profile_face_embedding(
         existing = dict(row) if row else None
         payload = dict(patch or {})
         payload["embedding_type"] = normalized_type
+        if payload.get("photo_set_version") is not None:
+            try:
+                payload["photo_set_version"] = int(payload.get("photo_set_version") or 0)
+            except (TypeError, ValueError):
+                payload["photo_set_version"] = 0
+        if payload.get("embedding_json") is not None and _column_exists(profile_conn, table_name, "face_embedding_json"):
+            if "face_embedding_json" not in payload:
+                payload["face_embedding_json"] = payload.get("embedding_json")
+        if payload.get("embedding_dim") is not None and _column_exists(profile_conn, table_name, "face_embedding_dimension"):
+            payload.setdefault("face_embedding_dimension", payload.get("embedding_dim"))
+        if payload.get("extractor_version") and _column_exists(profile_conn, table_name, "face_embedding_model"):
+            payload.setdefault("face_embedding_model", payload.get("extractor_version"))
+        if payload.get("confidence_score") is not None and _column_exists(profile_conn, table_name, "face_detection_confidence"):
+            payload.setdefault("face_detection_confidence", payload.get("confidence_score"))
         if isinstance(payload.get("embedding_json"), (dict, list)):
             payload["embedding_json"] = json.dumps(payload.get("embedding_json"), ensure_ascii=False)
+        if isinstance(payload.get("face_embedding_json"), (dict, list)):
+            payload["face_embedding_json"] = json.dumps(payload.get("face_embedding_json"), ensure_ascii=False)
         writable_columns = [
             str(column)
             for column, value in payload.items()
@@ -1448,9 +1464,21 @@ def upsert_verified_face_anchor(
         existing = dict(row) if row else None
         payload = dict(patch or {})
         payload["anchor_version"] = normalized_version
+        if payload.get("embedding_json") is not None and _column_exists(profile_conn, table_name, "anchor_face_embedding_json"):
+            payload.setdefault("anchor_face_embedding_json", payload.get("embedding_json"))
+        if payload.get("embedding_json") is not None and _column_exists(profile_conn, table_name, "anchor_embedding_model"):
+            payload.setdefault("anchor_embedding_model", "verified-anchor-v1")
+        if payload.get("confidence_score") is not None and _column_exists(profile_conn, table_name, "liveness_detection_score"):
+            payload.setdefault("liveness_detection_score", payload.get("confidence_score"))
+        if payload.get("quality_score") is not None and _column_exists(profile_conn, table_name, "video_authenticity_score"):
+            payload.setdefault("video_authenticity_score", payload.get("quality_score"))
+        if payload.get("anchor_source") is not None and _column_exists(profile_conn, table_name, "video_url"):
+            payload.setdefault("video_url", payload.get("anchor_source"))
         for field_name in ("embedding_json", "metadata_json"):
             if isinstance(payload.get(field_name), (dict, list)):
                 payload[field_name] = json.dumps(payload.get(field_name), ensure_ascii=False)
+        if isinstance(payload.get("anchor_face_embedding_json"), (dict, list)):
+            payload["anchor_face_embedding_json"] = json.dumps(payload.get("anchor_face_embedding_json"), ensure_ascii=False)
         writable_columns = [
             str(column)
             for column, value in payload.items()

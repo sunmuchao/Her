@@ -15,6 +15,9 @@ from .paths import (
 
 logger = logging.getLogger(__name__)
 
+# 全局标志：记录已初始化的数据库，避免重复初始化导致 metadata lock 竞争
+_initialized_databases: set[str] = set()
+
 JOB_REC_REFRESH = "recommendation.refresh_saved_searches"
 JOB_REC_DELIVER = "recommendation.deliver_in_app_recommendations"
 JOB_REC_DISPATCH = "matchmaking.dispatch_proxy_intro_outreach"
@@ -90,7 +93,17 @@ def _build_db_job(
             raise
 
         try:
-            runtime.initialize_database(conn)
+            # 【修复】只在第一次执行时初始化数据库，避免重复初始化导致 metadata lock 竞争
+            # 使用 subsystem + db_path 作为唯一标识，确保同一数据库只初始化一次
+            db_key = f"{subsystem}:{db_path}"
+            if db_key not in _initialized_databases:
+                logger.info("Initializing database for %s (first time)", subsystem)
+                runtime.initialize_database(conn)
+                _initialized_databases.add(db_key)
+                logger.info("Database initialized for %s", subsystem)
+            else:
+                logger.debug("Database already initialized for %s, skipping", subsystem)
+
             result = fn(conn, **_job_kwargs_without_db(kwargs))
             _log_summary(job_id, result)
             if runtime.post_run is not None:
@@ -184,7 +197,13 @@ def make_proxy_intro_job(
 
         rec_conn = rec_connect(recommendation_db)
         try:
-            rec_init(rec_conn)
+            # 【修复】只在第一次执行时初始化 recommendation 数据库
+            rec_db_key = f"recommendation:{recommendation_db}"
+            if rec_db_key not in _initialized_databases:
+                logger.info("Initializing recommendation database for proxy-intro (first time)")
+                rec_init(rec_conn)
+                _initialized_databases.add(rec_db_key)
+                logger.info("Recommendation database initialized for proxy-intro")
             return fn(case_conn, recommendation_conn=rec_conn)
         finally:
             rec_conn.close()

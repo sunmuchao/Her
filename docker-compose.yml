@@ -124,8 +124,9 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SSE_SERVER_PUSH_URL: http://sse-server:8081/internal/push
-    ports:
-      - "8080:8080"
+      ENABLE_SESSION_END_SCHEDULER: "0"
+    expose:
+      - "8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -195,6 +196,7 @@ services:
       REDIS_PORT: "6379"
       PARTNER_HTTP_PORT: "8083"
       SSE_SERVER_PUSH_URL: http://sse-server:8081/internal/push
+      ENABLE_SESSION_END_SCHEDULER: "0"
     ports:
       - "8083:8083"
     depends_on:
@@ -273,6 +275,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       SSE_SERVER_PUSH_URL: http://sse-server:8081/internal/push
+      ENABLE_SESSION_END_SCHEDULER: "0"
     ports:
       - "8082:8080"
     depends_on:
@@ -315,6 +318,7 @@ services:
       HER_SCHED_MATCHMAKING_DB: mysql://root@mysql:3306/her_matchmaking
       HER_SCHED_CHAT_DB: mysql://root@mysql:3306/her_chat
       GATEWAY_INTERNAL_URL: http://gateway-internal:8080/jsonrpc
+      ENABLE_SESSION_END_SCHEDULER: "1"
     depends_on:
       gateway-internal:
         condition: service_healthy

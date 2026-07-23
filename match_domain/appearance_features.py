@@ -6,11 +6,17 @@ import asyncio
 import hashlib
 import logging
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Iterable
 
 _logger = logging.getLogger(__name__)
+
+
+def _photo_analysis_enabled() -> bool:
+    raw = str(os.environ.get("HER_PHOTO_ANALYSIS_ENABLED") or "").strip().lower()
+    return raw in {"1", "true", "on", "yes"}
 
 from profile_service import (
     get_face_consistency_score,
@@ -49,6 +55,21 @@ DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE = "user_appearance_preferences"
 DEFAULT_APPEARANCE_FEEDBACK_EVENTS_TABLE = "appearance_feedback_events"
 APPEARANCE_PROFILE_VECTOR_TYPE = "appearance_profile"
 APPEARANCE_PREFERENCE_VECTOR_TYPE = "appearance_preference"
+LANDMARK_ATTRIBUTE_FIELDS = {
+    "eye_size_score",
+    "eye_distance_score",
+    "nose_height_score",
+    "nose_width_score",
+    "lip_thickness_score",
+    "lip_width_score",
+    "face_shape_type",
+    "face_roundness_score",
+    "jawline_definition_score",
+    "jaw_definition_score",
+    "forehead_height_score",
+    "chin_prominence_score",
+    "cheekbone_prominence_score",
+}
 
 _PREFERENCE_DIMENSIONS = (
     ("mature_score", "preferred_mature_score"),
@@ -917,6 +938,67 @@ def compute_photo_bonus_breakdown(
     )
 
 
+def get_candidate_appearance_features(
+    *,
+    source_dsn: str | None,
+    profile_ids: list[int],
+) -> list[dict[str, Any]]:
+    """
+    查询候选人外貌特征（原始数据）
+
+    【Agent Native设计】
+    - 只返回原始数据，不包含"加分"、"匹配度"等业务判断
+    - Agent根据原始数据自己判断匹配度
+
+    【返回数据】
+    - profile_id: 候选人ID
+    - appearance_keywords: 风格标签列表
+    - style_scores: 风格评分字典（gentle_score, sunny_score等）
+    - photo_quality_score: 照片质量评分
+    - beauty_score: 颜值评分
+
+    Args:
+        source_dsn: 数据源
+        profile_ids: 候选人ID列表
+
+    Returns:
+        list[dict]: 候选人外貌特征列表（原始数据）
+    """
+    if not profile_ids:
+        return []
+
+    # 查询数据库
+    feature_map = load_candidate_photo_features(
+        source_dsn=source_dsn,
+        profile_ids=profile_ids,
+    )
+
+    features = []
+    for profile_id in profile_ids:
+        feature_row = feature_map.get(profile_id) or {}
+
+        if not feature_row:
+            continue
+
+        # 只返回原始数据
+        features.append({
+            "profile_id": profile_id,
+            "appearance_keywords": list(feature_row.get("appearance_keywords_json") or []),
+            "style_scores": {
+                "gentle_score": float(feature_row.get("gentle_score") or 0.0),
+                "sunny_score": float(feature_row.get("sunny_score") or 0.0),
+                "mature_score": float(feature_row.get("mature_score") or 0.0),
+                "clean_score": float(feature_row.get("clean_score") or 0.0),
+                "stylish_score": float(feature_row.get("stylish_score") or 0.0),
+            },
+            "photo_quality_score": float(feature_row.get("quality_score") or 0.0),
+            "beauty_score": float(feature_row.get("beauty_score") or 0.0),
+            "appearance_summary": feature_row.get("appearance_summary") or "",
+        })
+
+    return features
+
+
 def compute_trust_bonus_breakdown(
     profile_row: dict[str, Any] | None,
     candidate_photo_features: dict[str, Any] | None,
@@ -1285,6 +1367,12 @@ def build_photo_feature_patch(
 
     【重构】强制使用AI真实分析，删除硬编码公式
     """
+    if not _photo_analysis_enabled():
+        return {
+            "analysis_status": "disabled",
+            "embedding_status": "skipped",
+            "last_error": "photo_analysis_disabled",
+        }
     normalized_profile = dict(profile_row or {})
     normalized_entries = [dict(item) for item in photo_entries or [] if isinstance(item, dict)]
     photo_sources = [str(item.get("photo_source") or "").strip() for item in normalized_entries if str(item.get("photo_source") or "").strip()]
@@ -1491,33 +1579,56 @@ def _build_face_attribute_patch(
     profile_row: dict[str, Any] | None,
     feature_row: dict[str, Any] | None,
     photo_entries: list[dict[str, Any]] | None,
+    landmark_result: dict[str, Any] | None = None,
+    primary_photo_source: str | None = None,
 ) -> dict[str, Any]:
     normalized_profile = dict(profile_row or {})
     normalized_feature = dict(feature_row or {})
     photo_sources = _normalize_photo_sources(list(photo_entries or []))
-    profile_id = int(normalized_profile.get("id") or normalized_feature.get("profile_id") or 0)
-    seed = f"{profile_id}|{'|'.join(photo_sources)}|face_attributes"
     mature = _clamp_score(normalized_feature.get("mature_score"), default=50.0)
     clean = _clamp_score(normalized_feature.get("clean_score"), default=50.0)
     gentle = _clamp_score(normalized_feature.get("gentle_score"), default=50.0)
     sunny = _clamp_score(normalized_feature.get("sunny_score"), default=50.0)
     stylish = _clamp_score(normalized_feature.get("stylish_score"), default=50.0)
-    eye_size = round(min(100.0, 36.0 + gentle * 0.24 + _stable_bucket(seed, salt="eye", lower=0, upper=18)), 2)
-    face_roundness = round(min(100.0, 30.0 + sunny * 0.18 + _stable_bucket(seed, salt="round", lower=0, upper=22)), 2)
-    jaw_definition = round(min(100.0, 32.0 + mature * 0.26 + stylish * 0.14), 2)
-    smile_intensity = round(min(100.0, 24.0 + sunny * 0.42), 2)
-    skin_clarity = round(min(100.0, 30.0 + clean * 0.46), 2)
-    youthfulness = round(
-        min(100.0, max(0.0, (eye_size * 0.28) + (face_roundness * 0.24) + (skin_clarity * 0.24) + (smile_intensity * 0.24))),
-        2,
-    )
+    normalized_landmark = dict(landmark_result or {})
+    attributes = dict(normalized_landmark.get("attributes") or {})
+    quality_signals = dict(normalized_landmark.get("quality_signals") or {})
+    success = bool(normalized_landmark.get("success"))
+    attribute_source = "landmark" if success else "unavailable"
+    attribute_confidence = float(normalized_landmark.get("attribute_confidence") or 0.0)
+    face_roundness = attributes.get("face_roundness_score")
+    jawline_definition = attributes.get("jawline_definition_score")
+    eye_size = attributes.get("eye_size_score")
+    skin_clarity = None
+    smile_intensity = None
+    youthfulness = None
+    if success and eye_size is not None and face_roundness is not None:
+        youthfulness = round(
+            min(
+                100.0,
+                max(
+                    0.0,
+                    (_clamp_score(eye_size) * 0.45)
+                    + (_clamp_score(face_roundness) * 0.35)
+                    + max(0.0, 100.0 - _clamp_score(attributes.get("jawline_definition_score"), default=50.0)) * 0.20,
+                ),
+            ),
+            2,
+        )
     return {
         "primary_photo_id": normalized_feature.get("primary_photo_id"),
-        "face_count": max(1, len(photo_sources)),
-        "dominant_face_index": 0,
-        "eye_size_score": eye_size,
-        "face_roundness_score": face_roundness,
-        "jaw_definition_score": jaw_definition,
+        "face_count": int(normalized_landmark.get("face_count") or max(1, len(photo_sources))),
+        "dominant_face_index": int(normalized_landmark.get("selected_face_index") or 0),
+        "eye_size_score": round(float(eye_size), 2) if eye_size is not None else None,
+        "eye_distance_score": attributes.get("eye_distance_score"),
+        "nose_height_score": attributes.get("nose_height_score"),
+        "nose_width_score": attributes.get("nose_width_score"),
+        "lip_thickness_score": attributes.get("lip_thickness_score"),
+        "lip_width_score": attributes.get("lip_width_score"),
+        "face_shape_type": attributes.get("face_shape_type"),
+        "face_roundness_score": round(float(face_roundness), 2) if face_roundness is not None else None,
+        "jaw_definition_score": round(float(jawline_definition), 2) if jawline_definition is not None else None,
+        "jawline_definition_score": round(float(jawline_definition), 2) if jawline_definition is not None else None,
         "smile_intensity_score": smile_intensity,
         "skin_clarity_score": skin_clarity,
         "style_clean_score": round(clean, 2),
@@ -1525,11 +1636,23 @@ def _build_face_attribute_patch(
         "style_sunny_score": round(sunny, 2),
         "style_stylish_score": round(stylish, 2),
         "youthfulness_score": youthfulness,
+        "forehead_height_score": attributes.get("forehead_height_score"),
+        "chin_prominence_score": attributes.get("chin_prominence_score"),
+        "cheekbone_prominence_score": attributes.get("cheekbone_prominence_score"),
+        "attribute_source": attribute_source,
+        "attribute_confidence": round(attribute_confidence, 4) if attribute_confidence else 0.0,
+        "attribute_error_code": normalized_landmark.get("error_code"),
+        "attribute_error_message": normalized_landmark.get("error_message"),
+        "analyzed_photo_url": primary_photo_source or (photo_sources[0] if photo_sources else None),
+        "analyzed_photo_version": normalized_feature.get("photo_set_version"),
         "attributes_json": {
             "appearance_summary": normalized_feature.get("appearance_summary"),
             "top_labels": _top_dimension_labels(normalized_feature),
+            "landmark_attributes": attributes,
+            "quality_signals": quality_signals,
+            "face_bbox": normalized_landmark.get("face_bbox"),
         },
-        "extractor_version": "deterministic-face-attributes-v1",
+        "extractor_version": str(normalized_landmark.get("extractor_version") or "landmark-unavailable-v1"),
     }
 
 
@@ -1545,6 +1668,20 @@ def _sync_profile_face_side_tables(
     if not source_dsn or normalized_profile_id <= 0:
         return {}
     photo_sources = _normalize_photo_sources(list(photo_entries or []))
+    primary_entry = PrimaryPhotoSelector.select(list(photo_entries or []), FaceDetector.detect(list(photo_entries or [])))
+    primary_photo_source = str((primary_entry or {}).get("photo_source") or (photo_sources[0] if photo_sources else "")).strip()
+    landmark_result: dict[str, Any] | None = None
+    if primary_photo_source:
+        try:
+            from .face_attributes_extractor import extract_face_attributes
+
+            landmark_result = extract_face_attributes(primary_photo_source)
+        except Exception as exc:
+            landmark_result = {
+                "success": False,
+                "error_code": "landmark_extract_failed",
+                "error_message": str(exc)[:200],
+            }
     attributes_row = upsert_profile_face_attributes(
         source_dsn=source_dsn,
         profile_id=normalized_profile_id,
@@ -1552,25 +1689,35 @@ def _sync_profile_face_side_tables(
             profile_row=profile_row,
             feature_row=normalized_feature,
             photo_entries=photo_entries,
+            landmark_result=landmark_result,
+            primary_photo_source=primary_photo_source,
         ),
     )
-    embedding_row = upsert_profile_face_embedding(
-        source_dsn=source_dsn,
-        profile_id=normalized_profile_id,
-        embedding_type="primary_face",
-        patch={
-            "photo_set_version": int(normalized_feature.get("photo_set_version") or 1),
-            "embedding_dim": 16,
-            "embedding_json": _deterministic_face_embedding(
-                normalized_profile_id,
-                photo_sources,
-                salt="primary_face",
-            ),
-            "quality_score": normalized_feature.get("photo_quality_score"),
-            "confidence_score": normalized_feature.get("photo_authenticity_score"),
-            "extractor_version": "deterministic-face-embedding-v1",
-        },
-    )
+    try:
+        embedding_row = upsert_profile_face_embedding(
+            source_dsn=source_dsn,
+            profile_id=normalized_profile_id,
+            embedding_type="primary_face",
+            patch={
+                "photo_set_version": int(normalized_feature.get("photo_set_version") or 1),
+                "embedding_dim": 16,
+                "embedding_json": _deterministic_face_embedding(
+                    normalized_profile_id,
+                    photo_sources,
+                    salt="primary_face",
+                ),
+                "quality_score": normalized_feature.get("photo_quality_score"),
+                "confidence_score": normalized_feature.get("photo_authenticity_score"),
+                "extractor_version": "deterministic-face-embedding-v1",
+            },
+        )
+    except Exception as exc:
+        _logger.warning(
+            "profile_face_embeddings 写入失败，跳过但不阻塞人脸属性写入: profile_id=%s error=%s",
+            normalized_profile_id,
+            str(exc)[:200],
+        )
+        embedding_row = {}
     verified_level = str(
         (profile_row or {}).get("photo_verification_level")
         or (profile_row or {}).get("verified_level")
@@ -1579,35 +1726,42 @@ def _sync_profile_face_side_tables(
     anchor_row: dict[str, Any] | None = None
     consistency_row: dict[str, Any] | None = None
     if verified_level in {"offline", "id", "photo", "uploaded"} and photo_sources:
-        anchor_row = VerifiedFaceAnchorWriter.write(
-            source_dsn=source_dsn,
-            profile_id=normalized_profile_id,
-            profile_row=profile_row,
-            photo_entries=photo_entries,
-            face_embedding_row=embedding_row,
-        )
-        consistency = FaceConsistencyScorer.score(
-            anchor_row,
-            normalized_feature,
-            face_embedding_row=embedding_row,
-        )
-        consistency_row = upsert_face_consistency_score(
-            source_dsn=source_dsn,
-            profile_id=normalized_profile_id,
-            patch={
-                "anchor_id": anchor_row.get("id"),
-                "consistency_score": consistency.score,
-                "threshold_score": consistency.threshold,
-                "confidence_weight": consistency.confidence_weight,
-                "environment_gap_score": consistency.environment_gap_score,
-                "risk_level": consistency.risk_level,
-                "risk_flags_json": consistency.risk_flags,
-                "detail_json": {
-                    "matched": consistency.matched,
-                    "badges": list(ProfilePhotoTrustScorer.score(profile_row, normalized_feature, risk_flags=consistency.risk_flags).badges),
+        try:
+            anchor_row = VerifiedFaceAnchorWriter.write(
+                source_dsn=source_dsn,
+                profile_id=normalized_profile_id,
+                profile_row=profile_row,
+                photo_entries=photo_entries,
+                face_embedding_row=embedding_row,
+            )
+            consistency = FaceConsistencyScorer.score(
+                anchor_row,
+                normalized_feature,
+                face_embedding_row=embedding_row,
+            )
+            consistency_row = upsert_face_consistency_score(
+                source_dsn=source_dsn,
+                profile_id=normalized_profile_id,
+                patch={
+                    "anchor_id": anchor_row.get("id"),
+                    "consistency_score": consistency.score,
+                    "threshold_score": consistency.threshold,
+                    "confidence_weight": consistency.confidence_weight,
+                    "environment_gap_score": consistency.environment_gap_score,
+                    "risk_level": consistency.risk_level,
+                    "risk_flags_json": consistency.risk_flags,
+                    "detail_json": {
+                        "matched": consistency.matched,
+                        "badges": list(ProfilePhotoTrustScorer.score(profile_row, normalized_feature, risk_flags=consistency.risk_flags).badges),
+                    },
                 },
-            },
-        )
+            )
+        except Exception as exc:
+            _logger.warning(
+                "verified_face_anchor/consistency 写入失败，跳过: profile_id=%s error=%s",
+                normalized_profile_id,
+                str(exc)[:200],
+            )
     return {
         "face_attributes": attributes_row,
         "face_embedding": embedding_row,
@@ -1690,6 +1844,14 @@ def refresh_profile_photo_features(
     normalized_profile_id = int(profile_id or 0)
     if not source_dsn or normalized_profile_id <= 0:
         return {"saved": False, "error": "source_or_profile_missing"}
+    if not _photo_analysis_enabled():
+        return {
+            "saved": False,
+            "skipped": True,
+            "profile_id": normalized_profile_id,
+            "analysis_status": "disabled",
+            "error": "photo_analysis_disabled",
+        }
     existing_feature_row = load_candidate_photo_features(
         source_dsn=source_dsn,
         profile_ids=[normalized_profile_id],
@@ -1933,6 +2095,14 @@ def refresh_profile_photo_features_from_record(
     normalized_profile_id = int(normalized_record.get("id") or 0)
     if not source_dsn or normalized_profile_id <= 0:
         return {"saved": False, "error": "source_or_profile_missing"}
+    if not _photo_analysis_enabled():
+        return {
+            "saved": False,
+            "skipped": True,
+            "profile_id": normalized_profile_id,
+            "analysis_status": "disabled",
+            "error": "photo_analysis_disabled",
+        }
     existing_feature_row = load_candidate_photo_features(
         source_dsn=source_dsn,
         profile_ids=[normalized_profile_id],
@@ -2147,6 +2317,96 @@ def backfill_profile_photo_features(
     }
 
 
+def backfill_profile_face_attributes(
+    *,
+    source_dsn: str | None,
+    profile_source_dsn: str | None = None,
+    source_table_name: str | None = None,
+    photos_table_name: str | None = None,
+    where_clause: str = "",
+    params: Iterable[Any] | None = None,
+    batch_size: int = 200,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    if not source_dsn:
+        return {"saved": False, "error": "source_not_configured"}
+    profile_source = str(profile_source_dsn or source_dsn or "").strip()
+    resolved_profile_source, resolved_table = resolve_profile_source(profile_source, source_table_name)
+    if not resolved_profile_source or not resolved_table:
+        return {"saved": False, "error": "profile_source_unresolved"}
+
+    normalized_batch_size = max(1, int(batch_size or 200))
+    normalized_limit = max(0, int(limit or 0))
+    processed = 0
+    saved = 0
+    skipped = 0
+    failed = 0
+    errors: list[dict[str, Any]] = []
+
+    for batch in iter_profile_batches(
+        source_dsn=resolved_profile_source,
+        source_table_name=resolved_table,
+        where_clause=where_clause,
+        params=tuple(params or ()),
+        batch_size=normalized_batch_size,
+    ):
+        candidate_rows = [dict(row) for row in batch if isinstance(row, dict)]
+        for row in candidate_rows:
+            profile_id = int(row.get("id") or 0)
+            if profile_id <= 0:
+                skipped += 1
+                continue
+            if normalized_limit and processed >= normalized_limit:
+                return {
+                    "saved": True,
+                    "processed": processed,
+                    "saved_count": saved,
+                    "skipped_count": skipped,
+                    "failed_count": failed,
+                    "errors": errors,
+                    "stopped_early": True,
+                }
+            try:
+                photo_entries = list_profile_photos(
+                    source_dsn=resolved_profile_source,
+                    source_table_name=resolved_table,
+                    profile_id=profile_id,
+                    photos_table_name=photos_table_name,
+                )
+                if not photo_entries:
+                    skipped += 1
+                else:
+                    feature_row = load_candidate_photo_features(
+                        source_dsn=source_dsn,
+                        profile_ids=[profile_id],
+                    ).get(profile_id)
+                    result = _sync_profile_face_side_tables(
+                        source_dsn=source_dsn,
+                        profile_row=row,
+                        photo_entries=photo_entries,
+                        feature_row=feature_row,
+                    )
+                    attribute_source = str(((result.get("face_attributes") or {}).get("attribute_source") or "")).lower()
+                    if attribute_source == "landmark":
+                        saved += 1
+                    else:
+                        skipped += 1
+            except Exception as exc:
+                failed += 1
+                errors.append({"profile_id": profile_id, "error": str(exc)[:200]})
+            processed += 1
+
+    return {
+        "saved": True,
+        "processed": processed,
+        "saved_count": saved,
+        "skipped_count": skipped,
+        "failed_count": failed,
+        "errors": errors,
+        "stopped_early": False,
+    }
+
+
 def load_candidate_photo_features(
     *,
     source_dsn: str | None,
@@ -2338,6 +2598,33 @@ class AppearanceTagExtractor:
     @staticmethod
     def extract(style_scores: dict[str, Any] | None, *, limit: int = 3) -> list[str]:
         return _top_dimension_labels(dict(style_scores or {}), limit=limit)
+
+
+class AppearanceSummaryGenerator:
+    @staticmethod
+    def generate(
+        *,
+        style_scores: dict[str, Any] | None,
+        attribute_scores: dict[str, Any] | None = None,
+    ) -> str:
+        style_payload = dict(style_scores or {})
+        attribute_payload = dict(attribute_scores or {})
+        parts = _top_dimension_labels(style_payload, limit=3)
+        eye_size = float(attribute_payload.get("eye_size_score") or 0.0)
+        jaw_definition = float(
+            attribute_payload.get("jaw_definition_score")
+            or attribute_payload.get("jawline_definition_score")
+            or 0.0
+        )
+        if eye_size >= 65:
+            parts.append("眼部存在感偏强")
+        elif 0 < eye_size <= 40:
+            parts.append("眼部更偏收敛")
+        if jaw_definition >= 65:
+            parts.append("轮廓线条比较利落")
+        if not parts:
+            parts.append("整体外貌风格自然顺眼")
+        return "，".join(parts[:4])
 
 
 def load_profile_photo_feature_versions(
@@ -3342,6 +3629,7 @@ __all__ = [
     "DEFAULT_PROFILE_PHOTO_FEATURES_TABLE",
     "DEFAULT_USER_APPEARANCE_PREFERENCES_TABLE",
     "AppearanceInterestSignal",
+    "AppearanceSummaryGenerator",
     "AppearanceStyleScorer",
     "AppearanceTagExtractor",
     "AppearanceWeightStrategy",
@@ -3370,6 +3658,8 @@ __all__ = [
     "VerifiedFaceAnchorWriter",
     "VerifiedPhotoQualityScore",
     "VerifiedPhotoQualityScorer",
+    "LANDMARK_ATTRIBUTE_FIELDS",
+    "backfill_profile_face_attributes",
     "backfill_profile_photo_features",
     "build_appearance_explanation",
     "build_match_explanation_payload",

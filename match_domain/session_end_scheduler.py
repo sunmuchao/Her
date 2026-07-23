@@ -96,7 +96,7 @@ async def start_inactive_session_checker(
         name="inactive_session_checker",
     )
 
-    _logger.info(f"定时任务已启动: task_name={task.name}")
+    _logger.info(f"定时任务已启动: task_name={task.get_name()}")
 
     return task
 
@@ -109,7 +109,7 @@ def stop_inactive_session_checker(task: asyncio.Task[None]) -> None:
     """
     if task and not task.done():
         task.cancel()
-        _logger.info(f"定时任务已取消: task_name={task.name}")
+        _logger.info(f"定时任务已取消: task_name={task.get_name()}")
 
 
 async def run_once_inactive_session_check(

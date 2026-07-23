@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, BadgeCheck, ChevronDown, ImagePlus, Mic, Plus, Search, Send, X, Brain, Heart, Sparkles, ClipboardList, Coins, History, Star, UserRoundSearch } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, Brain, ChevronDown, ImagePlus, Mic, Plus, Search, Send, Sparkles, X, Heart, ClipboardList, Coins, History } from 'lucide-react'
 import { AssessmentCardRenderer } from '@/components/assessment/AssessmentCardRenderer'
 import { XiaoyaAvatar } from '@/components/her/ui/xiaoya-avatar'
 import Image from 'next/image'
@@ -46,7 +46,6 @@ import {
 } from '@/lib/api/endpoints/valuesAuction'
 import { ValuesAuctionCardRenderer } from '@/components/values-auction'
 import { useSearchParams } from 'next/navigation'
-import { searchDiscoveryByPhoto, type DiscoveryPhotoSearchMode } from '@/lib/api/endpoints/discovery'
 import { fetchRecommendationCards, markRecommendationCardsRead } from '@/lib/api/endpoints/recommendation'
 import { isAuthRequiredGatewayError } from '@/lib/api/errors'
 
@@ -334,12 +333,28 @@ export default function DiscoverPage({
   // 用户打开发现页，立即标记推荐卡片为已读。
   // 被动推荐是否显示在发现页，应该由 discovery_pushed 决定，
   // 不能在页面刚打开时抢先把 case 标成 viewed，否则会和补推逻辑打架。
+  // FIX: 添加防抖机制，避免并发请求导致数据库锁冲突
+  const markReadInProgressRef = useRef(false)
+  const lastMarkReadTimeRef = useRef(0)
+
   useEffect(() => {
     if (!getAccessToken()) return
     const profileId = getProfileId()
     if (!profileId || typeof profileId !== 'number') return
 
     async function markAllUnreadAsRead() {
+      // 防抖：如果正在执行或距离上次执行不到 5 秒，跳过
+      const now = Date.now()
+      if (markReadInProgressRef.current) {
+        console.log('[发现页已读] 跳过：正在执行中')
+        return
+      }
+      if (now - lastMarkReadTimeRef.current < 5000) {
+        console.log('[发现页已读] 跳过：距离上次执行不到 5 秒')
+        return
+      }
+
+      markReadInProgressRef.current = true
       try {
         // 1. 标记所有推荐卡片为已读
         const response = await fetchRecommendationCards(profileId as number)
@@ -349,6 +364,7 @@ export default function DiscoverPage({
         if (cardIds.length > 0) {
           await markRecommendationCardsRead(profileId as number, cardIds)
           console.log('[发现页已读] 标记了', cardIds.length, '张推荐卡片为已读')
+          lastMarkReadTimeRef.current = Date.now()
         }
 
       } catch (error) {
@@ -360,6 +376,8 @@ export default function DiscoverPage({
           return
         }
         console.error('[发现页标记已读失败]:', error)
+      } finally {
+        markReadInProgressRef.current = false
       }
     }
 
@@ -443,9 +461,7 @@ export default function DiscoverPage({
   const showSessionLoading = !hasHydrated || isLoadingSession
   const newSessionButtonDisabled = hasHydrated ? showSessionLoading : undefined
   const [showActionMenu, setShowActionMenu] = useState(false)
-  const [showPhotoModes, setShowPhotoModes] = useState(false)
   const [showAssessmentSubmenu, setShowAssessmentSubmenu] = useState(false)
-  const [photoSearchMode, setPhotoSearchMode] = useState<DiscoveryPhotoSearchMode>('auto')
   const [photoSearchCaption, setPhotoSearchCaption] = useState('')
   const [photoAttachmentSource, setPhotoAttachmentSource] = useState('')
   const [photoAttachmentPreview, setPhotoAttachmentPreview] = useState('')
@@ -459,7 +475,6 @@ export default function DiscoverPage({
   const [valuesAuctionCard, setValuesAuctionCard] = useState<ValuesAuctionCard | null>(null)
   const [valuesAuctionBusy, setValuesAuctionBusy] = useState(false)
   const userKey = String(getProfileId() || getUserId() || '')
-  const currentProfileId = typeof getProfileId() === 'number' ? (getProfileId() as number) : null
   const photoFileInputRef = useRef<HTMLInputElement | null>(null)
 
   const clearPhotoComposer = () => {
@@ -467,32 +482,10 @@ export default function DiscoverPage({
     setPhotoAttachmentPreview('')
     setPhotoSearchCaption('')
     setIsPhotoSearchSending(false)
-    setShowPhotoModes(false)
-    setPhotoSearchMode('auto')
   }
 
-  const photoModeLabel =
-    photoSearchMode === 'auto'
-      ? '让小雅自己判断'
-      : photoSearchMode === 'face'
-      ? '找像这张脸'
-      : photoSearchMode === 'style'
-        ? '找这种感觉'
-        : '像某明星'
-
-  const photoComposerPlaceholder =
-    photoSearchMode === 'auto'
-      ? '可以补一句，比如 我喜欢这种感觉 / 帮我找像这张的'
-      : photoSearchMode === 'face'
-      ? '再补一句，比如 笑起来像这张'
-      : photoSearchMode === 'style'
-        ? '再补一句，比如 清爽、自然、温柔'
-        : '输入明星名字，比如 刘亦菲'
-
-  const photoReadyToSend =
-    photoSearchMode === 'celebrity'
-      ? Boolean(photoSearchCaption.trim())
-      : Boolean(photoAttachmentSource.trim())
+  const photoComposerPlaceholder = '可以补一句，比如 我喜欢这种感觉 / 帮我找像这张的 / 像某个参考人物'
+  const photoReadyToSend = Boolean(photoAttachmentSource.trim())
 
   const openAssessmentCard = async (
     assessmentType: 'mbti_16' | 'attachment_style' | 'big_five' | 'sternberg_triangular_love' = 'mbti_16'
@@ -581,8 +574,6 @@ export default function DiscoverPage({
       const compressed = await compressPhotoSearchImage(file)
       setPhotoAttachmentSource(compressed)
       setPhotoAttachmentPreview(compressed)
-      setPhotoSearchMode((prev) => (prev === 'celebrity' ? 'auto' : prev))
-      setShowPhotoModes(true)
     } catch (error) {
       notifyError(error, '图片处理失败')
     }
@@ -601,91 +592,26 @@ export default function DiscoverPage({
   }
 
   const submitPhotoSearch = async () => {
-    if (!currentProfileId || !photoReadyToSend || isPhotoSearchSending) return
-    const userBubbleId = `photo-search-user-${Date.now()}`
-    const progressId = `photo-search-progress-${Date.now()}`
-    const resultId = `photo-search-result-${Date.now()}`
+    if (!photoReadyToSend || isPhotoSearchSending) return
     const normalizedCaption = photoSearchCaption.trim()
     setIsPhotoSearchSending(true)
-    addTimelineItem({
-      kind: 'message',
-      id: userBubbleId,
-      type: 'user',
-      content:
-        photoSearchMode === 'celebrity'
-          ? `想找像 ${normalizedCaption} 的人`
-          : normalizedCaption || (photoSearchMode === 'auto' ? '帮我看看这张图适合找什么人' : photoModeLabel),
-      timestamp: '刚刚',
-      mediaType: photoSearchMode === 'celebrity' ? undefined : 'image',
-      mediaUrl: photoAttachmentPreview || photoAttachmentSource || undefined,
-      isNewMessage: true,
-    })
-    addTimelineItem({
-      kind: 'message',
-      id: progressId,
-      type: 'matchmaker',
-      content:
-        photoSearchMode === 'auto'
-          ? '收到这张图了，我先自己判断你更想按脸、按感觉，还是按某个参考人物的方向去找。'
-          : photoSearchMode === 'face'
-          ? '收到这张图了，我先按脸型和五官去帮你找相似的人。'
-          : photoSearchMode === 'style'
-            ? '收到这张图了，我先按整体感觉和氛围去帮你找。'
-            : `收到啦，我先按 ${normalizedCaption} 这个方向帮你找。`,
-      timestamp: '刚刚',
-    })
     try {
-      const response = await searchDiscoveryByPhoto({
-        profileId: currentProfileId,
-        sessionId: sessionId || undefined,
-        mode: photoSearchMode,
-        imageSource: photoSearchMode === 'celebrity' ? undefined : photoAttachmentSource,
-        queryText: normalizedCaption || undefined,
-        celebrityName: photoSearchMode === 'celebrity' ? normalizedCaption : undefined,
-        topK: 12,
+      await submitTurn({
+        text: normalizedCaption || undefined,
+        attachments: [
+          {
+            type: 'image',
+            source: photoAttachmentSource,
+            mimeType: 'image/jpeg',
+            role: 'reference',
+          },
+        ],
+        clientContext: {
+          entryPoint: 'discover_photo_composer',
+          topK: 12,
+        },
       })
-      removeTimelineItem(progressId)
-      if (response.session_sync?.success && sessionId) {
-        await reloadSession()
-      } else {
-        addTimelineItem({
-          kind: 'message',
-          id: `${resultId}-summary`,
-          type: 'matchmaker',
-          content:
-            response.result_count && response.result_count > 0
-              ? `我先帮你捞到了 ${response.result_count} 个比较贴近的人，下面是这轮最合适的结果。`
-              : '这次我还没找到特别贴的，你可以换张图，或者补一句更明确的描述。',
-          timestamp: '刚刚',
-        })
-        const resolvedMode = response.intent?.mode || photoSearchMode
-        if ((response.results || []).length > 0) {
-          addTimelineItem({
-            kind: 'result_group',
-            id: resultId,
-            title:
-              resolvedMode === 'face'
-                ? '按这张脸找'
-                : resolvedMode === 'style'
-                  ? '按这种感觉找'
-                  : resolvedMode === 'celebrity'
-                    ? `按 ${normalizedCaption || response.intent?.celebrity_name || '某明星'} 找`
-                    : '小雅自动理解这张图',
-            candidates: response.results || [],
-          })
-        }
-      }
       clearPhotoComposer()
-    } catch (error) {
-      removeTimelineItem(progressId)
-      addTimelineItem({
-        kind: 'message',
-        id: `${progressId}-error`,
-        type: 'matchmaker',
-        content: '这张图我刚才没处理成功，你重新发一次，我继续帮你找。',
-        timestamp: '刚刚',
-      })
-      notifyError(error, '照片搜索失败')
     } finally {
       setIsPhotoSearchSending(false)
     }
@@ -1197,91 +1123,27 @@ export default function DiscoverPage({
           onChange={handlePhotoFileChange}
         />
 
-        {(showPhotoModes || photoAttachmentSource || photoSearchMode === 'celebrity') && (
+        {photoAttachmentSource && (
           <div className="mb-2 space-y-2">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {[
-                { key: 'auto' as const, label: '让小雅判断', icon: Brain },
-                { key: 'face' as const, label: '找像这张脸', icon: UserRoundSearch },
-                { key: 'style' as const, label: '找这种感觉', icon: Sparkles },
-                { key: 'celebrity' as const, label: '像某明星', icon: Star },
-              ].map((item) => {
-                const Icon = item.icon
-                const active = photoSearchMode === item.key
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => {
-                      setPhotoSearchMode(item.key)
-                      setShowPhotoModes(true)
-                    }}
-                    className={cn(
-                      'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors',
-                      active
-                        ? 'border-primary/40 bg-primary/10 text-primary'
-                        : 'border-border bg-card text-muted-foreground',
-                    )}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    {item.label}
-                  </button>
-                )
-              })}
-            </div>
-
-            {(photoAttachmentSource || photoSearchMode === 'celebrity') && (
-              <div className="rounded-2xl border border-border bg-card px-3 py-2">
-                {photoAttachmentSource ? (
-                  <div className="flex items-start gap-3">
-                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-border bg-secondary">
-                      <Image
-                        src={photoAttachmentPreview || photoAttachmentSource}
-                        alt="已选图片"
-                        fill
-                        className="object-cover"
-                        unoptimized
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground">{photoModeLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {photoSearchMode === 'auto'
-                          ? '图片已经挂进对话框了。你可以直接发，让小雅自己判断你是想按脸找、按感觉找，还是按某个参考人物找。'
-                          : '图片已经挂进对话框了，可以直接发送，也可以补一句话。'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={clearPhotoComposer}
-                      className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
-                      aria-label="移除图片"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{photoModeLabel}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">直接输入明星名字，再点发送就行。</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPhotoModes(false)
-                        setPhotoSearchMode('auto')
-                        setPhotoSearchCaption('')
-                      }}
-                      className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
-                      aria-label="收起图片搜索模式"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-border bg-card p-2">
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-border bg-secondary">
+                  <Image
+                    src={photoAttachmentPreview || photoAttachmentSource}
+                    alt="已选图片"
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
               </div>
-            )}
+              <button
+                type="button"
+                onClick={clearPhotoComposer}
+                className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
+                aria-label="移除图片"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -1295,11 +1157,7 @@ export default function DiscoverPage({
           )}
           onDragOver={(event) => {
             event.preventDefault()
-            if (photoSearchMode === 'celebrity') {
-              setPhotoSearchMode('auto')
-            }
             setIsPhotoDragActive(true)
-            setShowPhotoModes(true)
           }}
           onDragLeave={(event) => {
             event.preventDefault()
@@ -1326,9 +1184,9 @@ export default function DiscoverPage({
             <Plus className="w-5 h-5" />
           </button>
           <input
-            value={photoAttachmentSource || photoSearchMode === 'celebrity' ? photoSearchCaption : inputValue}
+            value={photoAttachmentSource ? photoSearchCaption : inputValue}
             onChange={(e) => {
-              if (photoAttachmentSource || photoSearchMode === 'celebrity') {
+              if (photoAttachmentSource) {
                 setPhotoSearchCaption(e.target.value)
                 return
               }
@@ -1350,16 +1208,12 @@ export default function DiscoverPage({
               const file = imageItem.getAsFile()
               if (!file) return
               event.preventDefault()
-              if (photoSearchMode === 'celebrity') {
-                setPhotoSearchMode('auto')
-              }
-              setShowPhotoModes(true)
               void processPhotoFile(file)
             }}
             placeholder={
               isRecording
                 ? '请说话...'
-                : photoAttachmentSource || photoSearchMode === 'celebrity'
+                : photoAttachmentSource
                   ? photoComposerPlaceholder
                   : composerPlaceholder
             }
@@ -1371,14 +1225,10 @@ export default function DiscoverPage({
           <button
             type="button"
             aria-label="选择图片"
-            onClick={() => {
-              setShowPhotoModes(true)
-              if (photoSearchMode === 'celebrity') return
-              photoFileInputRef.current?.click()
-            }}
+            onClick={() => photoFileInputRef.current?.click()}
             className={cn(
               'w-8 h-8 rounded-full flex items-center justify-center transition-all',
-              photoAttachmentSource || photoSearchMode === 'celebrity'
+              photoAttachmentSource
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:text-foreground hover:bg-secondary/80',
             )}

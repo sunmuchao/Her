@@ -539,21 +539,39 @@ class AppearanceFeaturesTests(unittest.TestCase):
         )
 
     def test_build_photo_feature_patch_returns_done_payload(self):
-        patch = build_photo_feature_patch(
-            profile_row={"id": 12, "age": 31, "photo_verification_level": "id"},
-            photo_entries=[
-                {"photo_source": "https://img.her.local/12/avatar.jpg"},
-                {"photo_source": "https://img.her.local/12/gallery.jpg"},
-            ],
-        )
+        with (
+            mock.patch("match_domain.appearance_features._photo_analysis_enabled", return_value=True),
+            mock.patch(
+                "match_domain.beauty_score_analyzer.analyze_beauty_score",
+                return_value={"success": True, "beauty_score": 82, "reasoning": "整体耐看", "model": "mock-beauty"},
+            ),
+            mock.patch(
+                "match_domain.appearance_description_generator.generate_appearance_description",
+                return_value={
+                    "success": True,
+                    "appearance_summary": "整体清爽自然。",
+                    "appearance_keywords": ["清爽", "自然"],
+                    "appearance_style_type": "natural",
+                    "dominant_features": ["眼神自然"],
+                },
+            ),
+        ):
+            patch = build_photo_feature_patch(
+                profile_row={"id": 12, "age": 31, "photo_verification_level": "id"},
+                photo_entries=[
+                    {"photo_source": "https://img.her.local/12/avatar.jpg"},
+                    {"photo_source": "https://img.her.local/12/gallery.jpg"},
+                ],
+            )
 
         self.assertEqual(patch["analysis_status"], "done")
         self.assertIn("appearance_summary", patch)
         self.assertGreater(patch["appearance_score_global"], 0)
-        self.assertEqual(patch["analysis_model"], "deterministic-photo-feature-v1")
+        self.assertEqual(patch["analysis_model"], "ai-analysis-v1")
 
     def test_refresh_profile_photo_features_triggers_index_sync_best_effort(self):
         with (
+            mock.patch("match_domain.appearance_features._photo_analysis_enabled", return_value=True),
             mock.patch(
                 "match_domain.appearance_features.load_candidate_photo_features",
                 return_value={"profile_id": 12, "analysis_status": "pending"},
@@ -622,6 +640,7 @@ class AppearanceFeaturesTests(unittest.TestCase):
 
     def test_refresh_profile_photo_features_from_record_returns_index_sync(self):
         with (
+            mock.patch("match_domain.appearance_features._photo_analysis_enabled", return_value=True),
             mock.patch(
                 "match_domain.appearance_features.load_candidate_photo_features",
                 return_value={"profile_id": 18, "analysis_status": "pending"},

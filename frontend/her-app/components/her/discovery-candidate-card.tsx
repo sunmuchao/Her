@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react'
 import Image from 'next/image'
 import { BadgeCheck, ChevronRight, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PLACEHOLDER_AVATAR, resolveProfileImageUrl } from '@/lib/image-url'
+import { PLACEHOLDER_AVATAR, resolveProfileImageUrl, shouldBypassNextImageOptimization } from '@/lib/image-url'
 import { recordDiscoveryCandidateTelemetry } from '@/lib/api/endpoints/discovery'
 import type { CandidatePreview } from '@/lib/types/candidate'
 
@@ -24,6 +24,15 @@ export function DiscoveryCandidateCard({
   style,
 }: DiscoveryCandidateCardProps) {
   const imageSrc = resolveProfileImageUrl(candidate.image, PLACEHOLDER_AVATAR)
+  const imageUnoptimized = shouldBypassNextImageOptimization(imageSrc)
+  const subtitleParts = String(candidate.subtitle || '')
+    .split('·')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const primaryMeta = [candidate.city, candidate.occupation || candidate.education].filter(Boolean)
+  const secondaryMeta = subtitleParts.filter(
+    (part) => part && !primaryMeta.includes(part),
+  )
   const mbtiType = candidate.personality_match_context?.mbti?.type_code
   const attachmentType = candidate.personality_match_context?.attachment?.type_code
   const matchHighlights = (candidate.matchHighlights || []).filter(Boolean).slice(0, 4)
@@ -104,7 +113,7 @@ export function DiscoveryCandidateCard({
             className="object-cover"
             sizes="64px"
             loading="lazy"
-            unoptimized={imageSrc.startsWith('data:image/')}
+            unoptimized={imageUnoptimized}
           />
         </div>
         <div className="flex-1 min-w-0">
@@ -125,7 +134,13 @@ export function DiscoveryCandidateCard({
               </span>
             ) : null}
             {candidate.occupation ? <span>{candidate.occupation}</span> : null}
+            {!candidate.occupation && candidate.education ? <span>{candidate.education}</span> : null}
           </div>
+          {!candidate.occupation && secondaryMeta.length > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-1">
+              {secondaryMeta.join(' · ')}
+            </p>
+          ) : null}
           {matchHighlights.length > 0 ? (
             <div className="mt-2">
               <p className="text-xs text-muted-foreground mb-1">匹配点：</p>

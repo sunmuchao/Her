@@ -1,0 +1,10 @@
+log_table_rows{table="auth_login_events"} 127
+log_table_oldest_age_days{table="auth_login_events"} 22
+log_table_rows{table="match_relation_events"} 36475
+log_table_oldest_age_days{table="match_relation_events"} 22
+log_table_rows{table="recommendation_actions"} 36488
+log_table_oldest_age_days{table="recommendation_actions"} 22
+mysql_disk_usage_percent 83
+log_table_size_mb{table="auth_login_events"} 0.11
+log_table_size_mb{table="match_relation_events"} 769.88
+log_table_size_mb{table="recommendation_actions"} 285.38

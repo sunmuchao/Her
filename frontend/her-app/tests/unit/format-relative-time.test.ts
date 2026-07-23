@@ -85,6 +85,10 @@ describe('mapDiscoveryView', () => {
     expect(mapped.timelineItems.map((item) => item.kind)).toEqual(['message', 'result_group', 'message'])
     const group = mapped.timelineItems[1]
     expect(group.kind === 'result_group' && group.candidates[0]?.id).toBe('1001')
+    expect(group.kind === 'result_group' && group.candidates[0]?.name).toBe('林知夏')
+    expect(group.kind === 'result_group' && group.candidates[0]?.age).toBe(29)
+    expect(group.kind === 'result_group' && group.candidates[0]?.title).toBe('林知夏 29')
+    expect(group.kind === 'result_group' && group.candidates[0]?.subtitle).toBeUndefined()
     expect(group.kind === 'result_group' && group.candidates[0]?.image).toBe(PLACEHOLDER_AVATAR)
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.mbti?.type_code).toBe('INTJ')
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_match_context?.attachment?.type_code).toBe('secure')
@@ -97,6 +101,44 @@ describe('mapDiscoveryView', () => {
     ])
     expect(group.kind === 'result_group' && group.candidates[0]?.personality_reasons).toEqual(['都看重长期稳定这类东西', '依恋也偏安全型'])
     process.env.NODE_ENV = originalNodeEnv
+  })
+
+  it('maps structured discovery card fields for photo-search cards', () => {
+    const mapped = mapDiscoveryView({
+      timeline: [
+        {
+          item_type: 'result_group',
+          item_id: 'group-photo-1',
+          title: '像这张脸',
+          cards: [
+            {
+              profile_id: 20001,
+              title: '陈欣雯 27',
+              subtitle: '上海 · 产品经理 · 本科',
+              age: 27,
+              city: '上海',
+              occupation: '产品经理',
+              education: '本科',
+              cover_image_url: 'https://cdn.her.local/20001.jpg',
+            },
+          ],
+        },
+      ],
+    })
+
+    const group = mapped.timelineItems[0]
+    expect(group.kind).toBe('result_group')
+    if (group.kind !== 'result_group') return
+    expect(group.candidates[0]).toMatchObject({
+      id: '20001',
+      name: '陈欣雯',
+      age: 27,
+      city: '上海',
+      occupation: '产品经理',
+      education: '本科',
+      title: '陈欣雯 27',
+      subtitle: '上海 · 产品经理 · 本科',
+    })
   })
 
   it('maps profile_update_prompt timeline items', () => {

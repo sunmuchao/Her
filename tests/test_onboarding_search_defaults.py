@@ -51,7 +51,8 @@ class OnboardingSearchDefaultsTests(unittest.TestCase):
             {"relationship_goal": "dating"},
         )
         self.assertEqual(fields["sexual_orientation"], "like_female")
-        self.assertEqual(fields["marital_status"], "未婚")
+        # 数据库应存储英文标准值，显示时转换为中文
+        self.assertEqual(fields["marital_status"], "never_married")
         self.assertEqual(fields["has_children"], 0)
         self.assertEqual(fields["city"], "上海")
 
@@ -117,6 +118,32 @@ class OnboardingSearchDefaultsTests(unittest.TestCase):
             }
         )
         self.assertEqual(labels, ["上海", "女", "26-36岁", "先谈恋爱"])
+
+    def test_format_criteria_labels_converts_marital_status_to_chinese(self) -> None:
+        """验证婚况英文标准值转换为中文显示标签"""
+        labels = format_criteria_labels(
+            {
+                "cities": ["无锡"],
+                "gender": "female",
+                "age_min": 26,
+                "age_max": 36,
+                "relationship_goals": ["marriage"],
+                "height_min": 167,
+                "height_max": 172,
+                "marital_statuses": ["never_married"],
+                "accept_partner_children": "不接受",
+                "long_distance": "可协商",
+            }
+        )
+        # 验证关键标签
+        self.assertIn("无锡", labels)
+        self.assertIn("女", labels)
+        self.assertIn("26-36岁", labels)
+        self.assertIn("奔着结婚", labels)
+        self.assertIn("身高167-172cm", labels)
+        self.assertIn("婚况未婚", labels)  # 关键：never_married -> 未婚
+        self.assertIn("孩子不接受", labels)
+        self.assertIn("异地可协商", labels)
 
     def test_discovery_search_request_includes_profile_defaults(self) -> None:
         profile_row = {

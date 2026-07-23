@@ -457,6 +457,13 @@ def rest_candidate_xiaoya_analysis(
     environ: dict[str, Any],
     candidate_id: str,
 ) -> tuple[int, dict[str, Any]]:
+    return 503, {
+        "error": {
+            "code": "xiaoya_analysis_disabled",
+            "message": "小雅分析已临时关闭",
+        }
+    }
+
     q = _query_dict(environ)
     try:
         profile_id = validate_int_id(candidate_id, "candidate_id")

@@ -137,8 +137,8 @@ class AppearanceSearchTests(unittest.TestCase):
             mock.patch(
                 "match_domain.appearance_search.load_profile_face_attributes",
                 return_value={
-                    12: {"eye_size_score": 72, "youthfulness_score": 68},
-                    18: {"eye_size_score": 42, "youthfulness_score": 45},
+                    12: {"eye_size_score": 72, "youthfulness_score": 68, "attribute_source": "landmark", "attribute_confidence": 0.82},
+                    18: {"eye_size_score": 42, "youthfulness_score": 45, "attribute_source": "landmark", "attribute_confidence": 0.79},
                 },
             ),
         ):
@@ -151,6 +151,28 @@ class AppearanceSearchTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["profile_id"], 12)
         self.assertIn("eye_size_score", results[0]["explanation"])
+
+    def test_attribute_filter_searcher_skips_non_landmark_face_attributes(self):
+        with (
+            mock.patch("match_domain.appearance_search.list_profile_photo_feature_rows", return_value=[
+                {"profile_id": 12, "clean_score": 81},
+                {"profile_id": 18, "clean_score": 88},
+            ]),
+            mock.patch(
+                "match_domain.appearance_search.load_profile_face_attributes",
+                return_value={
+                    12: {"eye_size_score": 72, "attribute_source": "landmark", "attribute_confidence": 0.81},
+                    18: {"eye_size_score": 75, "attribute_source": "heuristic_fallback", "attribute_confidence": 0.95},
+                },
+            ),
+        ):
+            results = AttributeFilterSearcher.search(
+                source_dsn="mysql://persona",
+                filters={"eye_size_score": {"min": 60}},
+                top_k=5,
+            )
+
+        self.assertEqual([item["profile_id"] for item in results], [12])
 
     def test_uploaded_reference_face_processor_and_search_job(self):
         processed = UploadedReferenceFaceProcessor.process(

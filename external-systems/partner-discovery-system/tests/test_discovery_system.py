@@ -567,17 +567,23 @@ class DiscoveryServiceTests(unittest.TestCase):
             for tool in list(captured["tools"] or [])
         ]
         # 方案A：拆分为两个专用工具（reply_to_user + show_candidates）
-        self.assertEqual(
-            tool_names,
-            [
-                "sync_requester_persona_memory",
-                "propose_requester_profile_update",
-                "search_partner_candidates",
-                "create_saved_search_subscription_from_last_search",
-                "reply_to_user",   # 方案A：回复专用工具
-                "show_candidates", # 方案A：展示候选人专用工具
-            ],
-        )
+        self.assertNotIn("propose_requester_profile_update", tool_names)
+        self.assertIn("sync_requester_persona_memory", tool_names)
+        self.assertIn("load_recent_visual_context", tool_names)
+        self.assertIn("build_visual_search_plan", tool_names)
+        self.assertIn("parse_visual_user_intent", tool_names)
+        self.assertIn("search_face_similarity_candidates", tool_names)
+        self.assertIn("search_style_similarity_candidates", tool_names)
+        self.assertIn("search_reference_person_candidates", tool_names)
+        self.assertIn("apply_candidate_hard_filters", tool_names)
+        self.assertIn("rerank_visual_candidates", tool_names)
+        self.assertIn("persist_visual_search_memory", tool_names)
+        self.assertIn("search_partner_candidates", tool_names)
+        self.assertIn("resolve_direct_image_urls", tool_names)
+        self.assertIn("create_saved_search_subscription_from_last_search", tool_names)
+        self.assertIn("reply_to_user", tool_names)
+        self.assertIn("show_candidates", tool_names)
+        self.assertIn("suggest_assessment", tool_names)
         # 方案A：output_type 改为 None（不再使用 AgentOutputSchema）
         output_type = captured["output_type"]
         self.assertIsNone(output_type)

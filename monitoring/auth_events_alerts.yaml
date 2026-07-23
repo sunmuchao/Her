@@ -1,0 +1,72 @@
+groups:
+- name: auth_events_alerts
+  rules:
+  # 告警：表数据量超过100万行
+  - alert: AuthEventsTableRowsWarning
+    expr: auth_events_rows{status="total"} > 1000000
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "auth_login_events table rows exceeds warning threshold"
+      description: "auth_login_events table has {{ $value }} rows (warning threshold: 1,000,000)"
+
+  # 告警：表数据量超过500万行
+  - alert: AuthEventsTableRowsCritical
+    expr: auth_events_rows{status="total"} > 5000000
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "auth_login_events table rows exceeds critical threshold"
+      description: "auth_login_events table has {{ $value }} rows (critical threshold: 5,000,000)"
+
+  # 告警：表大小超过1GB
+  - alert: AuthEventsTableSizeWarning
+    expr: auth_events_size_mb{type="total"} > 1024
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "auth_login_events table size exceeds warning threshold"
+      description: "auth_login_events table size is {{ $value }} MB (warning threshold: 1024 MB)"
+
+  # 告警：表大小超过5GB
+  - alert: AuthEventsTableSizeCritical
+    expr: auth_events_size_mb{type="total"} > 5120
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "auth_login_events table size exceeds critical threshold"
+      description: "auth_login_events table size is {{ $value }} MB (critical threshold: 5120 MB)"
+
+  # 告警：最老记录超过180天
+  - alert: AuthEventsTableAgeWarning
+    expr: auth_events_oldest_age_days > 180
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "auth_login_events table contains old records"
+      description: "Oldest record is {{ $value }} days old (warning threshold: 180 days)"
+
+  # 告警：最老记录超过365天
+  - alert: AuthEventsTableAgeCritical
+    expr: auth_events_oldest_age_days > 365
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "auth_login_events table contains very old records"
+      description: "Oldest record is {{ $value }} days old (critical threshold: 365 days)"
+
+  # 告警：日增长量异常（超过10万行/天）
+  - alert: AuthEventsHighGrowthRate
+    expr: auth_events_daily_avg > 100000
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "auth_login_events table growth rate is high"
+      description: "Daily average growth is {{ $value }} rows (threshold: 100,000 rows/day)"
